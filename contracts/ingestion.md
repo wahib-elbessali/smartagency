@@ -19,15 +19,3 @@ Entry template:
 ---
 
 <!-- Add entries below, one per endpoint -->
-
-## Hardware / sensors
-
-<!-- e.g. DHT22 climate readings, MQ-7 gas readings -->
-
-## Access control
-
-<!-- e.g. RC522 badge scans, lock/motor state changes -->
-
-## AI / CV events
-
-<!-- e.g. weapon/abandoned-object detections, tracking frames, facial recognition matches -->

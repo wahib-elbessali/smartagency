@@ -19,23 +19,3 @@ Entry template:
 ---
 
 <!-- Add entries below, one per endpoint -->
-
-## Climate
-
-<!-- GET current temp/humidity, etc. -->
-
-## Employee presence
-
-<!-- GET presence/occupancy state -->
-
-## Visitor queue / kiosk
-
-<!-- GET queue stats, POST ticket issuance -->
-
-## WS /live-map
-
-<!-- bird's-eye-view person tracking stream -->
-
-## WS /alerts
-
-<!-- weapon/abandoned-object/wanted-person alert stream -->
