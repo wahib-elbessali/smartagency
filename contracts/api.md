@@ -19,11 +19,3 @@ Entry template:
 ---
 
 <!-- Add entries below, one per endpoint -->
-
-### GET /test/throwaway2
-**Owner:** 
-**Type:** REST
-**Payload:**
-{
-}
-**Notes:** Throwaway entry, second pass, testing the fixed announcement workflow. Will be removed.
