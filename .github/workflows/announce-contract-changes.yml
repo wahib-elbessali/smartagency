@@ -1,39 +1,37 @@
 name: Announce contract changes
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [master]
     paths:
       - 'contracts/**.md'
 
 jobs:
   announce:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Post to Discord
         env:
+          GH_TOKEN: ${{ github.token }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_API_CONTRACT_WEBHOOK }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          COMMIT_URL: ${{ github.event.head_commit.url }}
-          BEFORE_SHA: ${{ github.event.before }}
-          AFTER_SHA: ${{ github.event.after }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
           set -e
-          TITLE=$(printf '%s' "$COMMIT_MSG" | head -n1)
-          FILES=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- contracts | paste -sd ', ' -)
+          FILES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' | grep '^contracts/.*\.md$' | paste -sd ', ' -)
 
           PREFIX=""
-          if printf '%s' "$TITLE" | grep -q '^BREAKING:'; then
+          if printf '%s' "$PR_TITLE" | grep -q '^BREAKING:'; then
             PREFIX="🚨 **BREAKING CONTRACT CHANGE** — "
           fi
 
-          BODY=$(PREFIX="$PREFIX" FILES="$FILES" TITLE="$TITLE" COMMIT_URL="$COMMIT_URL" node -e '
+          BODY=$(PREFIX="$PREFIX" FILES="$FILES" PR_TITLE="$PR_TITLE" PR_URL="$PR_URL" node -e '
             const payload = {
-              content: `${process.env.PREFIX}${process.env.FILES}\n**${process.env.TITLE}**\n${process.env.COMMIT_URL}`
+              content: `${process.env.PREFIX}${process.env.FILES}\n**${process.env.PR_TITLE}**\n${process.env.PR_URL}`
             };
             process.stdout.write(JSON.stringify(payload));
           ')
