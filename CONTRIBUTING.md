@@ -41,7 +41,7 @@ Physical hardware and the AI/CV pipeline run in one place. Don't assume you have
 ## `#blockers`
 
 - One shared inbox, open any time.
-- Non-trivial questions use the 3-line template: what you're stuck on / what you've tried / what you think the fix might be.
-- Entries get triaged and routed to whoever owns that layer.
+- Non-trivial questions use the 3-line template: what you're stuck on / what you've tried / what you think the fix might be. Tag it with the layer it belongs to (foundation/backend/frontend) when you post.
+- Entries get triaged — mistagged or untagged ones corrected, duplicates merged, anything already answered closed — and routed to whoever owns that layer.
 - Answers come on a schedule, not live — except `urgent`, reserved for things actually blocking everyone (broken CI, a hardware safety issue), which gets an immediate response.
 - A quick direct ping is fine for something genuinely fast; anything that needs real thought gets redirected to `#blockers`.
