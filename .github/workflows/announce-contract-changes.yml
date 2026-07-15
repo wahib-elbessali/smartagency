@@ -1,0 +1,40 @@
+name: Announce contract changes
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'contracts/**.md'
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Post to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_API_CONTRACT_WEBHOOK }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: |
+          set -e
+          TITLE=$(printf '%s' "$COMMIT_MSG" | head -n1)
+          FILES=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- contracts | paste -sd ', ' -)
+
+          PREFIX=""
+          if printf '%s' "$TITLE" | grep -q '^BREAKING:'; then
+            PREFIX="🚨 **BREAKING CONTRACT CHANGE** — "
+          fi
+
+          BODY=$(PREFIX="$PREFIX" FILES="$FILES" TITLE="$TITLE" COMMIT_URL="$COMMIT_URL" node -e '
+            const payload = {
+              content: `${process.env.PREFIX}${process.env.FILES}\n**${process.env.TITLE}**\n${process.env.COMMIT_URL}`
+            };
+            process.stdout.write(JSON.stringify(payload));
+          ')
+          curl -sS -H "Content-Type: application/json" -X POST -d "$BODY" "$DISCORD_WEBHOOK_URL"
