@@ -19,11 +19,3 @@ Entry template:
 ---
 
 <!-- Add entries below, one per endpoint -->
-
-### GET /test/throwaway
-**Owner:** 
-**Type:** REST
-**Payload:**
-{
-}
-**Notes:** Throwaway entry to test the contract-change announcement workflow. Will be removed.
