@@ -33,5 +33,8 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /* Tests are typechecked by tsconfig.test.json, which gives them Node and
+     jest-dom types that application code has no business seeing. */
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }
