@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './App'
+import { SessionProvider } from '@/auth/session'
 import { ApiError } from '@/api/errors'
 import './mocks'
 import './index.css'
@@ -26,9 +27,11 @@ if (!rootElement) throw new Error('Root element #root is missing from index.html
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <SessionProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </SessionProvider>
     </QueryClientProvider>
   </StrictMode>,
 )
