@@ -1,24 +1,28 @@
 import { FileWarning } from 'lucide-react'
+import { Panel, PanelBody } from '@/components/ui/Panel'
 
 /**
- * Shown by a screen that has no endpoint to call yet.
+ * Shown by a screen with no endpoint to call yet.
  *
- * This is deliberately not a mock of the finished screen. A convincing fake
- * invites someone to assume the data is real, and the point of this panel is
- * that the data does not exist.
+ * Deliberately not a mock of the finished screen. A convincing fake invites
+ * people to assume the data is real, and the point of this panel is that it
+ * isn't - there is no contract entry behind it.
  */
-export function ContractPending({ screen }: { screen: string }) {
+export function ContractPending({ screen, note }: { screen: string; note?: string }) {
   return (
-    <div className="max-w-2xl rounded-lg border border-slate-700 bg-slate-900/60 p-6">
-      <div className="mb-3 flex items-center gap-2 font-medium text-slate-200">
-        <FileWarning className="size-5 text-slate-400" aria-hidden />
-        <span>Waiting on the API contract</span>
-      </div>
-      <p className="text-sm leading-relaxed text-slate-400">
-        {screen} has no endpoint in <code className="text-slate-300">contracts/api.md</code> yet, so
-        there is nothing to render. The mock layer, routing, and loading/empty/error states are in
-        place — this screen fills in once the contract entry is merged.
-      </p>
-    </div>
+    <Panel className="max-w-2xl">
+      <PanelBody className="flex gap-4 py-5">
+        <FileWarning className="text-ink-3 mt-0.5 size-5 shrink-0" aria-hidden />
+        <div>
+          <h2 className="text-ink text-sm font-semibold">Waiting on the API contract</h2>
+          <p className="text-ink-2 mt-1.5 text-sm leading-relaxed">
+            {screen} has no endpoint in <code className="text-ink-2/90">contracts/api.md</code> yet,
+            so there is nothing to render. Routing, the mock layer, and the loading/empty/error
+            states are already in place — this screen fills in once the contract entry is merged.
+          </p>
+          {note && <p className="text-ink-3 mt-3 text-sm leading-relaxed">{note}</p>}
+        </div>
+      </PanelBody>
+    </Panel>
   )
 }

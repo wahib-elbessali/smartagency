@@ -1,13 +1,16 @@
 import type { ReactNode } from 'react'
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle, Inbox } from 'lucide-react'
 import { ApiError, describeApiError } from '@/api/errors'
+import { Button } from '@/components/ui/Button'
+import { Panel, PanelBody } from '@/components/ui/Panel'
+import { SkeletonRows } from '@/components/ui/Skeleton'
 
 /**
  * Loading / empty / error, in one place.
  *
- * Playbook 2 and 9: every screen needs all three, and hand-rolling them six
- * times is where the bugs live. Empty is a real answer and is styled like one -
- * it must not look like a screen that failed to load.
+ * Hand-rolling these six times is where the bugs live, and empty-state and
+ * error-state bugs are most of what shows up on integration day. Empty is a
+ * real answer here and is styled like one - it must not read as a failure.
  */
 
 interface AsyncBoundaryProps {
@@ -18,6 +21,8 @@ interface AsyncBoundaryProps {
   /** What "nothing" means here, e.g. "No visitors waiting". */
   emptyMessage?: string
   onRetry?: () => void
+  /** Skeleton line count, tuned to the content it stands in for. */
+  skeletonRows?: number
   children: ReactNode
 }
 
@@ -27,14 +32,19 @@ export function AsyncBoundary({
   isEmpty = false,
   emptyMessage = 'Nothing to show.',
   onRetry,
+  skeletonRows = 4,
   children,
 }: AsyncBoundaryProps) {
   if (isPending) {
     return (
-      <div className="flex items-center gap-3 p-8 text-slate-400" role="status" aria-live="polite">
-        <Loader2 className="size-5 animate-spin" aria-hidden />
-        <span>Loading…</span>
-      </div>
+      <Panel>
+        <PanelBody>
+          <span className="sr-only" role="status" aria-live="polite">
+            Loading
+          </span>
+          <SkeletonRows rows={skeletonRows} />
+        </PanelBody>
+      </Panel>
     )
   }
 
@@ -43,30 +53,34 @@ export function AsyncBoundary({
       error instanceof ApiError ? describeApiError(error) : 'Something went wrong loading this.'
 
     return (
-      <div
-        className="flex flex-col items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-6"
-        role="alert"
-      >
-        <div className="flex items-center gap-2 font-medium text-amber-200">
-          <AlertTriangle className="size-5" aria-hidden />
-          <span>Could not load this panel</span>
-        </div>
-        <p className="text-sm text-amber-100/80">{message}</p>
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-md border border-amber-400/50 px-3 py-1.5 text-sm text-amber-100 transition-colors hover:bg-amber-400/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
-          >
-            Try again
-          </button>
-        )}
-      </div>
+      <Panel tone="alert">
+        <PanelBody className="py-5">
+          <div className="flex gap-4">
+            <AlertTriangle className="text-warn mt-0.5 size-5 shrink-0" aria-hidden />
+            <div role="alert">
+              <h2 className="text-warn text-sm font-semibold">Could not load this panel</h2>
+              <p className="text-warn/85 mt-1.5 text-sm leading-relaxed">{message}</p>
+              {onRetry && (
+                <Button size="sm" onClick={onRetry} className="mt-3.5">
+                  Try again
+                </Button>
+              )}
+            </div>
+          </div>
+        </PanelBody>
+      </Panel>
     )
   }
 
   if (isEmpty) {
-    return <p className="p-8 text-slate-400">{emptyMessage}</p>
+    return (
+      <Panel>
+        <PanelBody className="flex flex-col items-center gap-2.5 py-12 text-center">
+          <Inbox className="text-ink-3 size-6" aria-hidden />
+          <p className="text-ink-2 text-sm">{emptyMessage}</p>
+        </PanelBody>
+      </Panel>
+    )
   }
 
   return <>{children}</>
