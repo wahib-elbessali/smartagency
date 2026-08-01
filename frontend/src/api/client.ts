@@ -38,6 +38,12 @@ export async function fetchJson<T>(endpoint: EndpointDescriptor, signal?: AbortS
   try {
     response = await fetch(`${API_BASE_URL}${endpoint.path}`, {
       headers: { Accept: 'application/json' },
+      /* Explicit, not left to the default. If the backend ends up using cookie
+         sessions this has to become 'include' AND the backend has to send
+         SameSite plus a CSRF token we echo on state-changing requests - the
+         token's header name is the backend's to define, so it is not invented
+         here. Until that is decided, credentials are not sent at all. */
+      credentials: 'same-origin',
       signal: combined,
     })
   } catch (cause) {
