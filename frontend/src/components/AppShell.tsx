@@ -5,12 +5,16 @@ import {
   FlaskConical,
   Grid3x3,
   KeyRound,
+  LogOut,
   ShieldCheck,
   UserCheck,
   Users,
 } from 'lucide-react'
 import { MOCK_SCENARIO, USE_MOCKS } from '@/api/config'
+import { useSession } from '@/auth/SessionContext'
+import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 
 const NAV = [
@@ -26,6 +30,7 @@ export function AppShell() {
   // Keying the main region on pathname replays the enter animation per route,
   // so navigation reads as a transition rather than an instant swap.
   const { pathname } = useLocation()
+  const { user, signOut } = useSession()
 
   return (
     <div className="bg-canvas flex min-h-screen flex-col md:flex-row">
@@ -38,7 +43,7 @@ export function AppShell() {
 
       <nav
         aria-label="Main"
-        className="border-line bg-panel/70 shrink-0 border-b backdrop-blur md:w-64 md:border-r md:border-b-0"
+        className="border-line bg-panel/70 shrink-0 border-b backdrop-blur md:flex md:w-64 md:flex-col md:border-r md:border-b-0"
       >
         <div className="flex items-center gap-2.5 px-5 py-5">
           <ShieldCheck className="text-accent size-5" aria-hidden />
@@ -82,6 +87,30 @@ export function AppShell() {
             </li>
           ))}
         </ul>
+
+        {user && (
+          /* Role is shown because several endpoints are role-scoped, so "why
+             can't I see the other agency?" has a visible answer instead of
+             looking like a bug. */
+          <div className="border-line mt-auto hidden border-t px-3 py-3 md:block">
+            <div className="flex items-center gap-2.5 px-1 py-1">
+              <Avatar name={user.full_name} />
+              <div className="min-w-0 flex-1">
+                <div className="text-ink truncate text-sm font-medium">{user.full_name}</div>
+                <div className="text-ink-3 truncate text-xs">{user.role}</div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={signOut}
+              className="mt-1 w-full justify-start"
+            >
+              <LogOut className="size-3.5" aria-hidden />
+              Sign out
+            </Button>
+          </div>
+        )}
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">

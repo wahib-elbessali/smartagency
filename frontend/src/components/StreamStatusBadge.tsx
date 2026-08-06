@@ -1,5 +1,5 @@
 import { Wifi, WifiOff } from 'lucide-react'
-import type { StreamStatus } from '@/api/alertsStream'
+import type { StreamStatus } from '@/api/attendanceStream'
 import { Badge, type Tone } from '@/components/ui/Badge'
 
 /** Colour never carries the status alone - there is an icon and a word too. */
