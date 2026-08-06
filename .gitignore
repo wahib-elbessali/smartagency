@@ -19,3 +19,12 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# AI service runtime state (ai/data/): zones, calibration, and the two face
+# galleries. Per-deployment, not code -- and the galleries are biometric data
+# tied to named real people, so committing them is effectively permanent.
+ai/data/*
+!ai/data/.gitkeep
+
+# Downloaded model weights (~55MB, re-download on demand)
+ai/models/

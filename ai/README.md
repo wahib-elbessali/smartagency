@@ -1,15 +1,18 @@
-# features/ — the computer-vision service
+# The computer-vision service
 
 A self-contained FastAPI service exposing seven CV features over one port. **This folder has no
 dependencies outside itself** — copy it into any project, install the pip requirements, and run it.
 
 ```bash
-pip install -r features/requirements.txt
-uvicorn features.main:app --host 0.0.0.0 --port 8000
+pip install -r core/ai/requirements.txt
+uvicorn core.ai.main:app --host 0.0.0.0 --port 8000
 ```
 
+Run from the repo root. Imports inside the package are relative, so it works under any folder name —
+the command just follows the package path.
+
 `GET /` lists every route; `/docs` is interactive OpenAPI. Full reference with payloads and
-responses: `docs/api.md` in the original repo.
+responses: `core/contracts/ai-service.md`.
 
 ## What's here
 
@@ -25,15 +28,13 @@ responses: `docs/api.md` in the original repo.
 
 Each feature is exactly two files: `engine.py` (the CV, no web concepts) and `api.py` (an
 `APIRouter`, no CV logic). `main.py` mounts them all and owns the shared `/frame` and `/video_meta`.
-`common/` holds the three pieces more than one feature needs — the alert broadcaster, video reading,
-and multi-camera fusion.
 
-**Imports are relative throughout**, so the folder can be renamed as well as moved. If you rename it
-to `cv_service/`, run `uvicorn cv_service.main:app`.
+`common/` holds the three pieces more than one feature needs — the alert broadcaster, video
+reading, and multi-camera fusion.
 
 ## First run
 
-Model weights download automatically into `features/models/` (~55MB total):
+Model weights download automatically into this folder's `models/` (~55MB total):
 
 | feature | source |
 |---|---|
@@ -42,9 +43,9 @@ Model weights download automatically into `features/models/` (~55MB total):
 | fire | GitHub release |
 | face / emotion / wanted | InsightFace + hsemotion cache to `~/.insightface`, `~/.hsemotion` (library-managed, like pip's cache) |
 
-All of it lands in `features/models/`, inside the package, so a copied folder stays self-sufficient.
+All of it lands in `models/` **inside this package**, so a copied folder stays self-sufficient.
 
-Everything the service **writes** goes to `features/data/`: `zones.json`, `site_calibration.json`,
+Everything the service **writes** goes to `data/` inside this package: `zones.json`, `site_calibration.json`,
 and the two galleries. These locations are **fixed** — they do not depend on which directory you
 launch from, so the service behaves identically under a shell, systemd, or Docker.
 
@@ -57,7 +58,7 @@ not one of them:
 are the classic way to half-configure a deployment without noticing: start the service in the wrong
 place and it comes up with zero zones, serving happily, looking exactly like "nobody is in any zone".
 
-**2. `features/config.json`** — values you set once for a site. It may be partial or absent; missing
+**2. `config.json`** (in this folder) — values you set once for a site. It may be partial or absent; missing
 keys fall back to built-in defaults, so a fresh copy runs unconfigured. Typos and wrong types are
 reported at startup rather than silently ignored. `GET /config` shows what is actually in effect.
 
@@ -90,7 +91,7 @@ deliberate choice for an academic project, and it is not safe as-is:
 `/face` and `/wanted` can both read out stored biometric embeddings. Put this behind an
 authenticating reverse proxy with TLS before exposing it beyond a trusted LAN.
 
-**The two gallery files are biometric data** tied to named real people
-(`face_recognition/face_gallery.json`, `wanted_detection/wanted_gallery.json`). They are gitignored
-here via `*_gallery.json` — keep an equivalent rule if you copy this folder into another repo, or
-the first `git add -A` commits them permanently.
+**The two gallery files are biometric data** tied to named real people —
+`data/face_gallery.json` and `data/wanted_gallery.json`, alongside the zones and calibration this
+service writes. **Ignore `core/ai/data/` before the first commit**, or `git add -A` commits real
+people's face embeddings permanently.
