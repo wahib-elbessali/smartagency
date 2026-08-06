@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { backoffDelay, buildSocketTarget, parseFrame } from './attendanceStream'
 
 describe('buildSocketTarget', () => {
@@ -17,16 +17,13 @@ describe('buildSocketTarget', () => {
     expect(buildSocketTarget('jwt', 'query', '')).toBeNull()
   })
 
-  it('puts the token in the query string in query mode', () => {
+  /* Measured against the running backend: the query parameter is the only
+     mechanism it accepts. A subprotocol handshake and an Authorization header
+     are both rejected with 403, so neither is offered. */
+  it('puts the token in the query string, and sends no subprotocol', () => {
     const target = buildSocketTarget('jwt', 'query', 'ws://api.test')
     expect(target?.url).toBe('ws://api.test/ws/attendance?token=jwt')
     expect(target?.protocols).toBeUndefined()
-  })
-
-  it('puts the token in the subprotocol list in subprotocol mode', () => {
-    const target = buildSocketTarget('jwt', 'subprotocol', 'ws://api.test')
-    expect(target?.url).toBe('ws://api.test/ws/attendance')
-    expect(target?.protocols).toEqual(['bearer', 'jwt'])
   })
 })
 
@@ -70,5 +67,84 @@ describe('parseFrame', () => {
     const amended = JSON.parse(valid) as Record<string, unknown>
     amended.event = 'attendance_amended'
     expect(parseFrame(JSON.stringify(amended))?.event).toBe('attendance_amended')
+  })
+})
+
+describe('createLiveAttendanceStream reconnect policy', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  /* The module reads WS_AUTH_MODE and WS_BASE_URL at import time, and both are
+     unset by default - deliberately, so an unconfigured socket refuses to
+     connect. Stub them and re-import to exercise the connected path. */
+  async function harness() {
+    vi.stubEnv('VITE_USE_MOCKS', 'false')
+    vi.stubEnv('VITE_API_BASE_URL', 'http://api.test')
+    vi.stubEnv('VITE_WS_AUTH_MODE', 'query')
+    vi.resetModules()
+
+    const mod = await import('./attendanceStream')
+    const { WS_MAX_INITIAL_ATTEMPTS } = await import('./config')
+
+    const sockets: WebSocket[] = []
+    const pending: Array<() => void> = []
+
+    const stream = mod.createLiveAttendanceStream({
+      tokenProvider: () => 'jwt',
+      socketFactory: () => {
+        const ws = { close: () => {} } as unknown as WebSocket
+        sockets.push(ws)
+        return ws
+      },
+      scheduleRetry: (fn) => {
+        pending.push(fn)
+        return pending.length
+      },
+      cancelRetry: () => {},
+    })
+
+    return {
+      stream,
+      sockets,
+      max: WS_MAX_INITIAL_ATTEMPTS,
+      drop: () => sockets[sockets.length - 1].onclose?.(new CloseEvent('close')),
+      open: () => sockets[sockets.length - 1].onopen?.(new Event('open')),
+      runPendingRetry: () => pending.shift()?.(),
+    }
+  }
+
+  /* A socket that has never opened is bad config or a dead token, and the
+     backend rejects both during the handshake - so the browser gets no status
+     code and cannot tell them from an outage. Retrying forever would leave the
+     badge reading "Reconnecting..." for something that will never succeed. */
+  it('gives up after WS_MAX_INITIAL_ATTEMPTS if it never opens', async () => {
+    const h = await harness()
+
+    for (let i = 0; i < 20; i += 1) {
+      h.drop()
+      h.runPendingRetry()
+    }
+
+    expect(h.stream.status).toBe('closed')
+    expect(h.sockets.length).toBeLessThanOrEqual(h.max + 1)
+  })
+
+  /* A socket that opened and then dropped is a transient outage, and a
+     wall-mounted dashboard has to recover from that unattended. */
+  it('keeps retrying indefinitely once it has opened at least once', async () => {
+    const h = await harness()
+
+    h.open()
+    expect(h.stream.status).toBe('open')
+
+    for (let i = 0; i < 20; i += 1) {
+      h.drop()
+      h.runPendingRetry()
+    }
+
+    expect(h.stream.status).toBe('reconnecting')
+    expect(h.sockets.length).toBeGreaterThan(h.max + 1)
   })
 })

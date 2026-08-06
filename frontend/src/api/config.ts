@@ -41,30 +41,43 @@ export const WS_BASE_URL = (
 /**
  * How the JWT is presented to the WebSocket.
  *
- * contracts/api.md says WS /ws/attendance "requires a valid JWT token" but not
- * HOW. This matters because a browser cannot set an Authorization header on a
- * WebSocket handshake - that is a hard limitation of the API, not an oversight.
- * The two mechanisms actually available are a query parameter or the
- * Sec-WebSocket-Protocol subprotocol field, and only the backend knows which it
- * implements.
+ * A browser cannot set an Authorization header on a WebSocket handshake - that
+ * is a hard limitation of the API, not an oversight - so this has to be either
+ * a query parameter or the Sec-WebSocket-Protocol field. contracts/api.md does
+ * not say which.
  *
- * So this is a switch with no default rather than a guess. Unset means the
- * socket refuses to connect and says why. Ask Ahmed, set the variable, done.
+ * Measured against the running backend: only the query parameter works. A
+ * subprotocol handshake and an Authorization header are both rejected with 403,
+ * as is a missing or invalid token. So 'query' is the only mode offered here -
+ * an option that cannot work is worse than no option, because it fails silently
+ * at runtime rather than loudly at configuration time.
+ *
+ * Still opt-in rather than on by default: until there is a backend to point at,
+ * a socket that refuses to connect and says so beats one that retries nothing.
  */
-export type WsAuthMode = 'query' | 'subprotocol'
+export type WsAuthMode = 'query'
 
 export const WS_AUTH_MODE: WsAuthMode | null =
-  import.meta.env.VITE_WS_AUTH_MODE === 'query'
-    ? 'query'
-    : import.meta.env.VITE_WS_AUTH_MODE === 'subprotocol'
-      ? 'subprotocol'
-      : null
+  import.meta.env.VITE_WS_AUTH_MODE === 'query' ? 'query' : null
 
-/** Name of the query parameter when WS_AUTH_MODE is 'query'. Backend's call. */
+/** Name of the query parameter. Verified as `token` against the backend. */
 export const WS_AUTH_QUERY_PARAM = import.meta.env.VITE_WS_AUTH_QUERY_PARAM ?? 'token'
 
 /** Reconnect backoff for the attendance socket. */
 export const WS_RECONNECT_MS = { min: 1_000, max: 30_000 } as const
+
+/**
+ * How many times to retry a socket that has NEVER successfully opened.
+ *
+ * The distinction matters. A socket that opened and later dropped is a
+ * transient outage, and a wall-mounted dashboard should keep trying that
+ * forever so it recovers unattended. A socket that has never opened once is
+ * almost always configuration or an expired token - and because the backend
+ * rejects a bad token during the handshake, the browser gets no status code and
+ * cannot tell that apart from the server being down. Retrying that forever just
+ * means the badge reads "Reconnecting..." indefinitely when it will never work.
+ */
+export const WS_MAX_INITIAL_ATTEMPTS = 6
 
 /**
  * Fake latency band for mocked responses. Without this every screen gets built

@@ -3,6 +3,7 @@ import {
   WS_AUTH_MODE,
   WS_AUTH_QUERY_PARAM,
   WS_BASE_URL,
+  WS_MAX_INITIAL_ATTEMPTS,
   WS_RECONNECT_MS,
 } from './config'
 import { getAccessToken } from './tokenStore'
@@ -60,16 +61,12 @@ export function buildSocketTarget(
 ): { url: string; protocols?: string[] } | null {
   if (!base || !token || !mode) return null
 
-  if (mode === 'query') {
-    const url = new URL(`${base}${ATTENDANCE_STREAM_PATH}`)
-    url.searchParams.set(WS_AUTH_QUERY_PARAM, token)
-    /* Worth knowing: a token in a query string lands in server access logs and
-       proxy logs. Subprotocol is the better of the two options if the backend
-       supports it - raise that with Ahmed rather than just picking. */
-    return { url: url.toString() }
-  }
-
-  return { url: `${base}${ATTENDANCE_STREAM_PATH}`, protocols: ['bearer', token] }
+  const url = new URL(`${base}${ATTENDANCE_STREAM_PATH}`)
+  url.searchParams.set(WS_AUTH_QUERY_PARAM, token)
+  /* Worth knowing: a token in a query string lands in server and proxy access
+     logs. The subprotocol field avoids that, but the backend returns 403 for it
+     - tested - so this is the only option that works today. */
+  return { url: url.toString() }
 }
 
 /** Full jitter exponential backoff, so N reconnecting dashboards don't sync up. */
@@ -103,6 +100,8 @@ export function createLiveAttendanceStream(deps: StreamDeps = {}): AttendanceStr
   let retryHandle: number | null = null
   let attempt = 0
   let stopped = false
+  /* Once true, drops stay retryable forever - see WS_MAX_INITIAL_ATTEMPTS. */
+  let hasEverOpened = false
 
   function setStatus(next: StreamStatus) {
     if (status === next) return
@@ -134,6 +133,7 @@ export function createLiveAttendanceStream(deps: StreamDeps = {}): AttendanceStr
 
     ws.onopen = () => {
       attempt = 0
+      hasEverOpened = true
       setStatus('open')
     }
 
@@ -161,6 +161,14 @@ export function createLiveAttendanceStream(deps: StreamDeps = {}): AttendanceStr
   }
 
   function scheduleReconnect() {
+    if (!hasEverOpened && attempt >= WS_MAX_INITIAL_ATTEMPTS) {
+      /* Never connected once. Something is wrong with the token or the config,
+         and no amount of retrying fixes either. "Not connected" is the honest
+         status; "Reconnecting..." forever is not. */
+      setStatus('closed')
+      return
+    }
+
     setStatus('reconnecting')
     const delay = backoffDelay(attempt)
     attempt += 1
