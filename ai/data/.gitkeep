@@ -1,0 +1,13 @@
+This directory holds everything the service WRITES at runtime:
+
+    zones.json              authored floor polygons
+    site_calibration.json   per-camera homographies
+    face_gallery.json       enrolled employees   (biometric)
+    wanted_gallery.json     watchlist            (biometric)
+
+All four are gitignored -- they are per-deployment state, not code. A fresh
+clone or a fresh copy of features/ therefore starts EMPTY, which is what you
+want when handing this to someone else or standing up a new site.
+
+The files are created automatically the first time you calibrate a camera,
+author a zone, or enroll a face. Nothing needs to exist here beforehand.

@@ -1,0 +1,28 @@
+# Everything features/ needs. Versions are the ones this was developed and
+# verified against; the floors matter more than the exact pins.
+#
+# CPU-only by design -- the dev machine and the Raspberry Pi 4 deployment target
+# both lack a GPU, so nothing here assumes CUDA. Install the CPU build of torch
+# first if pip would otherwise pull the CUDA one:
+#     pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# --- web layer -------------------------------------------------------------
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.0
+python-multipart>=0.0.9        # required for the multipart enroll endpoints
+
+# --- vision core -----------------------------------------------------------
+opencv-python>=4.7
+numpy>=1.24
+
+# --- detection: zoning (person), weapon, fire ------------------------------
+ultralytics>=8.4
+
+# --- face: recognition, emotion, wanted ------------------------------------
+insightface>=0.7               # buffalo_s pack: SCRFD detector + MobileFaceNet
+onnxruntime>=1.16              # CPU execution provider for the above
+hsemotion-onnx>=0.3            # emotion classification only
+
+# --- model fetching --------------------------------------------------------
+huggingface_hub>=0.20          # weapon + zoning weights download on first use
