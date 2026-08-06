@@ -19,10 +19,65 @@ export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== 'false'
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
 /**
- * Off until an authentication endpoint exists in contracts/api.md. Turning it
- * on now would put every screen behind a login that cannot succeed.
+ * contracts/api.md now defines POST /api/auth/login, so this can finally be
+ * turned on. Still defaulting to off: the login REQUEST body is undocumented
+ * (see endpoints/auth.ts), so against a real backend the guard would still lock
+ * every screen behind a login that cannot succeed. On mocks, set it to true and
+ * the whole flow works.
  */
 export const AUTH_ENFORCED = import.meta.env.VITE_AUTH_ENFORCED === 'true'
+
+/**
+ * Origin for WS /ws/attendance.
+ *
+ * Defaults to API_BASE_URL with the scheme swapped, which is right whenever the
+ * socket is served from the same origin as the REST API. Override only if the
+ * backend puts it somewhere else.
+ */
+export const WS_BASE_URL = (
+  import.meta.env.VITE_WS_BASE_URL ?? API_BASE_URL.replace(/^http/, 'ws')
+).replace(/\/+$/, '')
+
+/**
+ * How the JWT is presented to the WebSocket.
+ *
+ * A browser cannot set an Authorization header on a WebSocket handshake - that
+ * is a hard limitation of the API, not an oversight - so this has to be either
+ * a query parameter or the Sec-WebSocket-Protocol field. contracts/api.md does
+ * not say which.
+ *
+ * Measured against the running backend: only the query parameter works. A
+ * subprotocol handshake and an Authorization header are both rejected with 403,
+ * as is a missing or invalid token. So 'query' is the only mode offered here -
+ * an option that cannot work is worse than no option, because it fails silently
+ * at runtime rather than loudly at configuration time.
+ *
+ * Still opt-in rather than on by default: until there is a backend to point at,
+ * a socket that refuses to connect and says so beats one that retries nothing.
+ */
+export type WsAuthMode = 'query'
+
+export const WS_AUTH_MODE: WsAuthMode | null =
+  import.meta.env.VITE_WS_AUTH_MODE === 'query' ? 'query' : null
+
+/** Name of the query parameter. Verified as `token` against the backend. */
+export const WS_AUTH_QUERY_PARAM = import.meta.env.VITE_WS_AUTH_QUERY_PARAM ?? 'token'
+
+/** Reconnect backoff for the attendance socket. */
+export const WS_RECONNECT_MS = { min: 1_000, max: 30_000 } as const
+
+/**
+ * How many times to retry a socket that has NEVER successfully opened.
+ *
+ * The distinction matters. A socket that opened and later dropped is a
+ * transient outage, and a wall-mounted dashboard should keep trying that
+ * forever so it recovers unattended. A socket that has never opened once is
+ * almost always configuration or an expired token - and because the backend
+ * rejects a bad token during the handshake, the browser gets no status code and
+ * cannot tell that apart from the server being down. Retrying that forever just
+ * means the badge reads "Reconnecting..." indefinitely when it will never work.
+ */
+export const WS_MAX_INITIAL_ATTEMPTS = 6
 
 /**
  * Fake latency band for mocked responses. Without this every screen gets built
