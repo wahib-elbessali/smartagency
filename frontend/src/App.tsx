@@ -16,6 +16,7 @@ const VisitorQueue = lazy(() => import('@/screens/VisitorQueue'))
 const Occupancy = lazy(() => import('@/screens/Occupancy'))
 const Alerts = lazy(() => import('@/screens/Alerts'))
 const ManualControls = lazy(() => import('@/screens/ManualControls'))
+const Employees = lazy(() => import('@/screens/Employees'))
 const Login = lazy(() => import('@/screens/Login'))
 
 function RouteFallback() {
@@ -44,6 +45,7 @@ export function App() {
         >
           <Route index element={<Navigate to="/presence" replace />} />
           <Route path="presence" element={<EmployeePresence />} />
+          <Route path="employees" element={<Employees />} />
           <Route path="climate" element={<Climate />} />
           <Route path="visitors" element={<VisitorQueue />} />
           <Route path="occupancy" element={<Occupancy />} />

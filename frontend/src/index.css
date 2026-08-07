@@ -98,6 +98,13 @@
     font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   }
 
+  /* Selects and date inputs render their own control chrome from the OS, which
+     on a dark surface arrives light unless told otherwise. */
+  select,
+  input[type='date'] {
+    color-scheme: dark;
+  }
+
   /* One focus treatment everywhere, and it is always visible. */
   :focus-visible {
     outline: 2px solid var(--color-accent);
