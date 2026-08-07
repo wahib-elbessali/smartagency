@@ -117,6 +117,7 @@ class Counter(Base):
     is_open: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     agency: Mapped["Agency"] = relationship(back_populates="counters")
+    tickets: Mapped[list["Ticket"]] = relationship(back_populates="counter")
 
 
 class User(Base):
@@ -182,6 +183,7 @@ class Ticket(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     visitor_id: Mapped[str] = mapped_column(ForeignKey("visitors.id"), nullable=False, index=True)
+    counter_id: Mapped[str | None] = mapped_column(ForeignKey("counters.id"), index=True)
     ticket_number: Mapped[str] = mapped_column(String(30), nullable=False)
     service_type: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[TicketStatus] = mapped_column(Enum(TicketStatus), default=TicketStatus.WAITING, nullable=False)
@@ -190,6 +192,7 @@ class Ticket(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     visitor: Mapped["Visitor"] = relationship(back_populates="tickets")
+    counter: Mapped["Counter | None"] = relationship(back_populates="tickets")
 
 
 class Attendance(Base):
