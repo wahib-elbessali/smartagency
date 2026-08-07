@@ -34,6 +34,28 @@ export function login(credentials: Credentials, signal?: AbortSignal): Promise<L
   )
 }
 
+/**
+ * POST /api/auth/refresh
+ *
+ * Undocumented in contracts/api.md - it is one of the twelve routes the backend
+ * exposes that the contract does not mention - but it exists and matters:
+ * access tokens expire after 30 minutes, so without this the dashboard stops
+ * working half an hour after sign-in.
+ *
+ * Takes the refresh token in the body, NOT the Authorization header, and
+ * returns a full token pair. `auth: false` is therefore deliberate: sending a
+ * stale access token here would be pointless at best.
+ *
+ * The backend rotates the refresh token too, so the caller must store both
+ * halves of the response, not just the access token.
+ */
+export function refreshSession(refreshToken: string, signal?: AbortSignal): Promise<LoginResponse> {
+  return fetchJson<LoginResponse>(
+    { key: 'POST /api/auth/refresh', path: '/api/auth/refresh', method: 'POST' },
+    { signal, body: { refresh_token: refreshToken } },
+  )
+}
+
 export function fetchCurrentUser(signal?: AbortSignal): Promise<User> {
   return fetchJson<User>({ key: 'GET /api/auth/me', path: '/api/auth/me', auth: true }, { signal })
 }
