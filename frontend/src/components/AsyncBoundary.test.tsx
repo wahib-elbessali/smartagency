@@ -67,3 +67,52 @@ describe('AsyncBoundary', () => {
     expect(screen.getByText('the data')).toBeInTheDocument()
   })
 })
+
+describe('a permissions refusal', () => {
+  const forbidden = new ApiError('http', 'Request failed.', 403)
+
+  /* The request succeeded and the answer was no. Dressing that as a failure
+     with a retry button invites someone to press it forever. */
+  it('reads as a refusal, not a failure, and offers no retry', () => {
+    const onRetry = vi.fn()
+    render(
+      <AsyncBoundary isPending={false} error={forbidden} onRetry={onRetry}>
+        <p>secret</p>
+      </AsyncBoundary>,
+    )
+
+    expect(screen.getByText(/not available to your role/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('secret')).not.toBeInTheDocument()
+    expect(onRetry).not.toHaveBeenCalled()
+  })
+
+  it('uses the screen-specific wording when given one', () => {
+    render(
+      <AsyncBoundary
+        isPending={false}
+        error={forbidden}
+        forbiddenMessage="Attendance is visible to administrators, managers and security staff."
+      >
+        <p>secret</p>
+      </AsyncBoundary>,
+    )
+    expect(screen.getByText(/administrators, managers and security staff/i)).toBeInTheDocument()
+  })
+
+  /* A 401 is the opposite advice - signing in again does help. */
+  it('still treats a 401 as a normal error with a retry', () => {
+    render(
+      <AsyncBoundary
+        isPending={false}
+        error={new ApiError('http', 'Request failed.', 401)}
+        onRetry={() => {}}
+      >
+        <p>secret</p>
+      </AsyncBoundary>,
+    )
+    expect(screen.getByText(/session has ended/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+  })
+})

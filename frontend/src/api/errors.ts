@@ -24,6 +24,11 @@ export class ApiError extends Error {
   }
 }
 
+/** True when the server understood the request and refused it on permissions. */
+export function isForbidden(error: unknown): boolean {
+  return error instanceof ApiError && error.kind === 'http' && error.status === 403
+}
+
 export function toApiError(cause: unknown): ApiError {
   if (cause instanceof ApiError) return cause
   if (cause instanceof DOMException && cause.name === 'AbortError') {
@@ -40,6 +45,15 @@ export function describeApiError(error: ApiError): string {
     case 'timeout':
       return 'The server took too long to answer. It may be under load.'
     case 'http':
+      /* 401 and 403 are the two a person can act on, and they need opposite
+         advice: one means sign in again, the other means signing in again
+         will not help. Everything else is a server problem, not theirs. */
+      if (error.status === 401) {
+        return 'Your session has ended. Sign in again to continue.'
+      }
+      if (error.status === 403) {
+        return 'Your role does not have access to this.'
+      }
       return `The server rejected the request (${error.status ?? 'unknown status'}).`
     case 'parse':
       return 'The server sent something this screen could not read.'
