@@ -1,6 +1,7 @@
 import { API_BASE_URL, MOCK_SCENARIO, REQUEST_TIMEOUT_MS, USE_MOCKS } from './config'
 import { ApiError, toApiError } from './errors'
 import { getAccessToken } from './tokenStore'
+import { attemptRefresh } from './sessionBridge'
 import { mockDelay } from '@/mocks/latency'
 import { resolveMock } from '@/mocks/registry'
 
@@ -36,6 +37,37 @@ export interface RequestOptions {
 }
 
 export async function fetchJson<T>(
+  endpoint: EndpointDescriptor,
+  options: RequestOptions = {},
+): Promise<T> {
+  try {
+    return await sendRequest<T>(endpoint, options)
+  } catch (error) {
+    /* One retry, and only for the case it can actually fix.
+    
+       Access tokens last 30 minutes and the session refreshes ahead of expiry,
+       but a timer does not fire on a sleeping machine - close a laptop lid over
+       lunch and the first request back is a 401 no matter how good the
+       scheduling is. So this is the backstop, not the primary path.
+    
+       Deliberately narrow: only a 401, only on an endpoint that sent a token,
+       and only once. Retrying a 403 would loop against a permissions problem no
+       token can solve, and retrying twice hides a backend that is rejecting
+       everything. attemptRefresh() dedupes, so three screens 401-ing together
+       produce one refresh. */
+    const isExpiredToken =
+      error instanceof ApiError && error.kind === 'http' && error.status === 401 && endpoint.auth
+
+    if (!isExpiredToken) throw error
+
+    const refreshed = await attemptRefresh()
+    if (!refreshed) throw error
+
+    return await sendRequest<T>(endpoint, options)
+  }
+}
+
+async function sendRequest<T>(
   endpoint: EndpointDescriptor,
   options: RequestOptions = {},
 ): Promise<T> {

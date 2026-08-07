@@ -34,8 +34,12 @@ export const AUTH_ENFORCED = import.meta.env.VITE_AUTH_ENFORCED === 'true'
  * socket is served from the same origin as the REST API. Override only if the
  * backend puts it somewhere else.
  */
+/* `||`, not `??`. Env vars are strings, and an unset one in a .env file parses
+   as "" rather than undefined - .env.example ships `VITE_WS_BASE_URL=` exactly
+   like that. With `??` an empty value would win over the fallback and leave the
+   socket pointed at nothing, failing silently. For env, empty means unset. */
 export const WS_BASE_URL = (
-  import.meta.env.VITE_WS_BASE_URL ?? API_BASE_URL.replace(/^http/, 'ws')
+  import.meta.env.VITE_WS_BASE_URL || API_BASE_URL.replace(/^http/, 'ws')
 ).replace(/\/+$/, '')
 
 /**
@@ -61,7 +65,7 @@ export const WS_AUTH_MODE: WsAuthMode | null =
   import.meta.env.VITE_WS_AUTH_MODE === 'query' ? 'query' : null
 
 /** Name of the query parameter. Verified as `token` against the backend. */
-export const WS_AUTH_QUERY_PARAM = import.meta.env.VITE_WS_AUTH_QUERY_PARAM ?? 'token'
+export const WS_AUTH_QUERY_PARAM = import.meta.env.VITE_WS_AUTH_QUERY_PARAM || 'token'
 
 /** Reconnect backoff for the attendance socket. */
 export const WS_RECONNECT_MS = { min: 1_000, max: 30_000 } as const

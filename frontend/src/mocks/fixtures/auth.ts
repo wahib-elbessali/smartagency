@@ -50,6 +50,26 @@ registerMock<LoginResponse>('POST /api/auth/login', {
   large: () => loginAs(admin()),
 })
 
+/* Same shape as login - the backend returns a full TokenResponse from refresh,
+   rotating both halves. Distinct token strings so a test can tell them apart. */
+registerMock<LoginResponse>('POST /api/auth/refresh', {
+  normal: () => ({
+    ...loginAs(manager()),
+    access_token: 'FIXTURE.ACCESS.TOKEN.REFRESHED',
+    refresh_token: 'FIXTURE.REFRESH.TOKEN.REFRESHED',
+  }),
+  empty: () => ({
+    ...loginAs(admin()),
+    access_token: 'FIXTURE.ACCESS.TOKEN.REFRESHED',
+    refresh_token: 'FIXTURE.REFRESH.TOKEN.REFRESHED',
+  }),
+  large: () => ({
+    ...loginAs(admin()),
+    access_token: 'FIXTURE.ACCESS.TOKEN.REFRESHED',
+    refresh_token: 'FIXTURE.REFRESH.TOKEN.REFRESHED',
+  }),
+})
+
 registerMock<User>('GET /api/auth/me', {
   normal: manager,
   empty: admin,

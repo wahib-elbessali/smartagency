@@ -148,3 +148,24 @@ describe('createLiveAttendanceStream reconnect policy', () => {
     expect(h.sockets.length).toBeGreaterThan(h.max + 1)
   })
 })
+
+describe('env fallbacks treat empty as unset', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  /* .env.example ships `VITE_WS_BASE_URL=`, which parses as "" and is NOT
+     nullish - so `??` would let it win over the derived fallback and leave the
+     socket pointed at nothing, with no error anywhere. */
+  it('derives the ws base from the api base when the ws base is empty', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'http://api.test')
+    vi.stubEnv('VITE_WS_BASE_URL', '')
+    vi.stubEnv('VITE_WS_AUTH_MODE', 'query')
+    vi.resetModules()
+
+    const { WS_BASE_URL, WS_AUTH_QUERY_PARAM } = await import('./config')
+    expect(WS_BASE_URL).toBe('ws://api.test')
+    expect(WS_AUTH_QUERY_PARAM).toBe('token')
+  })
+})
