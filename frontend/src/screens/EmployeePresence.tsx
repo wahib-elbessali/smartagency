@@ -114,6 +114,10 @@ export default function EmployeePresence() {
         error={attendance.error}
         isEmpty={attendance.entries.length === 0}
         emptyMessage="Nobody has checked in today yet."
+        /* GET /api/attendance/today is restricted to ADMIN, MANAGER and
+           SECURITY, so AGENT and TECHNICIAN land here. Naming the roles saves
+           a round trip to whoever administers accounts. */
+        forbiddenMessage="Attendance is visible to administrators, managers and security staff. Ask an administrator if you need access."
         onRetry={attendance.refetch}
         skeletonRows={6}
       >

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { AlertTriangle, Inbox } from 'lucide-react'
-import { ApiError, describeApiError } from '@/api/errors'
+import { AlertTriangle, Inbox, Lock } from 'lucide-react'
+import { ApiError, describeApiError, isForbidden } from '@/api/errors'
 import { Button } from '@/components/ui/Button'
 import { Panel, PanelBody } from '@/components/ui/Panel'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -20,6 +20,8 @@ interface AsyncBoundaryProps {
   isEmpty?: boolean
   /** What "nothing" means here, e.g. "No visitors waiting". */
   emptyMessage?: string
+  /** Screen-specific wording for a 403, naming the roles that do have access. */
+  forbiddenMessage?: string
   onRetry?: () => void
   /** Skeleton line count, tuned to the content it stands in for. */
   skeletonRows?: number
@@ -31,6 +33,7 @@ export function AsyncBoundary({
   error,
   isEmpty = false,
   emptyMessage = 'Nothing to show.',
+  forbiddenMessage,
   onRetry,
   skeletonRows = 4,
   children,
@@ -43,6 +46,28 @@ export function AsyncBoundary({
             Loading
           </span>
           <SkeletonRows rows={skeletonRows} />
+        </PanelBody>
+      </Panel>
+    )
+  }
+
+  /* A permissions refusal is not a failure, and must not be dressed as one.
+     The request worked; the answer was no. Showing "Could not load this panel"
+     with a Try again button invites someone to keep pressing a button that
+     cannot ever succeed, and hides the real reason - that their role does not
+     cover this screen. Several endpoints here are role-scoped, so this is a
+     state people will actually reach, not a theoretical one. */
+  if (isForbidden(error)) {
+    return (
+      <Panel>
+        <PanelBody className="flex gap-4 py-5">
+          <Lock className="text-ink-3 mt-0.5 size-5 shrink-0" aria-hidden />
+          <div role="status">
+            <h2 className="text-ink text-sm font-semibold">Not available to your role</h2>
+            <p className="text-ink-2 mt-1.5 text-sm leading-relaxed">
+              {forbiddenMessage ?? 'Your role does not have access to this.'}
+            </p>
+          </div>
         </PanelBody>
       </Panel>
     )
