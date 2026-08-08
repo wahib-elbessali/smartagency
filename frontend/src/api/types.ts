@@ -148,6 +148,88 @@ export type EmployeeUpdate = Partial<Omit<EmployeeCreate, 'agency_id'>> & {
   agency_id?: string
 }
 
+/**
+ * The employee summary nested in a GET /api/users entry, from
+ * EmployeeLinkResponse in backend/app/schemas/user.py.
+ *
+ * It is NOT an `Employee`: it carries five fields, not eleven. Reusing
+ * `Employee` here would claim a `status` and a `hire_date` this payload never
+ * sends.
+ */
+export interface EmployeeLink {
+  id: string
+  first_name: string
+  last_name: string
+  agency_id: string
+  rfid_uid: string | null
+}
+
+/**
+ * GET|POST /api/users, and the two PATCH routes.
+ *
+ * Deliberately a different type from `User` above, even though the backend
+ * calls both of them `UserResponse`. `/api/auth/me` returns the smaller one;
+ * `/api/users` adds `employee_id` and the nested `employee`. They are two
+ * shapes with one name, and typing them as one would let a screen read
+ * `.employee` off a payload that never carries it.
+ *
+ * `agency_id` is null for exactly one reason: the account is an ADMIN. See
+ * validate_agency_for_role - an ADMIN must have no agency and every other role
+ * must have one, which is the inverse of what you would guess.
+ */
+export interface UserAccount {
+  id: string
+  full_name: string
+  email: string
+  role: Role
+  /** null if and only if the role is ADMIN. */
+  agency_id: string | null
+  employee_id: string | null
+  is_active: boolean
+  /** null when this login is not tied to a person with a card. */
+  employee: EmployeeLink | null
+}
+
+/**
+ * POST /api/users — the request body, from UserCreate.
+ *
+ * `password` is required (min 8, max 72) and is **not in contracts/api.md**:
+ * the documented payload for this endpoint is the response, which of course
+ * never contains it. Verified in backend/app/schemas/user.py.
+ *
+ * `role` defaults to AGENT server-side. `agency_id` is required for every role
+ * except ADMIN, which must not have one.
+ */
+export interface UserCreate {
+  full_name: string
+  email: string
+  password: string
+  role?: Role
+  agency_id?: string | null
+  employee_id?: string | null
+}
+
+/**
+ * PUT /api/users/{id} — from UserUpdate.
+ *
+ * Note what is absent: `role` and `agency_id`. Those move only through their
+ * own PATCH routes, because each has a side effect this route does not perform
+ * (a promotion to ADMIN clears the agency; an agency move also relocates the
+ * linked employee).
+ *
+ * `exclude_unset` again: an omitted key is left alone, an explicit null clears
+ * it. Sending `{employee_id: null}` unlinks the person; omitting the key keeps
+ * the existing link.
+ */
+export interface UserUpdate {
+  full_name?: string
+  email?: string
+  /** Sets a new password. Omit to leave it unchanged - never send "". */
+  password?: string
+  is_active?: boolean
+  employee_id?: string | null
+}
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string
