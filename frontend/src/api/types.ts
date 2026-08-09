@@ -38,7 +38,14 @@ export type AttendanceMethod = (typeof ATTENDANCE_METHODS)[number]
 export const ATTENDANCE_EVENTS = ['check_in', 'check_out'] as const
 export type AttendanceEventKind = (typeof ATTENDANCE_EVENTS)[number]
 
-/** GET /api/auth/me, and the `user` object inside POST /api/auth/login. */
+/**
+ * GET /api/auth/me, and the `user` object inside POST /api/auth/login.
+ *
+ * This is the *small* user shape. `/api/users` returns a larger one - see
+ * `UserAccount` below, which is where `employee_id` and `employee` live. The
+ * backend calls both models `UserResponse`, which is the trap: they are two
+ * types with one name, and this one carries neither field.
+ */
 export interface User {
   id: string
   full_name: string
@@ -47,8 +54,6 @@ export interface User {
   /** null for an ADMIN not scoped to one agency. */
   agency_id: string | null
   is_active: boolean
-  /** Only on GET /api/users entries, where a user may link to one employee. */
-  employee_id?: string
 }
 
 /** POST /api/auth/login and POST /api/auth/refresh both return this. */
