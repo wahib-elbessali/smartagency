@@ -230,6 +230,89 @@ export interface UserUpdate {
   employee_id?: string | null
 }
 
+/**
+ * Enforced by the `tickets.status` Enum column.
+ *
+ * Five members, but only four are reachable through the API. `call` sets
+ * CALLED, `complete` sets COMPLETED, `cancel` sets CANCELLED - nothing anywhere
+ * sets IN_SERVICE. It is kept in the union because the database column has it
+ * and a hand-written row could carry it, but no screen should offer it as an
+ * action until the backend has a route that produces it.
+ */
+export const TICKET_STATUSES = [
+  'WAITING',
+  'CALLED',
+  'IN_SERVICE',
+  'COMPLETED',
+  'CANCELLED',
+] as const
+export type TicketStatus = (typeof TICKET_STATUSES)[number]
+
+/**
+ * GET|POST /api/visitors, from VisitorResponse.
+ *
+ * A visitor is a member of the public who walked in - not an employee and not
+ * an account. They are the only kind of person in this system with no login and
+ * no card.
+ */
+export interface Visitor {
+  id: string
+  agency_id: string
+  full_name: string
+  phone: string | null
+  identity_reference: string | null
+  /** ISO 8601. */
+  created_at: string
+}
+
+/**
+ * POST /api/visitors — the request body, from VisitorCreate.
+ *
+ * `agency_id` is honoured only for an ADMIN. For every other role the backend
+ * overwrites it with the caller's own agency, so sending one is pointless
+ * rather than wrong. An ADMIN who omits it gets a 422.
+ */
+export interface VisitorCreate {
+  full_name: string
+  phone?: string | null
+  identity_reference?: string | null
+  agency_id?: string | null
+}
+
+/**
+ * GET /api/tickets/queue and the four write routes, from TicketResponse.
+ *
+ * `visitor_name` and `agency_id` are flattened out of the visitor by the
+ * backend, so a queue row needs no second request to be readable.
+ */
+export interface Ticket {
+  id: string
+  visitor_id: string
+  visitor_name: string
+  agency_id: string
+  /** null until the ticket is called to a counter. */
+  counter_id: string | null
+  /** "YYYYMMDD-NNN", numbered per agency and restarting each day. */
+  ticket_number: string
+  service_type: string | null
+  status: TicketStatus
+  /** ISO 8601. */
+  created_at: string
+  called_at: string | null
+  completed_at: string | null
+}
+
+/** POST /api/tickets — from TicketCreate. The visitor must already exist. */
+export interface TicketCreate {
+  visitor_id: string
+  service_type?: string | null
+}
+
+/** POST /api/tickets/{id}/call — from TicketCallRequest. */
+export interface TicketCall {
+  counter_id: string
+}
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string
