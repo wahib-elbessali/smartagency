@@ -3,7 +3,7 @@ import { ApiError, toApiError } from './errors'
 import { getAccessToken } from './tokenStore'
 import { attemptRefresh } from './sessionBridge'
 import { mockDelay } from '@/mocks/latency'
-import { resolveMock } from '@/mocks/registry'
+import { hasMockWriter, resolveMock, resolveMockWrite } from '@/mocks/registry'
 
 /**
  * The single place that decides fixture vs real backend.
@@ -19,7 +19,7 @@ export interface EndpointDescriptor {
   /** Real path exactly as written in contracts/api.md, e.g. '/some/path'. */
   path: string
   /** Defaults to GET. */
-  method?: 'GET' | 'POST' | 'PATCH'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   /**
    * Whether to send `Authorization: Bearer <token>`.
    *
@@ -75,6 +75,12 @@ async function sendRequest<T>(
 
   if (USE_MOCKS) {
     await mockDelay(signal)
+    /* A write endpoint has to mutate the mock state, not return a frozen
+       fixture - otherwise creating an employee "succeeds" and the list never
+       changes, which reads as a bug in the screen. */
+    if (hasMockWriter(endpoint.key)) {
+      return resolveMockWrite<T>(endpoint.key, body, endpoint.path)
+    }
     return resolveMock<T>(endpoint.key, MOCK_SCENARIO)
   }
 

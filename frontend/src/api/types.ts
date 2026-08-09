@@ -109,6 +109,45 @@ export interface Employee {
   is_active: boolean
 }
 
+/**
+ * POST /api/employees — the request body, from EmployeeCreate.
+ *
+ * Only first_name and last_name are required. `status` defaults to ACTIVE
+ * server-side, and `is_active` is derived from it rather than sent - the
+ * backend sets is_active = (status === 'ACTIVE'), so exposing both in a form
+ * would let them disagree.
+ *
+ * agency_id is required for an ADMIN (422 without it) and ignored for a
+ * MANAGER, who can only ever create inside their own agency.
+ */
+export interface EmployeeCreate {
+  first_name: string
+  last_name: string
+  email?: string | null
+  phone?: string | null
+  position?: string | null
+  agency_id?: string | null
+  rfid_uid?: string | null
+  status?: EmployeeStatus
+  hire_date?: string | null
+}
+
+/**
+ * PUT /api/employees/{id} — from EmployeeUpdate.
+ *
+ * The backend uses `exclude_unset`, so an omitted key is left alone and an
+ * explicit null clears the field. That distinction is real: sending
+ * `{email: null}` erases the address, sending nothing keeps it.
+ *
+ * `agency_id` is narrowed to exclude null even though the schema allows it.
+ * The column is NOT NULL, so sending null would fail at the database rather
+ * than in validation - a 500 dressed as a user error. An employee always
+ * belongs to an agency; moving them is a change, not a clearing.
+ */
+export type EmployeeUpdate = Partial<Omit<EmployeeCreate, 'agency_id'>> & {
+  agency_id?: string
+}
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string
