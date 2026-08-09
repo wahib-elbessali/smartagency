@@ -134,6 +134,30 @@ Un compte peut être relié à un employé avec `employee_id` :
 
 La relation est optionnelle et unique : un employé ne peut être lié qu'à un seul compte.
 
+## Visiteurs et tickets
+
+Visiteurs :
+
+```text
+POST /api/visitors
+GET  /api/visitors
+GET  /api/visitors/{visitor_id}
+```
+
+Tickets :
+
+```text
+POST /api/tickets
+GET  /api/tickets/queue
+POST /api/tickets/{ticket_id}/call
+POST /api/tickets/{ticket_id}/complete
+POST /api/tickets/{ticket_id}/cancel
+```
+
+États possibles : `WAITING`, `CALLED`, `IN_SERVICE`, `COMPLETED`, `CANCELLED`.
+Un ticket est créé pour un visiteur, reçoit un numéro quotidien, puis est appelé
+par un guichet de la même agence.
+
 ## Présence RFID
 
 ```text
