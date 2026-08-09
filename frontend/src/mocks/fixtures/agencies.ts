@@ -1,9 +1,18 @@
 import { registerMock } from '../registry'
 import type { Agency } from '@/api/types'
 import { AGENCY_ID, AGENCY_ID_RABAT } from './people'
+import { COUNTERS } from '../ticketStore'
 
-/** Field names from GET /api/agencies. `zones` and `counters` stay [] - the
- *  contract shows them empty and never documents an element shape. */
+/**
+ * Field names from GET /api/agencies. `zones` stays [] - the contract shows it
+ * empty and never documents an element shape.
+ *
+ * `counters` is no longer empty. Calling a ticket needs a counter id, and the
+ * only place a counter is published is nested inside an agency here - so an
+ * empty array would leave the visitor queue with nothing to call anyone to.
+ * Shared with the ticket store so the ids agree; the third one is closed, which
+ * is a refusal the screen has to handle.
+ */
 function casablanca(): Agency {
   return {
     id: AGENCY_ID,
@@ -14,7 +23,7 @@ function casablanca(): Agency {
     closing_time: '16:30:00',
     is_active: true,
     zones: [],
-    counters: [],
+    counters: COUNTERS,
     employees_count: 10,
     devices_count: 2,
     cameras_count: 3,
