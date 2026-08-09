@@ -17,6 +17,7 @@ const Occupancy = lazy(() => import('@/screens/Occupancy'))
 const Alerts = lazy(() => import('@/screens/Alerts'))
 const ManualControls = lazy(() => import('@/screens/ManualControls'))
 const Employees = lazy(() => import('@/screens/Employees'))
+const Users = lazy(() => import('@/screens/Users'))
 const Login = lazy(() => import('@/screens/Login'))
 
 function RouteFallback() {
@@ -46,6 +47,10 @@ export function App() {
           <Route index element={<Navigate to="/presence" replace />} />
           <Route path="presence" element={<EmployeePresence />} />
           <Route path="employees" element={<Employees />} />
+          {/* Reachable by anyone signed in, and answers with the refusal state
+              for a non-admin. Hiding it would make a 403 look like a broken
+              link instead of a permissions boundary. */}
+          <Route path="users" element={<Users />} />
           <Route path="climate" element={<Climate />} />
           <Route path="visitors" element={<VisitorQueue />} />
           <Route path="occupancy" element={<Occupancy />} />

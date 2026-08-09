@@ -21,6 +21,7 @@ import { cn } from '@/components/ui/cn'
 const NAV = [
   { to: '/presence', label: 'Employee presence', icon: UserCheck },
   { to: '/employees', label: 'Employees', icon: IdCard },
+  { to: '/users', label: 'User accounts', icon: ShieldCheck },
   { to: '/climate', label: 'Climate', icon: Fan },
   { to: '/visitors', label: 'Visitor queue', icon: Users },
   { to: '/occupancy', label: 'Occupancy', icon: Grid3x3 },

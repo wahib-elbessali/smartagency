@@ -6,6 +6,7 @@
  */
 import './fixtures/agencies'
 import './fixtures/employees'
+import './fixtures/users'
 import './fixtures/attendance'
 import './fixtures/auth'
 
