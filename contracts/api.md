@@ -342,7 +342,8 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "agency_id": "AGENCY_UUID",
   "is_active": true
 }
-**Notes:** ADMIN only. Valid roles are ADMIN, MANAGER, AGENT, SECURITY and TECHNICIAN.
+**Notes:** ADMIN only. Changes the user's role. For simultaneous role and agency changes, use
+`PATCH /api/users/{user_id}/access`.
 
 ### PATCH /api/users/{user_id}/agency
 **Owner:** Backend  
@@ -354,7 +355,29 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "agency_id": "AGENCY_UUID",
   "is_active": true
 }
-**Notes:** ADMIN only. Updates the user's agency and the linked employee agency.
+**Notes:** ADMIN only. Changes the user's agency and the linked employee agency. For simultaneous role and agency changes, use
+`PATCH /api/users/{user_id}/access`.
+
+### PATCH /api/users/{user_id}/access
+**Owner:** Backend  
+**Type:** REST  
+**Payload:**
+{
+  "id": "USER_UUID",
+  "full_name": "Sara Security",
+  "email": "sara@agency.com",
+  "role": "SECURITY",
+  "agency_id": "AGENCY_UUID",
+  "employee_id": "EMPLOYEE_UUID",
+  "is_active": true,
+  "employee": null
+}
+**Request body:**
+{
+  "role": "SECURITY",
+  "agency_id": "AGENCY_UUID"
+}
+**Notes:** ADMIN only. Updates the role and agency atomically using the final state. Use this endpoint when changing both values, especially when converting an ADMIN account into a role assigned to an agency. Valid roles are ADMIN, MANAGER, AGENT, SECURITY and TECHNICIAN. An ADMIN must have `agency_id: null`; all other roles require a valid agency.
 
 ### DELETE /api/users/{user_id}
 **Owner:** Backend  
