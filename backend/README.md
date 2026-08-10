@@ -106,8 +106,24 @@ GET    /api/users/{user_id}
 PUT    /api/users/{user_id}
 PATCH  /api/users/{user_id}/role
 PATCH  /api/users/{user_id}/agency
+PATCH  /api/users/{user_id}/access
 DELETE /api/users/{user_id}
 ```
+
+Pour modifier simultanément le rôle et l'agence d'un utilisateur, utilisez :
+
+```text
+PATCH /api/users/{user_id}/access
+```
+
+```json
+{
+  "role": "SECURITY",
+  "agency_id": "AGENCY_UUID"
+}
+```
+
+Le rôle et l'agence sont validés sur leur état final dans une seule transaction.
 
 Rôles disponibles :
 
