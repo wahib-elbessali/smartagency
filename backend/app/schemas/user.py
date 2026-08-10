@@ -26,6 +26,11 @@ class AgencyAssignment(BaseModel):
     agency_id: str | None = None
 
 
+class AccessUpdate(BaseModel):
+    role: str = Field(max_length=20)
+    agency_id: str | None = None
+
+
 class EmployeeLinkResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
