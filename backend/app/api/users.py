@@ -7,6 +7,7 @@ from app.core.security import get_current_user, hash_password, require_roles
 from app.database.connection import get_db
 from app.models.entities import Agency, Employee, Role, RoleName, User
 from app.schemas.user import (
+    AccessUpdate,
     AgencyAssignment,
     RoleUpdate,
     UserCreate,
@@ -161,6 +162,38 @@ def update_user_role(user_id: str, payload: RoleUpdate, db: Session = Depends(ge
     if new_role == RoleName.ADMIN:
         user.agency_id = None
     db.commit()
+    return to_response(get_user_or_404(user.id, db))
+
+
+@router.patch("/{user_id}/access", response_model=UserResponse, dependencies=ADMIN_ONLY)
+def update_user_access(user_id: str, payload: AccessUpdate, db: Session = Depends(get_db)) -> UserResponse:
+    """Update role and agency atomically using the resulting state."""
+    user = get_user_or_404(user_id, db)
+    target_role = normalize_role(payload.role)
+    target_agency_id = payload.agency_id
+
+    # Validate the final role/agency pair, not the user's current state.
+    validate_agency_for_role(target_role, target_agency_id, db)
+
+    role = db.scalar(select(Role).where(Role.name == target_role))
+    if role is None:
+        role = Role(name=target_role, description=f"Role {target_role.value}")
+        db.add(role)
+        db.flush()
+
+    user.role = role
+    user.agency_id = target_agency_id
+
+    # A linked employee follows the new agency. An ADMIN remains global,
+    # but the linked employee keeps its professional agency assignment.
+    if user.employee is not None and target_agency_id is not None:
+        user.employee.agency_id = target_agency_id
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Impossible de modifier les acces de cet utilisateur") from exc
     return to_response(get_user_or_404(user.id, db))
 
 
