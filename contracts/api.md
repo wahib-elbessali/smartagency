@@ -20,6 +20,13 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "agency_id": null,
   "is_active": true
 }
+**Request body:** (from `RegisterRequest`)
+{
+  "full_name": "Sara Security",
+  "email": "sara@agency.com",
+  "password": "at least 8 characters",
+  "agency_id": "AGENCY_UUID"
+}
 **Notes:** Public registration always creates an AGENT account.
 
 ### POST /api/auth/login
@@ -38,6 +45,11 @@ Any change that alters or removes an existing field or endpoint, not just adding
     "agency_id": null,
     "is_active": true
   }
+}
+**Request body:** (from `LoginRequest`)
+{
+  "email": "admin@agency.com",
+  "password": "password123"
 }
 **Notes:** Authenticates a user and returns access and refresh tokens.
 
@@ -71,6 +83,10 @@ Any change that alters or removes an existing field or endpoint, not just adding
     "agency_id": "AGENCY_UUID",
     "is_active": true
   }
+}
+**Request body:** (from `RefreshRequest`)
+{
+  "refresh_token": "JWT_REFRESH_TOKEN"
 }
 **Notes:** Requires a valid refresh token.
 
@@ -118,6 +134,16 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "devices_count": 0,
   "cameras_count": 0
 }
+**Request body:** (from `AgencyCreate`)
+{
+  "name": "Agence Casablanca",
+  "address": "Casablanca",
+  "phone": "0522000000",
+  "opening_time": "08:30:00",
+  "closing_time": "16:30:00",
+  "zones":    [{"name": "Accueil", "zone_type": "PUBLIC", "is_private": false}],
+  "counters": [{"number": 1, "name": "Guichet 1", "is_open": true}]
+}
 **Notes:** ADMIN only. Creates an agency with optional zones and counters.
 
 ### GET /api/agencies/{agency_id}
@@ -158,6 +184,15 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "devices_count": 2,
   "cameras_count": 3
 }
+**Request body:** (from `AgencyUpdate`)
+{
+  "name": "Agence Casablanca",
+  "address": "Casablanca",
+  "phone": "0522000000",
+  "opening_time": "08:30:00",
+  "closing_time": "16:30:00",
+  "is_active": true
+}
 **Notes:** ADMIN can update all agencies. MANAGER can update their agency only.
 
 ### DELETE /api/agencies/{agency_id}
@@ -165,6 +200,7 @@ Any change that alters or removes an existing field or endpoint, not just adding
 **Type:** REST  
 **Payload:**
 {}
+**Request body:** none
 **Notes:** ADMIN only. Returns HTTP 204 on success.
 
 ---
@@ -209,6 +245,18 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "hire_date": "2026-08-01",
   "is_active": true
 }
+**Request body:** (from `EmployeeCreate`)
+{
+  "first_name": "Ahmed",
+  "last_name": "Benali",
+  "email": "ahmed@agency.com",
+  "phone": "0612345678",
+  "position": "Agent d'accueil",
+  "agency_id": "AGENCY_UUID",
+  "rfid_uid": "RFID-001",
+  "status": "ACTIVE",
+  "hire_date": "2026-08-01"
+}
 **Notes:** Requires ADMIN or MANAGER. RFID UID must be unique.
 
 ### GET /api/employees/{employee_id}
@@ -247,6 +295,18 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "hire_date": "2026-08-01",
   "is_active": true
 }
+**Request body:** (from `EmployeeUpdate`)
+{
+  "first_name": "Ahmed",
+  "last_name": "Benali",
+  "email": "ahmed@agency.com",
+  "phone": "0612345678",
+  "position": "Agent d'accueil",
+  "agency_id": "AGENCY_UUID",
+  "rfid_uid": "RFID-001",
+  "status": "ACTIVE",
+  "hire_date": "2026-08-01"
+}
 **Notes:** Requires ADMIN or MANAGER. MANAGER cannot move an employee to another agency.
 
 ### DELETE /api/employees/{employee_id}
@@ -254,6 +314,7 @@ Any change that alters or removes an existing field or endpoint, not just adding
 **Type:** REST  
 **Payload:**
 {}
+**Request body:** none
 **Notes:** Requires ADMIN or MANAGER. Returns HTTP 204 on success.
 
 ---
@@ -298,6 +359,15 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "is_active": true,
   "employee": null
 }
+**Request body:** (from `UserCreate`)
+{
+  "full_name": "Sara Security",
+  "email": "sara@agency.com",
+  "password": "at least 8 characters",
+  "role": "SECURITY",
+  "agency_id": "AGENCY_UUID",
+  "employee_id": "EMPLOYEE_UUID"
+}
 **Notes:** ADMIN only. Creates a user and optionally links it to one employee.
 
 ### GET /api/users/{user_id}
@@ -330,6 +400,14 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "is_active": true,
   "employee": null
 }
+**Request body:** (from `UserUpdate`)
+{
+  "full_name": "Sara Security",
+  "email": "sara@agency.com",
+  "password": "at least 8 characters",
+  "is_active": true,
+  "employee_id": "EMPLOYEE_UUID"
+}
 **Notes:** ADMIN only. Passwords are never returned.
 
 ### PATCH /api/users/{user_id}/role
@@ -341,6 +419,10 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "role": "TECHNICIAN",
   "agency_id": "AGENCY_UUID",
   "is_active": true
+}
+**Request body:** (from `RoleUpdate`)
+{
+  "role": "SECURITY"
 }
 **Notes:** ADMIN only. Changes the user's role. For simultaneous role and agency changes, use
 `PATCH /api/users/{user_id}/access`.
@@ -354,6 +436,10 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "role": "SECURITY",
   "agency_id": "AGENCY_UUID",
   "is_active": true
+}
+**Request body:** (from `AgencyAssignment`)
+{
+  "agency_id": "AGENCY_UUID"
 }
 **Notes:** ADMIN only. Changes the user's agency and the linked employee agency. For simultaneous role and agency changes, use
 `PATCH /api/users/{user_id}/access`.
@@ -384,6 +470,7 @@ Any change that alters or removes an existing field or endpoint, not just adding
 **Type:** REST  
 **Payload:**
 {}
+**Request body:** none
 **Notes:** ADMIN only. An ADMIN cannot delete their own account.
 
 ---
@@ -403,6 +490,12 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "check_out": null,
   "method": "RFID"
 }
+**Request body:** (from `AttendanceEventRequest`)
+{
+  "employee_rfid": "RFID-001",
+  "timestamp": "2026-08-08T08:24:00Z",
+  "agency_id": "AGENCY_UUID"
+}
 **Notes:** Requires ADMIN, MANAGER or SECURITY. The request identifies the employee using employee_rfid.
 
 ### POST /api/attendance/check-out
@@ -417,6 +510,12 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "check_in": "2026-08-01T08:30:00Z",
   "check_out": "2026-08-01T16:30:00Z",
   "method": "RFID"
+}
+**Request body:** (from `AttendanceEventRequest`)
+{
+  "employee_rfid": "RFID-001",
+  "timestamp": "2026-08-08T17:02:00Z",
+  "agency_id": "AGENCY_UUID"
 }
 **Notes:** Closes the employee's current open attendance record.
 
@@ -487,6 +586,13 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "identity_reference": "CIN123456",
   "created_at": "2026-08-08T12:00:00Z"
 }
+**Request body:** (from `VisitorCreate`)
+{
+  "full_name": "Client Test",
+  "phone": "0612345678",
+  "identity_reference": "CIN123456",
+  "agency_id": "AGENCY_UUID"
+}
 **Notes:** ADMIN, MANAGER, AGENT and SECURITY can create visitors. Non-ADMIN users are restricted to their agency.
 
 ### GET /api/visitors
@@ -540,6 +646,11 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "called_at": null,
   "completed_at": null
 }
+**Request body:** (from `TicketCreate`)
+{
+  "visitor_id": "VISITOR_UUID",
+  "service_type": "Ouverture de compte"
+}
 **Notes:** ADMIN, MANAGER and AGENT can create tickets. The ticket number is generated automatically per agency and day.
 
 ### GET /api/tickets/queue
@@ -580,6 +691,10 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "called_at": "2026-08-08T12:05:00Z",
   "completed_at": null
 }
+**Request body:** (from `TicketCallRequest`)
+{
+  "counter_id": "COUNTER_UUID"
+}
 **Notes:** Requires a valid counter UUID belonging to the same agency. The visible counter number must not be used instead of `counter_id`.
 
 ### POST /api/tickets/{ticket_id}/complete
@@ -599,6 +714,7 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "called_at": "2026-08-08T12:05:00Z",
   "completed_at": "2026-08-08T12:20:00Z"
 }
+**Request body:** none
 **Notes:** A ticket can be completed from CALLED or IN_SERVICE state.
 
 ### POST /api/tickets/{ticket_id}/cancel
@@ -618,6 +734,7 @@ Any change that alters or removes an existing field or endpoint, not just adding
   "called_at": null,
   "completed_at": null
 }
+**Request body:** none
 **Notes:** A ticket that is already COMPLETED or CANCELLED cannot be cancelled again.
 
 ### Ticket statuses
