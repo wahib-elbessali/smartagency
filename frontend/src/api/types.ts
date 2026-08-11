@@ -215,6 +215,25 @@ export interface UserCreate {
 }
 
 /**
+ * PATCH /api/users/{id}/access — from AccessUpdate. Added by PR #75.
+ *
+ * Sets role and agency together, validating the **resulting** pair rather than
+ * the account's current state. That is the whole point of it: `/role` and
+ * `/agency` each check against the half the other one needs changed first, so
+ * an ADMIN could never be moved to any other role. This route has no such
+ * ordering problem.
+ *
+ * The inverted rule still holds and is still enforced here - ADMIN with an
+ * agency is a 422, and any other role without one is a 422. Both verified by
+ * running the route, not by reading it.
+ */
+export interface UserAccessUpdate {
+  role: Role
+  /** Must be null for ADMIN, and a real agency for every other role. */
+  agency_id: string | null
+}
+
+/**
  * PUT /api/users/{id} — from UserUpdate.
  *
  * Note what is absent: `role` and `agency_id`. Those move only through their

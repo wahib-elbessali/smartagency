@@ -127,7 +127,7 @@ describe('Users', () => {
     await waitFor(() => {
       expect(screen.getByText('Nour Sabri')).toBeInTheDocument()
     }, TABLE_WAIT)
-    expect(screen.getAllByText('Global').length).toBeGreaterThan(1)
+    expect(screen.getAllByText('No branch').length).toBeGreaterThan(1)
   })
 
   it('explains a duplicate email in words someone can act on', async () => {
@@ -164,17 +164,64 @@ describe('Users', () => {
   })
 
   /**
-   * An ADMIN cannot be demoted or given an agency through the API: PATCH /role
-   * checks the new role against their existing (null) agency, and PATCH /agency
-   * checks a new agency against their existing (ADMIN) role. No ordering works.
-   * Offering either control would be offering an action that always fails.
+   * Until PR #75 an ADMIN could not be moved to any other role at all, and this
+   * screen locked both controls. #75 added PATCH /access, which validates the
+   * resulting pair instead of the current state, so the lock is gone.
+   *
+   * The demotion still needs somewhere to send them - every role except ADMIN
+   * must belong to a branch - which is what the dialog asks for.
    */
-  it('does not offer a role or agency control for an admin', async () => {
+  it('offers a role control on an admin row', async () => {
     renderScreen()
     await screen.findByRole('table', {}, TABLE_WAIT)
 
-    expect(screen.queryByLabelText('Role for Admin Test')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Role for Admin Test')).toBeInTheDocument()
+  })
+
+  /* An admin has no agency, so there is nothing to pick from in that column -
+     the role control is what moves them. */
+  it('shows no branch picker on an admin row', async () => {
+    renderScreen()
+    await screen.findByRole('table', {}, TABLE_WAIT)
+
     expect(screen.queryByLabelText('Agency for Admin Test')).not.toBeInTheDocument()
+    expect(screen.getByText('No branch')).toBeInTheDocument()
+  })
+
+  it('asks which branch before demoting an admin, then demotes them', async () => {
+    const user = userEvent.setup()
+    renderScreen()
+    await screen.findByRole('table', {}, TABLE_WAIT)
+
+    await user.selectOptions(screen.getByLabelText('Role for Admin Test'), 'MANAGER')
+
+    const dialog = await screen.findByRole('dialog', {}, TABLE_WAIT)
+    expect(within(dialog).getByText(/has to belong to one branch/i)).toBeInTheDocument()
+    /* The branch list comes from the agencies query, which may still be in
+       flight when the dialog opens - wait for the option rather than racing. */
+    await user.click(
+      await within(dialog).findByRole('button', { name: 'Agence Casablanca' }, TABLE_WAIT),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Role for Admin Test')).toHaveValue('MANAGER')
+    }, TABLE_WAIT)
+    expect(screen.getByLabelText('Agency for Admin Test')).toBeInTheDocument()
+  })
+
+  /* Promoting the other way needs no question: ADMIN takes a null agency, and
+     the route clears it. */
+  it('promotes someone to admin without asking anything', async () => {
+    const user = userEvent.setup()
+    renderScreen()
+    await screen.findByRole('table', {}, TABLE_WAIT)
+
+    await user.selectOptions(screen.getByLabelText('Role for Nadia Cherkaoui'), 'ADMIN')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Role for Nadia Cherkaoui')).toHaveValue('ADMIN')
+    }, TABLE_WAIT)
+    expect(screen.getAllByText('No branch').length).toBeGreaterThan(1)
   })
 
   /* The backend answers 400 for this. Disabling it means nobody discovers the

@@ -33,7 +33,7 @@ registerMockWriter('POST /api/users', (body) => store.createUser(body as UserCre
 function idFrom(path: string): string {
   return (
     path
-      .replace(/\/(role|agency)$/, '')
+      .replace(/\/(role|agency|access)$/, '')
       .split('/')
       .pop() ?? ''
   )
@@ -42,6 +42,11 @@ function idFrom(path: string): string {
 registerMockWriter('PUT /api/users/{id}', (body, path) =>
   store.updateUser(idFrom(path), body as UserUpdate),
 )
+
+registerMockWriter('PATCH /api/users/{id}/access', (body, path) => {
+  const { role, agency_id } = body as { role: Role; agency_id: string | null }
+  return store.updateUserAccess(idFrom(path), role, agency_id)
+})
 
 registerMockWriter('PATCH /api/users/{id}/role', (body, path) =>
   store.updateUserRole(idFrom(path), (body as { role: Role }).role),
