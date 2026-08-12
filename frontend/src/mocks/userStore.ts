@@ -224,6 +224,36 @@ export function updateUserRole(id: string, role: Role): UserAccount {
   return updated
 }
 
+/**
+ * PATCH /access - role and agency together, validated as the resulting pair.
+ *
+ * The difference from updateUserRole below is the whole reason the route
+ * exists: this checks the pair you are asking for, not the one the account
+ * currently has. So demoting an admin works here and does not there.
+ */
+export function updateUserAccess(id: string, role: Role, agencyId: string | null): UserAccount {
+  const list = seed()
+  const index = indexOf(id)
+  const current = list[index]
+
+  assertAgencyMatchesRole(role, agencyId)
+
+  const updated: UserAccount = {
+    ...current,
+    role,
+    agency_id: agencyId,
+    /* A linked employee follows the new agency. The backend only moves them
+       when the new agency is non-null, so an account promoted to ADMIN keeps
+       its employee where it is. */
+    employee:
+      current.employee && agencyId != null
+        ? { ...current.employee, agency_id: agencyId }
+        : current.employee,
+  }
+  list[index] = updated
+  return updated
+}
+
 export function updateUserAgency(id: string, agencyId: string | null): UserAccount {
   const list = seed()
   const index = indexOf(id)

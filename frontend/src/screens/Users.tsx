@@ -6,8 +6,7 @@ import {
   deleteUser,
   fetchUsers,
   updateUser,
-  updateUserAgency,
-  updateUserRole,
+  updateUserAccess,
 } from '@/api/endpoints/users'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchEmployees } from '@/api/endpoints/employees'
@@ -32,11 +31,16 @@ import { Screen } from './Screen'
  * history are the employee record, which is why employees come first and why
  * an account can exist with nothing linked to it.
  *
- * Role and agency are changed inline, one control per request, because the
- * backend gives each its own PATCH route and each has a side effect: promoting
- * to ADMIN clears the agency, and moving the agency moves the linked employee
- * with it. Rolling them into the edit dialog would mean firing three writes on
- * one Save and leaving an account half-changed when the second failed.
+ * Role and agency are changed inline rather than in the edit dialog, because
+ * PUT accepts neither and each has a side effect: promoting to ADMIN clears the
+ * agency, and moving the agency moves the linked employee with it.
+ *
+ * Both controls now go through PATCH /access, which sets the pair in one call
+ * and validates the result rather than the current state. Until PR #75 added
+ * it, this screen had to lock an ADMIN row entirely - the two single-field
+ * routes could not demote one in any order (issue #71). That lock is gone; the
+ * one thing a demotion still needs is somewhere to send them, which is what the
+ * branch dialog below asks for.
  */
 
 const ROLE_TONE: Record<Role, Tone> = {
@@ -89,6 +93,9 @@ export default function Users() {
   const [editing, setEditing] = useState<UserAccount | null>(null)
   const [creating, setCreating] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState<UserAccount | null>(null)
+  /* Set when demoting an admin: they have no agency, and the new role needs
+     one, so the destination has to be asked for before anything is sent. */
+  const [demoting, setDemoting] = useState<{ account: UserAccount; role: Role } | null>(null)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['users'] })
 
@@ -118,15 +125,15 @@ export default function Users() {
     },
   })
 
-  const changeRole = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: Role }) => updateUserRole(id, role),
-    onSuccess: refresh,
-  })
-
-  const changeAgency = useMutation({
-    mutationFn: ({ id, agencyId }: { id: string; agencyId: string | null }) =>
-      updateUserAgency(id, agencyId),
-    onSuccess: refresh,
+  /* One route for both controls. Each sends the pair it wants to end up with,
+     which is exactly what /access validates. */
+  const changeAccess = useMutation({
+    mutationFn: ({ id, role, agencyId }: { id: string; role: Role; agencyId: string | null }) =>
+      updateUserAccess(id, role, agencyId),
+    onSuccess: async () => {
+      await refresh()
+      setDemoting(null)
+    },
   })
 
   const remove = useMutation({
@@ -137,9 +144,31 @@ export default function Users() {
     },
   })
 
+  /**
+   * Picking a role for one row, resolved to the pair /access needs.
+   *
+   * Three cases, and only the third needs asking anything:
+   *   -> ADMIN            the agency must become null
+   *   -> anything else, and they already have an agency: keep it
+   *   -> anything else, and they have none (so they are an ADMIN today): there
+   *      is nowhere to put them, so ask which branch before sending.
+   */
+  function pickRole(account: UserAccount, role: Role) {
+    if (role === account.role) return
+    if (role === 'ADMIN') {
+      changeAccess.mutate({ id: account.id, role, agencyId: null })
+      return
+    }
+    if (account.agency_id) {
+      changeAccess.mutate({ id: account.id, role, agencyId: account.agency_id })
+      return
+    }
+    setDemoting({ account, role })
+  }
+
   const rows = useMemo(() => users.data ?? [], [users.data])
   const formOpen = creating || editing !== null
-  const inlineError = inlineErrorMessage(changeRole.error ?? changeAgency.error)
+  const inlineError = inlineErrorMessage(changeAccess.error)
 
   return (
     <Screen
@@ -207,13 +236,10 @@ export default function Users() {
                 <tbody>
                   {rows.map((account) => {
                     const isSelf = account.id === user?.id
-                    /* An ADMIN cannot be moved to any other role, and cannot be
-                       given an agency either: PATCH /role validates the new role
-                       against their existing (null) agency, and PATCH /agency
-                       validates a new agency against their existing (ADMIN)
-                       role. There is no order that works, so both controls are
-                       locked rather than offering an action that always 422s. */
-                    const locked = account.role === 'ADMIN'
+                    /* An admin has no agency by definition, so there is no
+                       agency to pick from here - the role control moves them,
+                       and asks for a branch on the way out. */
+                    const isAdminRow = account.role === 'ADMIN'
 
                     return (
                       <tr
@@ -236,17 +262,13 @@ export default function Users() {
                         </th>
 
                         <td className="px-5 py-3">
-                          {locked ? (
-                            <Badge tone={ROLE_TONE.ADMIN}>ADMIN</Badge>
-                          ) : (
+                          <div className="flex items-center gap-2">
                             <select
                               aria-label={`Role for ${account.full_name}`}
                               className="border-line bg-panel-2 text-ink rounded-lg border px-2 py-1 text-xs"
                               value={account.role}
-                              disabled={changeRole.isPending}
-                              onChange={(e) =>
-                                changeRole.mutate({ id: account.id, role: e.target.value as Role })
-                              }
+                              disabled={changeAccess.isPending}
+                              onChange={(e) => pickRole(account, e.target.value as Role)}
                             >
                               {ROLES.map((role) => (
                                 <option key={role} value={role}>
@@ -254,26 +276,34 @@ export default function Users() {
                                 </option>
                               ))}
                             </select>
-                          )}
+                            {/* Colour alone would not carry this, and ADMIN is
+                                the one role worth spotting at a glance. */}
+                            {isAdminRow && <Badge tone={ROLE_TONE.ADMIN}>Global</Badge>}
+                          </div>
                         </td>
 
                         <td className="px-5 py-3">
-                          {locked ? (
+                          {isAdminRow ? (
+                            /* Not a disabled control: an admin has no agency to
+                               show, and offering one would suggest a value could
+                               be set here. Changing the role is what moves them. */
                             <span
                               className="text-ink-3 text-xs"
-                              title="An admin is global. Assigning an agency is rejected."
+                              title="An admin is global. Change the role to place them in a branch."
                             >
-                              Global
+                              No branch
                             </span>
                           ) : (
                             <select
                               aria-label={`Agency for ${account.full_name}`}
                               className="border-line bg-panel-2 text-ink rounded-lg border px-2 py-1 text-xs"
                               value={account.agency_id ?? ''}
-                              disabled={changeAgency.isPending}
+                              disabled={changeAccess.isPending}
+                              /* Role stays as it is; only the agency half moves. */
                               onChange={(e) =>
-                                changeAgency.mutate({
+                                changeAccess.mutate({
                                   id: account.id,
+                                  role: account.role,
                                   agencyId: e.target.value === '' ? null : e.target.value,
                                 })
                               }
@@ -330,6 +360,76 @@ export default function Users() {
           </PanelBody>
         </Panel>
       </AsyncBoundary>
+
+      {/* Demoting an admin is the one role change that needs a second answer:
+          every role except ADMIN must belong to a branch, and an admin has
+          none. Asking here rather than sending a request that would 422. */}
+      <Dialog
+        open={demoting !== null}
+        title="Which branch?"
+        description={
+          demoting
+            ? `${demoting.account.full_name} is currently a global admin. A ${demoting.role} has to belong to one branch.`
+            : undefined
+        }
+        onClose={() => {
+          setDemoting(null)
+          changeAccess.reset()
+        }}
+      >
+        {demoting && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              {(agencies.data ?? []).map((agency) => (
+                <Button
+                  key={agency.id}
+                  className="w-full justify-start"
+                  disabled={changeAccess.isPending}
+                  onClick={() =>
+                    changeAccess.mutate({
+                      id: demoting.account.id,
+                      role: demoting.role,
+                      agencyId: agency.id,
+                    })
+                  }
+                >
+                  {agency.name}
+                </Button>
+              ))}
+            </div>
+
+            {/* The linked employee moves with them, and that touches a record
+                nobody named in this dialog. Worth saying before, not after. */}
+            {demoting.account.employee && (
+              <p className="text-ink-3 text-xs leading-relaxed">
+                {demoting.account.employee.first_name} {demoting.account.employee.last_name} moves
+                to the same branch, because a login and the person it belongs to cannot be in
+                different ones.
+              </p>
+            )}
+
+            {changeAccess.error !== null && (
+              <p
+                role="alert"
+                className="border-warn/30 bg-warn/8 text-warn rounded-lg border p-3 text-sm"
+              >
+                {inlineErrorMessage(changeAccess.error)}
+              </p>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                onClick={() => {
+                  setDemoting(null)
+                  changeAccess.reset()
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
 
       <Dialog
         open={formOpen}

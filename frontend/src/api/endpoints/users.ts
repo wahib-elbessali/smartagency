@@ -53,20 +53,49 @@ export function updateUser(
 }
 
 /**
- * Changes the role, and clears the agency when the new role is ADMIN.
+ * Sets role and agency together — the route the screen actually uses.
  *
- * One direction of this is a dead end in the current backend, and the UI has to
- * know it. update_user_role validates the *new* role against the account's
- * *existing* agency_id, so demoting an ADMIN - who by definition has none -
- * raises 422 "Une agence est obligatoire pour ce role". Assigning them an
- * agency first does not help either: update_user_agency validates against their
- * *current* role, which is still ADMIN, and refuses a non-null agency.
+ * Added by PR #75 in answer to issue #71. It validates the **resulting** pair
+ * instead of the account's current state, which is what makes it work where the
+ * two single-field routes below could not: each of those checks against the
+ * half the other one needs changed first, so an ADMIN could never be moved to
+ * any other role by any ordering of them.
  *
- * So an ADMIN cannot be moved to any other role through the API at all. Neither
- * route is wrong on its own; together they have no ordering that works. This is
- * a backend issue to raise, not something the frontend can sequence around, and
- * the screen disables the control rather than offering an action that always
- * fails.
+ * The inverted agency rule is unchanged and still enforced here. Verified by
+ * running the route rather than reading it:
+ *
+ *   {role: MANAGER, agency_id: <real>} on an ADMIN  -> 200
+ *   {role: ADMIN,   agency_id: null}   on an AGENT  -> 200, agency cleared
+ *   {role: ADMIN,   agency_id: <real>}              -> 422
+ *   {role: MANAGER, agency_id: null}                -> 422
+ *
+ * A linked employee follows the new agency, exactly as it does on /agency.
+ */
+export function updateUserAccess(
+  id: string,
+  role: Role,
+  agencyId: string | null,
+  signal?: AbortSignal,
+): Promise<UserAccount> {
+  return fetchJson<UserAccount>(
+    {
+      key: 'PATCH /api/users/{id}/access',
+      path: `/api/users/${id}/access`,
+      method: 'PATCH',
+      auth: true,
+    },
+    { signal, body: { role, agency_id: agencyId } },
+  )
+}
+
+/**
+ * Changes the role alone, leaving the agency to be derived.
+ *
+ * Kept because it is part of the documented API, but the screen no longer calls
+ * it: it validates the new role against the account's *existing* agency, which
+ * is why an ADMIN could not be demoted through it. `updateUserAccess` above
+ * supersedes it for anything this dashboard does. The contract now says the
+ * same - use /access when both values move.
  */
 export function updateUserRole(id: string, role: Role, signal?: AbortSignal): Promise<UserAccount> {
   return fetchJson<UserAccount>(
