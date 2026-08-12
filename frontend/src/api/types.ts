@@ -318,6 +318,83 @@ export interface TicketCall {
   counter_id: string
 }
 
+/**
+ * The four computer-vision features that publish an alerts stream.
+ *
+ * From contracts/ai-service.md, which mounts `/{f}/alerts/stream` separately
+ * per feature. Whether the backend proxy keeps them separate or merges them
+ * into one is not settled yet - see the note on ALERT_STREAM_PATHS in
+ * endpoints/streams.ts.
+ */
+export const ALERT_FEATURES = ['weapon', 'fire', 'emotion', 'wanted'] as const
+export type AlertFeature = (typeof ALERT_FEATURES)[number]
+
+/**
+ * One detection inside an alerts frame.
+ *
+ * `class` is the detected label and its vocabulary depends on the feature -
+ * "pistol" for weapon, a watchlist identifier for wanted. It is left as a
+ * string because nothing in the contract enumerates them all.
+ *
+ * `confidence` means different things per feature and must not be rendered as
+ * a percentage for `wanted`: there it is cosine similarity in [-1, 1], not a
+ * probability. The contract says so explicitly.
+ */
+export interface AlertDetection {
+  class: string
+  confidence: number
+  /** [x1, y1, x2, y2] in source-frame pixels. */
+  bbox: [number, number, number, number]
+  /** wanted only: face detector score, and the detected face size in pixels. */
+  det_score?: number
+  face_px?: number
+  /**
+   * wanted only: a base64 JPEG of the person, ~20KB, never written to disk.
+   *
+   * Attached once, to the highest-confidence detection - it is a property of
+   * the frame, not of an individual match.
+   */
+  snapshot?: string
+  /** Present on entries replayed from the hold window; the bbox may be stale. */
+  held?: boolean
+}
+
+/**
+ * WS alerts frames.
+ *
+ * Fires only when a camera's **set of detected classes** changes, not per
+ * frame - confidence jitter alone sends nothing. So `detections: []` is the
+ * all-clear, and a long silence means nothing changed rather than that the
+ * feed died. A screen that expects periodic refreshes will conclude the
+ * service is dead during a quiet afternoon.
+ */
+export type AlertFrame =
+  | { type: 'snapshot'; cameras: Record<string, AlertDetection[]> }
+  | { type: 'update'; camera: string; detections: AlertDetection[] }
+
+/** One zone's occupancy inside an occupancy frame. */
+export interface ZoneOccupancy {
+  count: number
+  /**
+   * Positions that landed inside - floor centimetres for world zones, pixel
+   * foot-points for pixel zones. A person can be in several overlapping zones
+   * at once, and a boundary counts as inside, so counts may sum above the
+   * number of people present.
+   */
+  points: Array<[number, number]>
+}
+
+/**
+ * WS occupancy frames.
+ *
+ * Pushed only when a zone's count changes - there is no heartbeat, so an
+ * unchanging count and a dead connection look identical from the payload
+ * alone. The stream status badge is the thing that distinguishes them.
+ */
+export type OccupancyFrame =
+  | { type: 'snapshot'; zones: Record<string, ZoneOccupancy> }
+  | { type: 'update'; zone: string; count: number; points: Array<[number, number]> }
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string
