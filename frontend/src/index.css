@@ -4,38 +4,64 @@
    Design tokens.
 
    Everything visual resolves to a name here. Screens use `bg-panel` and
-   `text-ink-2`, never `bg-[#0d131e]` — so a palette change is this block and
-   nothing else, and six screens can't drift into six different greys.
+   `text-ink-2`, never `bg-[#141210]` — so a palette change is this block and
+   nothing else, and eight screens can't drift into eight different greys.
 
    Dark-only on purpose: this is a wall-mounted security dashboard, glanced at
    to answer "is anything wrong right now?". A light theme is real work
    (contrast re-tuning, a toggle, persistence) with no one asking for it.
+
+   WARM GRAPHITE, not blue-black. The surfaces carry a slight red-yellow cast
+   rather than the usual navy, and the one accent is amber rather than the
+   default dashboard blue. Two reasons beyond taste:
+
+   - Amber holds its identity at a glance from across a room, where a mid blue
+     on near-black turns into a grey smudge. This screen is read from six feet
+     away, not from a laptop.
+   - Blue is spent here. It is the colour of "information" in every status
+     convention, and reserving it means an informational badge does not
+     compete with every button on the screen for the same hue.
+
+   The greys are not neutral: each surface steps up in lightness AND slightly
+   in warmth, which is what stops a stack of dark panels reading as flat.
 --------------------------------------------------------------------------- */
 @theme {
-  /* Surfaces, darkest to lightest. */
-  --color-canvas: #070b12;
-  --color-panel: #0d131e;
-  --color-panel-2: #131b28;
-  --color-line: #1e2836;
-  --color-line-strong: #2c3648;
+  /* Surfaces, darkest to lightest. Warm, not blue. */
+  --color-canvas: #0b0a09;
+  --color-panel: #141210;
+  --color-panel-2: #1c1917;
+  --color-line: #262220;
+  --color-line-strong: #3a3532;
 
-  /* Text, most to least prominent. */
-  --color-ink: #eaf0f8;
-  --color-ink-2: #9fb0c6;
-  --color-ink-3: #6b7c93;
+  /* Text, most to least prominent. Off-white, never pure #fff - pure white on
+     near-black vibrates and is tiring to read for a whole shift. */
+  --color-ink: #f2eee8;
+  --color-ink-2: #a39b90;
+  --color-ink-3: #736b63;
 
   /* One accent, used only for interactive and active states. */
-  --color-accent: #5b9cff;
-  --color-accent-ink: #b8d3ff;
+  --color-accent: #e0a03c;
+  --color-accent-ink: #f5cd8a;
 
-  /* Status. Spend boldness on alerts, not on everything. */
-  --color-ok: #34d399;
-  --color-warn: #fbbf24;
-  --color-danger: #fb7185;
+  /* Status. Spend boldness on alerts, not on everything.
 
-  --radius-panel: 0.875rem;
+     `warn` is deliberately NOT the accent even though both are amber-ish: a
+     warning that looks identical to every primary button is a warning nobody
+     sees. It sits redder and hotter. */
+  --color-ok: #6fa96f;
+  --color-warn: #d98324;
+  --color-danger: #d9604f;
+  --color-info: #6f92b0;
 
-  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  /* Two radii, not one. Panels are calm and square-ish; controls are rounder,
+     which is what makes a button read as pressable next to a surface. */
+  --radius-panel: 0.625rem;
+  --radius-control: 0.5rem;
+
+  /* Shadow does the work a border used to. Softer and deeper than a hairline
+     box, so panels lift off the canvas instead of being drawn onto it. */
+  --shadow-panel: 0 1px 1px rgb(0 0 0 / 0.5), 0 12px 32px -16px rgb(0 0 0 / 0.7);
+  --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.4), 0 16px 40px -20px rgb(0 0 0 / 0.8);
 
   --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 
@@ -75,15 +101,43 @@
     background-color: var(--color-canvas);
     color: var(--color-ink);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* No webfont on purpose. The whole product runs on one local machine with
+       no cloud, so a CDN font would be a blank screen the day the network is
+       out. Self-hosting one is a dependency change and belongs in its own PR.
+       Until then the system stack is tuned rather than replaced. */
     font-family:
       ui-sans-serif,
       system-ui,
       -apple-system,
+      'Segoe UI Variable Text',
       'Segoe UI',
       Roboto,
       'Helvetica Neue',
       Arial,
       sans-serif;
+    /* Slightly open by default. Dark text on light tightens; light text on
+       dark blooms, and needs the extra room to stay legible. */
+    letter-spacing: 0.005em;
+  }
+
+  /* Headings tighten as they grow. Uniform tracking across sizes is one of the
+     things that makes an interface look machine-assembled - real typography
+     compensates, because the same spacing reads loose at 24px and cramped at
+     12px. */
+  h1 {
+    letter-spacing: -0.02em;
+  }
+
+  h2,
+  h3 {
+    letter-spacing: -0.011em;
+  }
+
+  /* Small uppercase labels need the opposite treatment or they set solid. */
+  .tracked {
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   /* Readings sit in tables and stat tiles and must not jitter as they update. */
@@ -105,11 +159,30 @@
     color-scheme: dark;
   }
 
-  /* One focus treatment everywhere, and it is always visible. */
+  /* One focus treatment everywhere, and it is always visible.
+
+     The offset matters as much as the ring: drawn flush, an outline reads as
+     part of the control's border and gets lost. Held two pixels off, it reads
+     as a separate thing pointing at the control. */
   :focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
     border-radius: 4px;
+  }
+
+  /* Selection picks up the accent instead of the browser's default blue,
+     which is otherwise the one un-themed thing on the whole screen. */
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-accent) 30%, transparent);
+    color: var(--color-ink);
+  }
+
+  /* A dark scrollbar. The default light one on a near-black page is the single
+     most obvious sign that a theme stopped at the content and never reached
+     the chrome. */
+  * {
+    scrollbar-color: var(--color-line-strong) transparent;
+    scrollbar-width: thin;
   }
 }
 

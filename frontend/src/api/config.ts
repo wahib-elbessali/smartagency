@@ -19,13 +19,21 @@ export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== 'false'
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
 /**
- * contracts/api.md now defines POST /api/auth/login, so this can finally be
- * turned on. Still defaulting to off: the login REQUEST body is undocumented
- * (see endpoints/auth.ts), so against a real backend the guard would still lock
- * every screen behind a login that cannot succeed. On mocks, set it to true and
- * the whole flow works.
+ * Enforced unless explicitly disabled.
+ *
+ * This defaulted to off while the login REQUEST body was unknown - enforcing
+ * then would have locked every screen behind a sign-in that could not succeed.
+ * It is known now (endpoints/auth.ts transcribes it from the backend schema),
+ * sign-in works against both fixtures and the real backend, so the reason to
+ * default off is gone.
+ *
+ * Opting OUT is the deliberate act now, because the failure modes are not
+ * symmetric: defaulting off meant a fresh clone, a CI build, or anyone serving
+ * `dist/` without an env file walked straight into every screen with no sign-in
+ * at all - and looked like it was working, which is how it went unnoticed.
+ * Defaulting on fails the other way, loudly, at a login screen.
  */
-export const AUTH_ENFORCED = import.meta.env.VITE_AUTH_ENFORCED === 'true'
+export const AUTH_ENFORCED = import.meta.env.VITE_AUTH_ENFORCED !== 'false'
 
 /**
  * Origin for WS /ws/attendance.

@@ -36,10 +36,12 @@ export function Field({
 
   return (
     <div>
-      <label htmlFor={id} className="text-ink-2 mb-1.5 block text-sm">
+      {/* Small, tracked, quiet. A label the same size as its input competes
+          with the value the person is trying to read back. */}
+      <label htmlFor={id} className="text-ink-3 tracked mb-2 block text-[11px] font-medium">
         {label}
         {required && (
-          <span className="text-ink-3 ml-1" aria-hidden>
+          <span className="text-accent/70 ml-1" aria-hidden>
             *
           </span>
         )}
@@ -50,8 +52,14 @@ export function Field({
         'aria-describedby': describedBy,
         'aria-invalid': error ? true : undefined,
         className: cn(
-          'border-line bg-panel-2 text-ink placeholder:text-ink-3 ease-soft w-full rounded-lg border px-3 py-2 text-sm transition-colors duration-150',
-          error ? 'border-danger/60' : 'focus:border-accent/60',
+          /* Inset rather than outlined: the field is a well cut into the
+             surface, which is why it reads as somewhere to type. The inner
+             shadow is doing the work a border used to. */
+          'rounded-control bg-canvas/60 text-ink placeholder:text-ink-3 ease-soft w-full px-3 py-2.5 text-sm ring-1 transition-all duration-150',
+          'shadow-[0_1px_2px_rgb(0_0_0/0.25)_inset]',
+          error
+            ? 'ring-danger/50 focus:ring-danger'
+            : 'ring-line focus:ring-accent/70 focus:bg-canvas/80',
         ),
       })}
 

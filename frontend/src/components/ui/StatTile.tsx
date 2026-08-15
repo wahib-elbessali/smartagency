@@ -28,13 +28,24 @@ export function StatTile({
   }[tone]
 
   return (
-    <div className="rounded-panel border-line bg-panel shadow-panel ease-soft hover:border-line-strong border px-5 py-4 transition-colors duration-200">
+    /* No panel, no border, no shadow. A stat tile is a number with a caption,
+       and boxing each one turns a row of three readings into a row of three
+       containers - the containers become the pattern the eye follows instead
+       of the numbers. The lighter fill is enough to group them. */
+    <div className="rounded-panel bg-panel/60 px-5 py-4">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-ink-3 text-xs font-medium tracking-wide uppercase">{label}</span>
+        <span className="text-ink-3 tracked text-[11px] font-medium">{label}</span>
         {icon && <span className={cn('shrink-0', accent)}>{icon}</span>}
       </div>
-      <div className={cn('tabular mt-2 text-3xl leading-none font-semibold', accent)}>{value}</div>
-      {hint && <p className="text-ink-3 mt-1.5 text-xs">{hint}</p>}
+      {/* Big, light, and tightly tracked. Weight is what usually gets reached
+          for, but at this size a lighter weight with negative tracking reads
+          as more deliberate and stays legible from further away. */}
+      <div
+        className={cn('tabular mt-2.5 text-[2rem] leading-none font-light tracking-tight', accent)}
+      >
+        {value}
+      </div>
+      {hint && <p className="text-ink-3 mt-2 text-xs">{hint}</p>}
     </div>
   )
 }

@@ -44,36 +44,49 @@ export function AppShell() {
         Skip to content
       </a>
 
+      {/* The sidebar sits DARKER than the content it frames, not lighter. A
+          navigation panel lit brighter than the work pulls the eye away from
+          the thing being looked at all day. */}
       <nav
         aria-label="Main"
-        className="border-line bg-panel/70 shrink-0 border-b backdrop-blur md:flex md:w-64 md:flex-col md:border-r md:border-b-0"
+        className="bg-canvas ring-line/70 shrink-0 md:flex md:w-60 md:flex-col md:ring-1"
       >
-        <div className="flex items-center gap-2.5 px-5 py-5">
-          <ShieldCheck className="text-accent size-5" aria-hidden />
-          <span className="text-ink text-[0.95rem] font-semibold tracking-tight">SmartAgency</span>
+        <div className="flex items-center gap-2.5 px-5 pt-6 pb-7">
+          <ShieldCheck className="text-accent size-[1.15rem]" aria-hidden />
+          <span className="text-ink text-[0.95rem] font-medium tracking-tight">
+            Smart<span className="text-ink-2">Agency</span>
+          </span>
         </div>
 
-        <ul className="flex flex-wrap gap-1 px-3 pb-4 md:flex-col md:flex-nowrap">
+        <ul className="flex flex-wrap gap-0.5 px-3 pb-4 md:flex-col md:flex-nowrap">
           {NAV.map(({ to, label, icon: Icon }) => (
             <li key={to}>
               <NavLink
                 to={to}
                 className={({ isActive }) =>
                   cn(
-                    'group ease-soft relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-150',
+                    'group ease-soft rounded-control relative flex items-center gap-3 px-3 py-2 text-[0.8125rem] transition-colors duration-150',
+                    /* The active item is marked by its own surface plus the
+                       rail below - no tint. A coloured wash behind text is
+                       the easiest way to make a sidebar look templated, and
+                       it costs contrast on the label itself. */
                     isActive
-                      ? 'bg-accent/12 text-ink font-medium'
-                      : 'text-ink-2 hover:bg-panel-2 hover:text-ink',
+                      ? 'bg-panel text-ink font-medium'
+                      : 'text-ink-2 hover:bg-panel/60 hover:text-ink',
                   )
                 }
               >
                 {({ isActive }) => (
                   <>
+                    {/* The rail grows out of nothing rather than fading in.
+                        Scaling on the Y axis reads as the marker travelling to
+                        the new item; opacity alone reads as two separate
+                        things blinking. */}
                     <span
                       aria-hidden
                       className={cn(
-                        'bg-accent ease-soft absolute top-1.5 bottom-1.5 -left-3 w-0.5 rounded-full transition-opacity duration-200',
-                        isActive ? 'opacity-100' : 'opacity-0',
+                        'bg-accent ease-soft absolute top-2 bottom-2 -left-3 w-[3px] origin-center rounded-full transition-transform duration-300',
+                        isActive ? 'scale-y-100' : 'scale-y-0',
                       )}
                     />
                     <Icon
@@ -95,12 +108,17 @@ export function AppShell() {
           /* Role is shown because several endpoints are role-scoped, so "why
              can't I see the other agency?" has a visible answer instead of
              looking like a bug. */
-          <div className="border-line mt-auto hidden border-t px-3 py-3 md:block">
+          <div className="mt-auto hidden px-3 pt-3 pb-4 md:block">
             <div className="flex items-center gap-2.5 px-1 py-1">
               <Avatar name={user.full_name} />
               <div className="min-w-0 flex-1">
-                <div className="text-ink truncate text-sm font-medium">{user.full_name}</div>
-                <div className="text-ink-3 truncate text-xs">{user.role}</div>
+                <div className="text-ink truncate text-[0.8125rem] font-medium">
+                  {user.full_name}
+                </div>
+                {/* The role is set as a small tracked label rather than body
+                    text, so it reads as metadata about the name above it
+                    instead of a second, competing line. */}
+                <div className="text-ink-3 tracked truncate text-[10px]">{user.role}</div>
               </div>
             </div>
             <Button
@@ -120,7 +138,7 @@ export function AppShell() {
         {USE_MOCKS && (
           /* Always visible while mocking. A screen of fake numbers must never
              be mistakable for a live one. */
-          <div className="border-warn/25 bg-warn/8 flex items-center gap-2.5 border-b px-6 py-2">
+          <div className="bg-warn/8 flex items-center gap-2.5 px-6 py-2">
             <Badge tone="warn" icon={<FlaskConical className="size-3.5" aria-hidden />}>
               Fixture data
             </Badge>
