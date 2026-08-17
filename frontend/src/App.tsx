@@ -17,6 +17,7 @@ const Occupancy = lazy(() => import('@/screens/Occupancy'))
 const Alerts = lazy(() => import('@/screens/Alerts'))
 const ManualControls = lazy(() => import('@/screens/ManualControls'))
 const Employees = lazy(() => import('@/screens/Employees'))
+const Agencies = lazy(() => import('@/screens/Agencies'))
 const Users = lazy(() => import('@/screens/Users'))
 const Login = lazy(() => import('@/screens/Login'))
 
@@ -47,6 +48,9 @@ export function App() {
           <Route index element={<Navigate to="/presence" replace />} />
           <Route path="presence" element={<EmployeePresence />} />
           <Route path="employees" element={<Employees />} />
+          {/* Same reasoning as /users below: readable by admins and managers,
+              and anyone else meets the refusal state rather than a dead link. */}
+          <Route path="agencies" element={<Agencies />} />
           {/* Reachable by anyone signed in, and answers with the refusal state
               for a non-admin. Hiding it would make a 403 look like a broken
               link instead of a permissions boundary. */}
