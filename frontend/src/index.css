@@ -11,62 +11,144 @@
    to answer "is anything wrong right now?". A light theme is real work
    (contrast re-tuning, a toggle, persistence) with no one asking for it.
 
-   WARM GRAPHITE, not blue-black. The surfaces carry a slight red-yellow cast
-   rather than the usual navy, and the one accent is amber rather than the
-   default dashboard blue. Two reasons beyond taste:
+   DEEP INDIGO with a violet accent. The surfaces carry a blue-violet cast
+   rather than a neutral or warm grey, and the accent is the periwinkle violet
+   that the interactive elements are built from.
 
-   - Amber holds its identity at a glance from across a room, where a mid blue
-     on near-black turns into a grey smudge. This screen is read from six feet
-     away, not from a laptop.
-   - Blue is spent here. It is the colour of "information" in every status
-     convention, and reserving it means an informational badge does not
-     compete with every button on the screen for the same hue.
+   These values are sampled from the reference design rather than mixed by
+   hand, so they are the reference's actual colours and not an impression of
+   them. If this palette is revisited, resample rather than nudge - a set of
+   hues drifts fast once individual values start being adjusted in isolation.
 
-   The greys are not neutral: each surface steps up in lightness AND slightly
-   in warmth, which is what stops a stack of dark panels reading as flat.
+   The surfaces are not neutral greys: each step up in lightness also carries
+   slightly more violet, which is what stops a stack of dark panels reading as
+   flat. Ink follows the same rule - the muted text is a lavender grey, not a
+   neutral one, so it sits in the same family as the surfaces behind it.
 --------------------------------------------------------------------------- */
 @theme {
-  /* Surfaces, darkest to lightest. Warm, not blue. */
-  --color-canvas: #0b0a09;
-  --color-panel: #141210;
-  --color-panel-2: #1c1917;
-  --color-line: #262220;
-  --color-line-strong: #3a3532;
+  /* Surfaces, darkest to lightest. Indigo, not neutral. */
+  --color-canvas: #080614;
+  --color-panel: #131021;
+  --color-panel-2: #1e1b2e;
+  --color-line: #25233b;
+  --color-line-strong: #363154;
 
-  /* Text, most to least prominent. Off-white, never pure #fff - pure white on
-     near-black vibrates and is tiring to read for a whole shift. */
-  --color-ink: #f2eee8;
-  --color-ink-2: #a39b90;
-  --color-ink-3: #736b63;
+  /* Text, most to least prominent. Near-white rather than pure #fff, and the
+     two muted steps are lavender rather than grey so they belong to the same
+     family as the surfaces. */
+  --color-ink: #fcfbff;
+  --color-ink-2: #978fba;
+  --color-ink-3: #6b6590;
 
-  /* One accent, used only for interactive and active states. */
-  --color-accent: #e0a03c;
-  --color-accent-ink: #f5cd8a;
+  /* One accent, used only for interactive and active states. The periwinkle
+     violet the reference builds its buttons, active nav and lit marks from.
+     `accent-ink` is the light end of the same hue, for accent-coloured text
+     where the solid accent would be too dark to read. */
+  --color-accent: #616ce2;
+  --color-accent-ink: #c6ccfc;
+
+  /* The categorical chart ramp - series identity, nothing else.
+
+     Sampled from the reference's own expenses legend, in its order: a
+     blue-violet, a purple, a pink, a coral. Assign in order, never cycled; a
+     fifth series folds into "Other" rather than getting a generated hue.
+
+     WHAT TO KNOW BEFORE RELYING ON HUE ALONE HERE. These four span violet to
+     coral, which is a narrower range than a spread-out categorical set, and
+     three of them sit close together in lightness. That makes them handsome
+     side by side and harder to tell apart for a colourblind reader than a
+     wider set would be. The charts compensate structurally rather than by
+     changing the colours: the donut's legend carries a text label and a value
+     next to every swatch, and hovering a segment names it in the centre of the
+     ring. Colour is never the only thing distinguishing two quantities on
+     screen. Keep that true of any new chart built from these. */
+  --color-data-1: #6a79fb;
+  --color-data-2: #ad74fd;
+  --color-data-3: #ffa6f9;
+  --color-data-4: #f36559;
+
+  /* The single highlighted mark - one lit bar against muted peers. The
+     reference's own lit-bar violet, which is the accent: a highlight is not a
+     peer series, it is the answer to "which one am I looking at", so it
+     borrows the colour the rest of the interface uses for "this one". */
+  --color-data-lit: #616ce2;
 
   /* Status. Spend boldness on alerts, not on everything.
 
-     `warn` is deliberately NOT the accent even though both are amber-ish: a
-     warning that looks identical to every primary button is a warning nobody
-     sees. It sits redder and hotter. */
-  --color-ok: #6fa96f;
-  --color-warn: #d98324;
-  --color-danger: #d9604f;
-  --color-info: #6f92b0;
+     `ok` and `danger` are the reference's own delta colours - the emerald it
+     puts on a rising figure and the coral it puts on a falling one.
 
-  /* Two radii, not one. Panels are calm and square-ish; controls are rounder,
-     which is what makes a button read as pressable next to a surface. */
-  --radius-panel: 0.625rem;
-  --radius-control: 0.5rem;
+     `warn` and `info` are not in the reference, which has no warning or
+     informational state to show. They are chosen to sit apart from the violet
+     accent rather than sampled: an amber for warning, because nothing else in
+     this palette is warm and a warning has to be findable at a glance, and a
+     cyan for information, because the blue end is now occupied by the accent
+     and an informational badge must not read as a button. */
+  --color-ok: #22c682;
+  --color-warn: #f2a93b;
+  --color-danger: #e25e59;
+  --color-info: #4fb0e8;
+
+  /* Three radii. Panels are the softest thing on screen, controls a step
+     tighter, and pills fully round.
+
+     Panels moved from 10px to 14px. That single number does more for "does
+     this look current" than any other value in this file - 8-10px is the
+     default a framework gives you, and it reads as untouched. The tighter
+     control radius is what keeps a button from dissolving into the surface it
+     sits on now that the surface itself is soft. */
+  --radius-panel: 0.875rem;
+  --radius-control: 0.625rem;
+  --radius-pill: 999px;
 
   /* Shadow does the work a border used to. Softer and deeper than a hairline
      box, so panels lift off the canvas instead of being drawn onto it. */
   --shadow-panel: 0 1px 1px rgb(0 0 0 / 0.5), 0 12px 32px -16px rgb(0 0 0 / 0.7);
   --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.4), 0 16px 40px -20px rgb(0 0 0 / 0.8);
 
+  /* The lit top edge of a raised surface.
+
+     A flat fill plus a shadow says "this floats". A fill that is fractionally
+     brighter along its top edge says "this floats AND there is a light source
+     above it", which is the whole difference between a card and a rectangle.
+     Kept under 5% - at the point you can see it as a gradient it has gone too
+     far and starts to look like a button from 2011. */
+  --gradient-lit: linear-gradient(to bottom, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0) 42%);
+
+  /* Exactly one gradient accent, for the one primary action on a screen. One
+     is modern; a screen of them is a themed template.
+
+     Both stops are a step DARKER than the accent, and that is deliberate. A
+     violet button carries white text - dark text on this hue is unreadable,
+     and the reference sets its own violet button in white. White needs 4.5:1
+     to pass at button text size, and the plain accent only reaches about 4.2.
+     Darkening the stops puts the lightest end at roughly 4.7:1 and the darkest
+     at 6:1, so the label passes across the whole sweep rather than only at the
+     dark end. The accent itself is unchanged - it is still the colour of the
+     nav rail, the focus ring and a lit mark, none of which sit under text. */
+  --gradient-accent: linear-gradient(135deg, #5f6ad9, #4d57c4);
+
   --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   --animate-fade-rise: fade-rise 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-shimmer: shimmer 1.6s linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   Utilities built on the tokens above.
+
+   These are utilities rather than component classes so they compose with
+   variants the same way the rest of Tailwind does.
+--------------------------------------------------------------------------- */
+
+/* The top-edge highlight. Layered as a background IMAGE so it sits over
+   whatever fill the element already has, and any panel keeps its own colour. */
+@utility surface-lit {
+  background-image: var(--gradient-lit);
+}
+
+@utility bg-accent-gradient {
+  background-image: var(--gradient-accent);
 }
 
 @keyframes fade-rise {
