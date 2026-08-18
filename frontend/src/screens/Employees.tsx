@@ -134,7 +134,7 @@ export default function Employees() {
               <table className="w-full text-sm">
                 <caption className="sr-only">Employees, with their card and status</caption>
                 <thead>
-                  <tr className="text-ink-3 border-line border-b text-left text-xs">
+                  <tr className="text-ink-3 tracked border-line/70 border-b text-left text-[10px] font-medium">
                     <th scope="col" className="px-5 py-2.5 font-medium">
                       Name
                     </th>

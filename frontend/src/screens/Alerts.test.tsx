@@ -14,15 +14,33 @@ function renderScreen(node: React.ReactNode) {
   return render(<MemoryRouter>{node}</MemoryRouter>)
 }
 
+/**
+ * A NOTE ON WHY NOTHING HERE SAYS `expect(await findByText(x)).toBeInTheDocument()`.
+ *
+ * Each scripted feed emits three frames roughly 20ms apart: an empty snapshot,
+ * an update carrying the detection, then an update clearing it again. So every
+ * interesting string in this file exists for about twenty milliseconds and is
+ * then removed on purpose - the all-clear is part of what these fixtures model.
+ *
+ * `findByText` resolves the instant the node appears. Chaining an assertion
+ * onto the resolved node evaluates it one tick later, by which point the
+ * clearing frame may already have detached it - and the test fails with
+ * "element could not be found in the document" after ~90ms rather than timing
+ * out, which reads like the screen never rendered it at all.
+ *
+ * So: let the `find` be the assertion, since it throws when nothing turns up,
+ * and group anything that must hold at the SAME moment into one `waitFor` so
+ * the whole group is retried against a single consistent DOM.
+ */
 describe('Alerts', () => {
   it('starts on the weapons feed and says all clear before anything is detected', async () => {
     renderScreen(<Alerts />)
-    expect(await screen.findByText('All clear', {}, WAIT)).toBeInTheDocument()
+    await screen.findByText('All clear', {}, WAIT)
   })
 
   it('shows a detection when a camera reports one', async () => {
     renderScreen(<Alerts />)
-    expect(await screen.findByText('pistol', {}, WAIT)).toBeInTheDocument()
+    await screen.findByText('pistol', {}, WAIT)
   })
 
   /* The feed only speaks when something changes, so quiet is normal. If the
@@ -60,10 +78,17 @@ describe('Alerts', () => {
 
     await user.click(screen.getByRole('button', { name: 'Watchlist' }))
 
-    const match = await screen.findByText('MAROUANE-B-2024-114', {}, WAIT)
-    expect(match).toBeInTheDocument()
-    expect(screen.getByText(/similarity 0\.61/)).toBeInTheDocument()
-    expect(screen.queryByText(/61%/)).not.toBeInTheDocument()
+    /* All three in one waitFor, and the existence check first. Issued as
+       separate statements after an await, the later two would run against
+       whatever the DOM had become - and once the clearing frame lands, "no 61%
+       anywhere" passes for the wrong reason: because the detection is gone
+       entirely, not because it was rendered as a similarity. Retried together,
+       they can only pass while the detection is actually on screen. */
+    await waitFor(() => {
+      expect(screen.getByText('MAROUANE-B-2024-114')).toBeInTheDocument()
+      expect(screen.getByText(/similarity 0\.61/)).toBeInTheDocument()
+      expect(screen.queryByText(/61%/)).not.toBeInTheDocument()
+    }, WAIT)
   })
 })
 

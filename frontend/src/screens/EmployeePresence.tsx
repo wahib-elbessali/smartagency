@@ -8,12 +8,17 @@ import { useAttendanceToday } from '@/hooks/useAttendanceToday'
 import type { Agency, Employee } from '@/api/types'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { StreamStatusBadge } from '@/components/StreamStatusBadge'
+import { BarSeries } from '@/components/charts/BarSeries'
+import { Donut } from '@/components/charts/Donut'
+import { Sparkline } from '@/components/charts/Sparkline'
+import { foldToPalette } from '@/components/charts/palette'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Clock } from '@/components/ui/Time'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { StatTile } from '@/components/ui/StatTile'
+import { arrivalsByHalfHour, busiestIndex, headcountSeries, methodMix } from './presenceSeries'
 import { Screen } from './Screen'
 
 /**
@@ -66,6 +71,10 @@ export default function EmployeePresence() {
 
   const knowsOpeningTime = agencyById.size > 0
 
+  const arrivals = useMemo(() => arrivalsByHalfHour(attendance.entries), [attendance.entries])
+  const headcount = useMemo(() => headcountSeries(attendance.entries), [attendance.entries])
+  const methods = useMemo(() => foldToPalette(methodMix(attendance.entries)), [attendance.entries])
+
   return (
     <Screen
       title="Employee presence"
@@ -86,6 +95,15 @@ export default function EmployeePresence() {
           value={attendance.totals.present}
           tone="ok"
           icon={<UserCheck className="size-4" aria-hidden />}
+          /* Headcount through the day, not a period-over-period trend. It is
+             the one shape today's snapshot can honestly draw, and it answers
+             the question the number leaves open: is this the peak, or is the
+             building still filling up? */
+          detail={
+            headcount.length > 1 ? (
+              <Sparkline values={headcount} tone="ok" width={110} height={26} />
+            ) : undefined
+          }
           hint="Checked in, no check-out yet"
         />
         <StatTile
@@ -99,6 +117,16 @@ export default function EmployeePresence() {
           value={knowsOpeningTime ? lateCount : '—'}
           tone={lateCount > 0 ? 'warn' : 'neutral'}
           icon={<LogIn className="size-4" aria-hidden />}
+          /* A share, not a percentage change. "4" means nothing without the
+             denominator - four late out of five arrivals is a different morning
+             from four out of forty. Both numbers are in the snapshot. */
+          detail={
+            knowsOpeningTime && attendance.totals.total > 0 ? (
+              <p className="text-ink-3 text-xs">
+                of <span className="tabular">{attendance.totals.total}</span> arrivals today
+              </p>
+            ) : undefined
+          }
           hint={
             knowsOpeningTime
               ? 'Checked in after the agency opening time'
@@ -106,6 +134,47 @@ export default function EmployeePresence() {
           }
         />
       </div>
+
+      {/* The two charts sit between the headline figures and the roster, which
+          is the order the questions get asked in: how many, then what shape was
+          the morning, then who exactly. Both are derived from the same snapshot
+          the table below renders - no extra request, and nothing on screen can
+          disagree with anything else on screen. */}
+      {arrivals.length > 0 && (
+        <div className="mb-5 grid gap-3 lg:grid-cols-5">
+          <Panel as="section" className="lg:col-span-3">
+            <PanelHeader>
+              <h2 className="text-ink text-sm font-semibold">Arrivals through the day</h2>
+              <p className="text-ink-3 mt-1 text-xs">
+                Check-ins per half hour. The busiest period is highlighted.
+              </p>
+            </PanelHeader>
+            <PanelBody>
+              <BarSeries
+                data={arrivals}
+                litIndex={busiestIndex(arrivals)}
+                format={(n) => `${n} ${n === 1 ? 'arrival' : 'arrivals'}`}
+                height={150}
+              />
+            </PanelBody>
+          </Panel>
+
+          <Panel as="section" className="lg:col-span-2">
+            <PanelHeader>
+              <h2 className="text-ink text-sm font-semibold">How people badged in</h2>
+              <p className="text-ink-3 mt-1 text-xs">Reader method for today&rsquo;s check-ins.</p>
+            </PanelHeader>
+            <PanelBody>
+              <Donut
+                segments={methods}
+                totalLabel="check-ins"
+                size={148}
+                className="justify-center"
+              />
+            </PanelBody>
+          </Panel>
+        </div>
+      )}
 
       {attendance.isStale && !attendance.isPending && !attendance.error && <StaleNotice />}
 
@@ -181,7 +250,7 @@ function RosterTable({
           Employees who have checked in today, still-present first
         </caption>
         <thead>
-          <tr className="text-ink-3 border-line border-b text-left text-xs">
+          <tr className="text-ink-3 tracked border-line/70 border-b text-left text-[10px] font-medium">
             <th scope="col" className="px-5 py-2.5 font-medium">
               Employee
             </th>

@@ -1,54 +1,44 @@
-import { registerMock } from '../registry'
-import type { Agency } from '@/api/types'
-import { AGENCY_ID, AGENCY_ID_RABAT } from './people'
-import { COUNTERS } from '../ticketStore'
+import { registerMock, registerMockWriter } from '../registry'
+import type { Agency, AgencyCreate, AgencyUpdate } from '@/api/types'
+import * as store from '../agencyStore'
 
 /**
- * Field names from GET /api/agencies. `zones` stays [] - the contract shows it
- * empty and never documents an element shape.
+ * Field names from GET /api/agencies.
  *
- * `counters` is no longer empty. Calling a ticket needs a counter id, and the
- * only place a counter is published is nested inside an agency here - so an
- * empty array would leave the visitor queue with nothing to call anyone to.
- * Shared with the ticket store so the ids agree; the third one is closed, which
- * is a refusal the screen has to handle.
+ * `normal` reads through the writable store so an agency created in the admin
+ * screen actually appears in the list. `empty` and `large` stay frozen - they
+ * exist to test rendering at the extremes, not to be edited.
+ *
+ * `empty` matters more here than elsewhere: with no agency there is no
+ * opening_time, and the presence screen cannot derive "late" at all. That is a
+ * real state worth being able to look at, not a degenerate one.
  */
-function casablanca(): Agency {
-  return {
-    id: AGENCY_ID,
-    name: 'Agence Casablanca',
-    address: 'Casablanca',
-    phone: '0522000000',
-    opening_time: '08:30:00',
-    closing_time: '16:30:00',
-    is_active: true,
-    zones: [],
-    counters: COUNTERS,
-    employees_count: 10,
-    devices_count: 2,
-    cameras_count: 3,
-  }
-}
-
-function rabat(): Agency {
-  return {
-    id: AGENCY_ID_RABAT,
-    name: 'Agence Rabat',
-    address: 'Rabat',
-    phone: '0537000000',
-    opening_time: '09:00:00',
-    closing_time: '17:00:00',
-    is_active: true,
-    zones: [],
-    counters: [],
-    employees_count: 6,
-    devices_count: 1,
-    cameras_count: 2,
-  }
-}
-
 registerMock<Agency[]>('GET /api/agencies', {
-  normal: () => [casablanca()],
+  normal: () => store.listAgencies(),
   empty: () => [],
-  large: () => [casablanca(), rabat()],
+  large: () => store.listAgencies(),
+})
+
+/* The id is in the path, not the body - same as the real request. Parsing it
+   back out keeps the mock path and the HTTP path identical, so nothing extra
+   has to be smuggled into the request just to make fixtures work. */
+function idFrom(path: string): string {
+  return path.split('/').pop() ?? ''
+}
+
+registerMock<Agency>('GET /api/agencies/{id}', {
+  normal: () => store.listAgencies()[0],
+  empty: () => store.listAgencies()[0],
+  large: () => store.listAgencies()[0],
+})
+
+registerMockWriter('POST /api/agencies', (body) => store.createAgency(body as AgencyCreate))
+
+registerMockWriter('PUT /api/agencies/{id}', (body, path) =>
+  store.updateAgency(idFrom(path), body as AgencyUpdate),
+)
+
+registerMockWriter('DELETE /api/agencies/{id}', (_body, path) => {
+  store.deleteAgency(idFrom(path))
+  return undefined
 })

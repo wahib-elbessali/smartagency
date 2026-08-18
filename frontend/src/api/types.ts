@@ -98,6 +98,72 @@ export interface Agency {
   cameras_count: number
 }
 
+/**
+ * POST /api/agencies — nested zone, from the request body in the contract.
+ *
+ * No `id`: the server assigns it and returns the full Zone. Zones can only be
+ * created alongside their agency - the contract exposes no route for adding one
+ * to an agency that already exists, so the create form is the only place they
+ * can be set.
+ */
+export interface ZoneCreate {
+  name: string
+  /** Free text with a "PUBLIC" default, matching Zone. */
+  zone_type?: string
+  is_private?: boolean
+}
+
+/** POST /api/agencies — nested counter. `number` must be unique per agency. */
+export interface CounterCreate {
+  number: number
+  name?: string | null
+  is_open?: boolean
+}
+
+/**
+ * POST /api/agencies — the request body.
+ *
+ * Only `name` is required (2-150 chars). Everything else is optional, including
+ * the two nested lists.
+ *
+ * `is_active` is absent on purpose. The response carries it, but the contract's
+ * request body does not list it, and "a field not listed there is not accepted
+ * by that endpoint" is the stated convention. A new agency is active; PUT is
+ * where that changes.
+ */
+export interface AgencyCreate {
+  name: string
+  address?: string | null
+  phone?: string | null
+  /** "HH:MM:SS". */
+  opening_time?: string | null
+  closing_time?: string | null
+  zones?: ZoneCreate[]
+  counters?: CounterCreate[]
+}
+
+/**
+ * PUT /api/agencies/{id} — from the contract's request body.
+ *
+ * "All fields are optional; only the fields included in the request are
+ * updated", which is the same exclude_unset behaviour the employee route has.
+ *
+ * `zones` and `counters` are deliberately NOT here. The contract's PUT example
+ * shows only scalar fields, and its response echoes the nested lists unchanged.
+ * Sending them would be guessing at whether the backend replaces, merges or
+ * ignores the list - three very different outcomes, one of which silently
+ * destroys every counter in the agency. Editing those needs its own contract
+ * entry before it gets a form.
+ */
+export interface AgencyUpdate {
+  name?: string
+  address?: string | null
+  phone?: string | null
+  opening_time?: string | null
+  closing_time?: string | null
+  is_active?: boolean
+}
+
 /** GET|POST /api/employees. Five fields are optional in EmployeeResponse. */
 export interface Employee {
   id: string

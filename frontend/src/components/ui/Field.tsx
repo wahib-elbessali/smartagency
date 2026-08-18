@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { cn } from './cn'
+import { controlClass } from './control'
 
 /**
  * One labelled form control.
@@ -36,10 +36,12 @@ export function Field({
 
   return (
     <div>
-      <label htmlFor={id} className="text-ink-2 mb-1.5 block text-sm">
+      {/* Small, tracked, quiet. A label the same size as its input competes
+          with the value the person is trying to read back. */}
+      <label htmlFor={id} className="text-ink-3 tracked mb-2 block text-[11px] font-medium">
         {label}
         {required && (
-          <span className="text-ink-3 ml-1" aria-hidden>
+          <span className="text-accent/70 ml-1" aria-hidden>
             *
           </span>
         )}
@@ -49,10 +51,7 @@ export function Field({
         id,
         'aria-describedby': describedBy,
         'aria-invalid': error ? true : undefined,
-        className: cn(
-          'border-line bg-panel-2 text-ink placeholder:text-ink-3 ease-soft w-full rounded-lg border px-3 py-2 text-sm transition-colors duration-150',
-          error ? 'border-danger/60' : 'focus:border-accent/60',
-        ),
+        className: controlClass(Boolean(error)),
       })}
 
       {hint && !error && (

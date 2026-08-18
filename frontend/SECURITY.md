@@ -46,9 +46,22 @@ memory, not `localStorage`, so an XSS can't read it back out.
 ## Auth
 
 `src/auth/` has the session state, the route guard, and the login screen. The
-sign-in _request_ is missing because `contracts/api.md` has no authentication
-endpoint. `VITE_AUTH_ENFORCED` is `false` until it does — turning it on now puts
-every screen behind a login that cannot succeed.
+guard is **enforced by default** — only `VITE_AUTH_ENFORCED=false` turns it off,
+so a missing `.env` file cannot unlock the app. It was opt-in while the sign-in
+request shape was unknown, and the result was that a fresh clone let anyone
+straight into every screen, which is the failure mode this default exists to
+prevent.
+
+Understand what it is and isn't. This is a **client-side** guard: it decides
+which screens render, nothing more. It is not an access control boundary, and it
+cannot be — anyone can edit the bundle in their own browser. Every endpoint has
+to enforce its own authorisation server-side, and the guard is there so an
+unauthenticated user meets a login screen instead of a dashboard full of failed
+requests.
+
+With `VITE_USE_MOCKS=true` any credentials are accepted, because the fixtures
+exercise session plumbing rather than verify anyone. Do not serve a mock build
+anywhere it could be mistaken for the real thing.
 
 ## Still open
 
