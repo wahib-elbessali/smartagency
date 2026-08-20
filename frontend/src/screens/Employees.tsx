@@ -10,6 +10,7 @@ import {
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { ApiError, describeApiError } from '@/api/errors'
 import type { Employee, EmployeeCreate } from '@/api/types'
+import { useScope, withinScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { Avatar } from '@/components/ui/Avatar'
@@ -41,6 +42,7 @@ const STATUS_TONE: Record<string, Tone> = {
 
 export default function Employees() {
   const { user } = useSession()
+  const scope = useScope()
   const queryClient = useQueryClient()
 
   const isAdmin = user?.role === 'ADMIN'
@@ -95,7 +97,13 @@ export default function Employees() {
     },
   })
 
-  const rows = useMemo(() => employees.data ?? [], [employees.data])
+  /* Narrowed to the branch an admin has open, if they have one. Not a
+     permission - the rows are all theirs to see - so it does nothing at all
+     unless somebody chose it, and the bar in AppShell says so while it lasts. */
+  const rows = useMemo(
+    () => withinScope(employees.data ?? [], scope.agencyId),
+    [employees.data, scope.agencyId],
+  )
   const formOpen = creating || editing !== null
 
   return (

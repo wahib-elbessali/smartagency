@@ -5,6 +5,9 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 import Employees from './Employees'
 import { SessionProvider } from '@/auth/session'
+import { ScopeProvider } from '@/agency/scope'
+import { ScopeContext } from '@/agency/ScopeContext'
+import { AGENCY_ID, AGENCY_ID_RABAT } from '@/mocks/fixtures/people'
 import { useSession } from '@/auth/SessionContext'
 import { resetEmployeeStore } from '@/mocks/employeeStore'
 import '@/mocks'
@@ -25,11 +28,37 @@ function renderScreen() {
   return render(
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
-        <MemoryRouter>
-          <SignIn>
-            <Employees />
-          </SignIn>
-        </MemoryRouter>
+        <ScopeProvider>
+          <MemoryRouter>
+            <SignIn>
+              <Employees />
+            </SignIn>
+          </MemoryRouter>
+        </ScopeProvider>
+      </SessionProvider>
+    </QueryClientProvider>,
+  )
+}
+
+/**
+ * Renders with a branch already open, which ScopeProvider has no way to be
+ * handed - entering one is a click, and these tests are about what the screen
+ * does once it has happened. Supplying the context directly says so.
+ */
+function renderInsideBranch(agencyId: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <SessionProvider>
+        <ScopeContext
+          value={{ agencyId, agencyName: 'A branch', enter: () => {}, leave: () => {} }}
+        >
+          <MemoryRouter>
+            <SignIn>
+              <Employees />
+            </SignIn>
+          </MemoryRouter>
+        </ScopeContext>
       </SessionProvider>
     </QueryClientProvider>,
   )
@@ -42,6 +71,21 @@ describe('Employees', () => {
     renderScreen()
     expect(await screen.findByRole('table', {}, { timeout: 4000 })).toBeInTheDocument()
     expect(screen.getByText('Ahmed Benali')).toBeInTheDocument()
+  })
+
+  /* The whole roster is seeded into Casablanca, so opening it changes nothing
+     visible - which is the point: a branch filter that quietly dropped rows
+     belonging to the branch would be worse than none. */
+  it('keeps the roster when the open branch is theirs', async () => {
+    renderInsideBranch(AGENCY_ID)
+    expect(await screen.findByRole('table', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(screen.getByText('Ahmed Benali')).toBeInTheDocument()
+  })
+
+  it('shows an empty roster inside a branch nobody works at', async () => {
+    renderInsideBranch(AGENCY_ID_RABAT)
+    expect(await screen.findByText(/no employees yet/i, {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(screen.queryByText('Ahmed Benali')).not.toBeInTheDocument()
   })
 
   /* rfid_uid is nullable, and someone without a card cannot check in at all -

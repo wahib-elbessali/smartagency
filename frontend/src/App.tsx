@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { AppShell } from '@/components/AppShell'
 import { RequireAuth } from '@/auth/RequireAuth'
+import { useSession } from '@/auth/SessionContext'
+import { landingPathFor } from '@/auth/landing'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 
 /**
@@ -32,6 +34,18 @@ function RouteFallback() {
   )
 }
 
+/**
+ * The one place a role becomes a starting screen.
+ *
+ * Login sends you to "/" rather than working the role out itself, so the map
+ * has a single home and the sign-in screen keeps knowing nothing about roles.
+ * It renders inside RequireAuth, so `user` is already resolved here.
+ */
+function Landing() {
+  const { user } = useSession()
+  return <Navigate to={landingPathFor(user?.role)} replace />
+}
+
 export function App() {
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -45,22 +59,23 @@ export function App() {
             </RequireAuth>
           }
         >
-          <Route index element={<Navigate to="/presence" replace />} />
+          <Route index element={<Landing />} />
+          {/* Every route below is registered for everyone and filtered by role
+              in AppShell, which owns both the navigation and the URL guard
+              (auth/access.ts). Routing stays a map of what exists; who may see
+              it is one table rather than a condition repeated nine times. */}
           <Route path="presence" element={<EmployeePresence />} />
           <Route path="employees" element={<Employees />} />
-          {/* Same reasoning as /users below: readable by admins and managers,
-              and anyone else meets the refusal state rather than a dead link. */}
           <Route path="agencies" element={<Agencies />} />
-          {/* Reachable by anyone signed in, and answers with the refusal state
-              for a non-admin. Hiding it would make a 403 look like a broken
-              link instead of a permissions boundary. */}
           <Route path="users" element={<Users />} />
           <Route path="climate" element={<Climate />} />
           <Route path="visitors" element={<VisitorQueue />} />
           <Route path="occupancy" element={<Occupancy />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="controls" element={<ManualControls />} />
-          <Route path="*" element={<Navigate to="/presence" replace />} />
+          {/* An unknown path is not a reason to show someone a screen their
+              role is refused from, so it resolves the same way "/" does. */}
+          <Route path="*" element={<Landing />} />
         </Route>
       </Routes>
     </Suspense>
