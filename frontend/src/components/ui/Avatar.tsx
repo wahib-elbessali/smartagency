@@ -10,14 +10,15 @@ import { cn } from './cn'
  *
  * The hue is confined to a window rather than spanning the whole wheel. Free
  * choice of 360 degrees means a roster of ten people puts a green, an orange
- * and a teal disc on an indigo screen, and those read as foreign objects
- * rather than as avatars - the eye clocks them as status colours meaning
- * something. Restricting to the blue-violet-pink arc the palette already
- * occupies keeps every person distinguishable from their neighbour while
- * leaving the screen one family of colour.
+ * and a red disc on a navy screen, and those read as foreign objects rather
+ * than as avatars - the eye clocks them as status colours meaning something,
+ * which on a dashboard where green really does mean "ok" is worse than merely
+ * untidy. Restricting to the cyan-blue-violet arc the palette already occupies
+ * keeps every person distinguishable from their neighbour while leaving the
+ * screen one family of colour.
  */
-const HUE_START = 240
-const HUE_SPAN = 100
+const HUE_START = 210
+const HUE_SPAN = 120
 
 function hueOf(name: string): number {
   let hash = 0
@@ -45,8 +46,12 @@ export function Avatar({ name, className }: { name: string; className?: string }
         className,
       )}
       style={{
-        backgroundColor: `oklch(0.32 0.06 ${hue})`,
-        color: `oklch(0.86 0.09 ${hue})`,
+        /* Hue is per person, lightness is per theme. The disc has to be dark
+           with light initials on the dark theme and the reverse on the light
+           one, so the two L values come from tokens while the hue stays
+           computed here - see --avatar-bg-l in index.css. */
+        backgroundColor: `oklch(var(--avatar-bg-l) 0.06 ${hue})`,
+        color: `oklch(var(--avatar-fg-l) 0.09 ${hue})`,
       }}
     >
       {initialsOf(name)}

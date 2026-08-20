@@ -20,7 +20,7 @@ export function controlClass(invalid?: boolean): string {
        which is why it reads as somewhere to type. The inner shadow is doing
        the work a border used to. */
     'rounded-control bg-canvas/60 text-ink placeholder:text-ink-3 ease-soft w-full px-3 py-2.5 text-sm ring-1 transition-all duration-150',
-    'shadow-[0_1px_2px_rgb(0_0_0/0.25)_inset]',
+    'shadow-[var(--shadow-control-inset)]',
     invalid
       ? 'ring-danger/50 focus:ring-danger'
       : 'ring-line focus:ring-accent/70 focus:bg-canvas/80',

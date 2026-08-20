@@ -494,6 +494,25 @@ export interface AttendanceRecord {
 }
 
 /**
+ * POST /api/attendance/check-in and /check-out — the request body.
+ *
+ * The employee is identified by RFID, NOT by id. That is the contract's choice
+ * and it is not an oversight: these routes exist to record what a badge reader
+ * would have recorded, so they take the same key the reader emits. An employee
+ * without a card cannot be checked in through this route at all.
+ *
+ * `agency_id` is accepted by the schema and has NO effect - the contract says
+ * so explicitly for both routes. It is typed here because sending it is legal,
+ * but nothing in this codebase should bother.
+ */
+export interface AttendanceMark {
+  employee_rfid: string
+  /** ISO 8601. Optional; the server uses the current time when omitted. */
+  timestamp?: string | null
+  agency_id?: string | null
+}
+
+/**
  * WS /ws/attendance
  *
  * The contract's example for this entry matches neither frame the backend
