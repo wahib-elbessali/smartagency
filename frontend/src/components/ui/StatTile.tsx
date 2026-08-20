@@ -2,21 +2,23 @@ import type { ReactNode } from 'react'
 import { cn } from './cn'
 
 /**
- * A single headline number, with an optional change-since chip under it.
+ * A single headline number.
  *
  * `tabular` on the value matters more than it looks: without it the digits are
  * proportionally spaced and the number visibly jitters every time it ticks,
  * which on a wall display reads as the panel flickering.
  *
- * A NOTE ON THE BOX, because this reverses an earlier decision on purpose.
- * These used to be bare fills - no ring, no shadow - on the argument that
- * boxing each reading turns a row of three numbers into a row of three
- * containers. That argument is right in isolation and wrong in a grid: once
- * the tiles sit above real panels, three surfaces with no edge next to one
- * surface with an edge reads as two unrelated systems rather than one. They
- * are cards now, built from exactly the same fill, ring and lit edge as Panel,
- * so the whole screen is one family of objects. What keeps them from becoming
- * loud containers is that nothing inside them is boxed again.
+ * LAYOUT IS TWO COLUMNS, not a stack, and that is taken from the design rather
+ * than chosen. Label above value on the left, icon chip on the right, and the
+ * whole tile only as tall as those two lines. Stacking the icon above the
+ * number instead - which is the obvious arrangement - makes each tile twice as
+ * tall, and a row of tall tiles pushes the actual content of the screen below
+ * the fold on the display this runs on.
+ *
+ * The icon chip carries a gradient and the tile does not. That is the one
+ * place colour is allowed to shout here: the chip is the only saturated thing
+ * in the tile, so it reads as an emblem for the reading rather than competing
+ * with the number.
  */
 export function StatTile({
   label,
@@ -38,45 +40,52 @@ export function StatTile({
   detail?: ReactNode
   tone?: 'neutral' | 'ok' | 'warn'
 }) {
-  const accent = {
+  const valueTone = {
     neutral: 'text-ink',
     ok: 'text-ok',
     warn: 'text-warn',
   }[tone]
 
-  const iconTone = {
-    neutral: 'text-ink-3',
-    ok: 'text-ok',
-    warn: 'text-warn',
+  /* The chip's gradient follows the reading's tone, so "late arrivals" is not
+     wearing the same emblem as "in the building". Neutral gets the accent,
+     which is the design's own default for these. */
+  const chipGradient = {
+    neutral: 'bg-accent-gradient',
+    ok: 'bg-[image:var(--gradient-ok)]',
+    warn: 'bg-[image:var(--gradient-danger)]',
   }[tone]
 
   return (
-    <div className="rounded-panel bg-panel surface-lit ring-line/60 ease-soft shadow-panel hover:shadow-raised px-5 py-4 ring-1 transition-[box-shadow,transform] duration-300 hover:-translate-y-px">
-      <div className="flex items-start justify-between gap-3">
-        <span className="text-ink-3 tracked text-[11px] font-medium">{label}</span>
+    <div className="rounded-panel surface-glass shadow-panel ease-soft hover:shadow-raised px-5 py-4 transition-[box-shadow,transform] duration-300 hover:-translate-y-px">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <span className="text-ink-2 block truncate text-[0.8125rem]">{label}</span>
+          {/* Big, bold and tight. The design sets these heavy rather than
+              light - on a translucent surface a thin numeral loses its edges
+              against whatever is showing through behind it. */}
+          <div
+            className={cn(
+              'tabular mt-1 text-[1.75rem] leading-none font-bold tracking-tight',
+              valueTone,
+            )}
+          >
+            {value}
+          </div>
+        </div>
+
         {icon && (
-          /* The icon sits in its own recessed chip rather than floating on the
-             card. Loose in the corner it reads as a stray glyph; given a
-             surface it reads as a label for the number, which is what it is. */
           <span
             className={cn(
-              'bg-panel-2 ring-line/50 grid size-7 shrink-0 place-items-center rounded-[0.5rem] ring-1',
-              iconTone,
+              'text-ink grid size-12 shrink-0 place-items-center rounded-[0.75rem]',
+              chipGradient,
             )}
           >
             {icon}
           </span>
         )}
       </div>
-      {/* Big, light, and tightly tracked. Weight is what usually gets reached
-          for, but at this size a lighter weight with negative tracking reads
-          as more deliberate and stays legible from further away. */}
-      <div
-        className={cn('tabular mt-3 text-[2.25rem] leading-none font-light tracking-tight', accent)}
-      >
-        {value}
-      </div>
-      {detail && <div className="mt-2.5">{detail}</div>}
+
+      {detail && <div className="mt-3">{detail}</div>}
       {hint && <p className="text-ink-3 mt-2 text-xs">{hint}</p>}
     </div>
   )
