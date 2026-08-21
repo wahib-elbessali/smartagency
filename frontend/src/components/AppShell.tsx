@@ -1,42 +1,35 @@
-import { NavLink, Outlet, useLocation } from 'react-router'
-import {
-  Bell,
-  Building2,
-  Fan,
-  FlaskConical,
-  Grid3x3,
-  IdCard,
-  KeyRound,
-  LogOut,
-  ShieldCheck,
-  UserCheck,
-  Users,
-} from 'lucide-react'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router'
+import { Building2, FlaskConical, LogOut, ShieldCheck } from 'lucide-react'
 import { MOCK_SCENARIO, USE_MOCKS } from '@/api/config'
+import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
+import { canReach } from '@/auth/access'
+import { landingPathFor } from '@/auth/landing'
+import { SCREENS } from '@/auth/screens'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 
-const NAV = [
-  { to: '/presence', label: 'Employee presence', icon: UserCheck },
-  { to: '/employees', label: 'Employees', icon: IdCard },
-  { to: '/agencies', label: 'Agencies', icon: Building2 },
-  { to: '/users', label: 'User accounts', icon: ShieldCheck },
-  { to: '/climate', label: 'Climate', icon: Fan },
-  { to: '/visitors', label: 'Visitor queue', icon: Users },
-  { to: '/occupancy', label: 'Occupancy', icon: Grid3x3 },
-  { to: '/alerts', label: 'Alerts', icon: Bell },
-  { to: '/controls', label: 'Manual controls', icon: KeyRound },
-] as const
-
 export function AppShell() {
   // Keying the main region on pathname replays the enter animation per route,
   // so navigation reads as a transition rather than an instant swap.
   const { pathname } = useLocation()
   const { user, signOut } = useSession()
+  const scope = useScope()
+
+  /* Only what this role can actually use. A link that answers with a refusal
+     is not a link, and the nav is the one place that has to be true. */
+  const nav = SCREENS.filter(({ to }) => canReach(user?.role, to))
+
+  /* The URL is the other way in, and hiding the link without closing it would
+     leave the boundary half-applied. Sent to where their role starts rather
+     than to a refusal, because there is nothing here for them to act on.
+     Guarded once for every child route: this is the layout all of them share. */
+  if (!canReach(user?.role, pathname)) {
+    return <Navigate to={landingPathFor(user?.role)} replace />
+  }
 
   return (
     /* No background here on purpose. The glow lives on <body>, and an opaque
@@ -76,7 +69,7 @@ export function AppShell() {
         </div>
 
         <ul className="flex flex-wrap gap-0.5 px-3 pb-4 md:flex-col md:flex-nowrap">
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {nav.map(({ to, label, icon: Icon }) => (
             <li key={to}>
               <NavLink
                 to={to}
@@ -172,6 +165,23 @@ export function AppShell() {
             <span className="text-warn/85 text-xs">
               No backend connected · scenario <span className="tabular">{MOCK_SCENARIO}</span>
             </span>
+          </div>
+        )}
+
+        {/* Always on while a branch is open, and only leaveable by leaving it.
+            An admin reading one branch's numbers as the whole estate is the
+            failure this control could cause, so the state it puts them in is
+            never off-screen. */}
+        {scope.agencyName && (
+          <div className="border-accent/25 bg-accent/8 flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-6 py-2">
+            <Building2 className="text-accent size-3.5 shrink-0" aria-hidden />
+            <span className="text-ink text-xs">
+              Working inside <span className="font-medium">{scope.agencyName}</span> — everything
+              below is this branch only.
+            </span>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={scope.leave}>
+              Leave branch
+            </Button>
           </div>
         )}
 

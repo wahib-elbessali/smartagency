@@ -6,6 +6,7 @@ import { isLate, type AttendanceEntry } from '@/api/attendanceMerge'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchEmployees } from '@/api/endpoints/employees'
 import { useAttendanceToday } from '@/hooks/useAttendanceToday'
+import { useScope, withinScope } from '@/agency/ScopeContext'
 import type { Agency, Employee } from '@/api/types'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { StreamStatusBadge } from '@/components/StreamStatusBadge'
@@ -42,6 +43,21 @@ import { Screen } from './Screen'
 
 export default function EmployeePresence() {
   const attendance = useAttendanceToday()
+  const scope = useScope()
+
+  /**
+   * Filtered once, here, and everything downstream follows.
+   *
+   * The stat tiles, the three charts and the table all derive from this list,
+   * so scoping it at the source is what keeps "in the building" and the roster
+   * underneath it counting the same people. Filtering in the table alone would
+   * leave an admin reading one branch's roster under the whole estate's totals,
+   * which is a worse answer than either one on its own.
+   */
+  const entries = useMemo(
+    () => withinScope(attendance.entries, scope.agencyId),
+    [attendance.entries, scope.agencyId],
+  )
 
   const employees = useQuery({
     queryKey: ['employees'],
@@ -67,10 +83,10 @@ export default function EmployeePresence() {
 
   const lateCount = useMemo(
     () =>
-      attendance.entries.filter(
+      entries.filter(
         (entry) => isLate(entry.check_in, agencyById.get(entry.agency_id)?.opening_time) === true,
       ).length,
-    [attendance.entries, agencyById],
+    [entries, agencyById],
   )
 
   const knowsOpeningTime = agencyById.size > 0
@@ -80,9 +96,9 @@ export default function EmployeePresence() {
      just an id so the dialog can title itself without a second lookup. */
   const [viewing, setViewing] = useState<AttendanceEntry | null>(null)
 
-  const arrivals = useMemo(() => arrivalsByHalfHour(attendance.entries), [attendance.entries])
-  const headcount = useMemo(() => headcountSeries(attendance.entries), [attendance.entries])
-  const methods = useMemo(() => foldToPalette(methodMix(attendance.entries)), [attendance.entries])
+  const arrivals = useMemo(() => arrivalsByHalfHour(entries), [entries])
+  const headcount = useMemo(() => headcountSeries(entries), [entries])
+  const methods = useMemo(() => foldToPalette(methodMix(entries)), [entries])
 
   return (
     <Screen
@@ -196,7 +212,7 @@ export default function EmployeePresence() {
       <AsyncBoundary
         isPending={attendance.isPending}
         error={attendance.error}
-        isEmpty={attendance.entries.length === 0}
+        isEmpty={entries.length === 0}
         emptyMessage="Nobody has checked in today yet."
         /* GET /api/attendance/today is restricted to ADMIN, MANAGER and
            SECURITY, so AGENT and TECHNICIAN land here. Naming the roles saves
@@ -216,7 +232,7 @@ export default function EmployeePresence() {
           </PanelHeader>
           <PanelBody className="px-0 py-0">
             <RosterTable
-              entries={attendance.entries}
+              entries={entries}
               employeeById={employeeById}
               agencyById={agencyById}
               onSelect={setViewing}
