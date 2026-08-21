@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import EmployeePresence from './EmployeePresence'
+import { ScopeProvider } from '@/agency/scope'
 import '@/mocks'
 
 /**
@@ -16,9 +17,15 @@ function renderScreen() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <EmployeePresence />
-      </MemoryRouter>
+      {/* No session here on purpose - these tests are about the attendance
+          snapshot, not about who is reading it. ScopeProvider answers "nobody
+          is inside a branch" for a signed-out tree, so the screen sees every
+          row, which is what every assertion below counts. */}
+      <ScopeProvider>
+        <MemoryRouter>
+          <EmployeePresence />
+        </MemoryRouter>
+      </ScopeProvider>
     </QueryClientProvider>,
   )
 }
