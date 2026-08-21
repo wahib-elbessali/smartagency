@@ -8,7 +8,7 @@ import { SessionContext } from '@/auth/SessionContext'
 import { clearSession, setSession } from '@/api/tokenStore'
 import type { User } from '@/api/types'
 import { mockAdmin, mockManager } from '@/mocks/currentUser'
-import { AGENCY_ID } from '@/mocks/fixtures/people'
+import { AGENCY_ID, AGENCY_ID_RABAT } from '@/mocks/fixtures/people'
 import { resetUserStore } from '@/mocks/userStore'
 import { resetEmployeeStore } from '@/mocks/employeeStore'
 import '@/mocks'
@@ -53,20 +53,6 @@ function renderAs(user: User) {
 const renderScreen = () => renderAs(mockAdmin())
 
 const TABLE_WAIT = { timeout: 4000 }
-
-/**
- * Picks a role and confirms it.
- *
- * Choosing a role only ASKS now (2026-08-20) - the dropdown opens a dialog and
- * sends nothing until it is confirmed. Every test that wants the change applied
- * goes through here, so the two steps cannot drift apart in the tests while
- * being one step in somebody's head.
- */
-async function changeRole(user: ReturnType<typeof userEvent.setup>, name: string, role: string) {
-  await user.selectOptions(screen.getByLabelText(`Role for ${name}`), role)
-  const dialog = await screen.findByRole('dialog', {}, TABLE_WAIT)
-  await user.click(within(dialog).getByRole('button', { name: /change to/i }))
-}
 
 describe('Users', () => {
   beforeEach(() => {
@@ -116,48 +102,6 @@ describe('Users', () => {
     expect(within(dialog).getByLabelText(/^agency/i)).toBeInTheDocument()
   })
 
-  it('does not offer ADMIN in the table either', async () => {
-    renderScreen()
-    await screen.findByRole('table', {}, TABLE_WAIT)
-
-    const roles = screen.getByLabelText('Role for Nadia Cherkaoui')
-    expect(within(roles).queryByRole('option', { name: 'ADMIN' })).not.toBeInTheDocument()
-    expect(within(roles).getByRole('option', { name: 'SECURITY' })).toBeInTheDocument()
-  })
-
-  /* Every non-admin role needs one (422 without), so it is required here. */
-  it('requires an agency for a non-admin account', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByRole('table', {}, TABLE_WAIT)
-
-    await user.click(screen.getByRole('button', { name: /add account/i }))
-    const dialog = screen.getByRole('dialog')
-    await user.type(within(dialog).getByLabelText(/full name/i), 'Nour Sabri')
-    await user.type(within(dialog).getByLabelText(/email/i), 'nour@agency.com')
-    await user.type(within(dialog).getByLabelText(/^password/i), 'password123')
-    await user.click(within(dialog).getByRole('button', { name: /create account/i }))
-
-    expect(within(dialog).getAllByText('Required.').length).toBe(1)
-  })
-
-  /* password min_length=8, and it is not in contracts/api.md at all - which is
-     exactly why it is worth a test rather than a comment. */
-  it('enforces the eight-character password minimum the schema requires', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByRole('table', {}, TABLE_WAIT)
-
-    await user.click(screen.getByRole('button', { name: /add account/i }))
-    const dialog = screen.getByRole('dialog')
-    await user.type(within(dialog).getByLabelText(/full name/i), 'Nour Sabri')
-    await user.type(within(dialog).getByLabelText(/email/i), 'nour@agency.com')
-    await user.type(within(dialog).getByLabelText(/^password/i), 'short')
-    await user.click(within(dialog).getByRole('button', { name: /create account/i }))
-
-    expect(within(dialog).getByText(/at least 8 characters/i)).toBeInTheDocument()
-  })
-
   it('creates an account and shows it in the list', async () => {
     const user = userEvent.setup()
     renderScreen()
@@ -196,108 +140,39 @@ describe('Users', () => {
     }, TABLE_WAIT)
   })
 
-  /* PATCH /access is one request on its own, and the table must reflect it. */
-  it('changes a role inline once confirmed', async () => {
+  /**
+   * Nobody's role is changed from this screen (2026-08-21).
+   *
+   * There is no control to lock any more - the column reports the role and
+   * offers nothing. The admin-only version of this rule came first, after an
+   * admin demoted their own account in the database trying to preview a
+   * manager's screens; this is the whole feature going rather than a guard on
+   * it, so the test is the absence of the control on every row.
+   */
+  it('offers no role control on any row', async () => {
+    renderScreen()
+    await screen.findByRole('table', {}, TABLE_WAIT)
+
+    for (const name of ['Fatima Abbar', 'Admin Test', 'Nadia Cherkaoui', 'Karim Tazi']) {
+      expect(screen.queryByLabelText(`Role for ${name}`)).not.toBeInTheDocument()
+    }
+    /* Still reported, and an admin is still marked as global. */
+    expect(screen.getAllByText('MANAGER').length).toBeGreaterThan(0)
+    expect(screen.getByText('Global')).toBeInTheDocument()
+  })
+
+  /* The agency IS still editable, and is the reason PATCH /access is still
+     called at all - so the one remaining inline control gets a test. */
+  it('still moves an account to another branch', async () => {
     const user = userEvent.setup()
     renderScreen()
     await screen.findByRole('table', {}, TABLE_WAIT)
 
-    await changeRole(user, 'Nadia Cherkaoui', 'SECURITY')
+    await user.selectOptions(screen.getByLabelText('Agency for Nadia Cherkaoui'), AGENCY_ID_RABAT)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Role for Nadia Cherkaoui')).toHaveValue('SECURITY')
+      expect(screen.getByLabelText('Agency for Nadia Cherkaoui')).toHaveValue(AGENCY_ID_RABAT)
     }, TABLE_WAIT)
-  })
-
-  /**
-   * Choosing a role asks before it does anything (2026-08-20).
-   *
-   * The three tests below are the promise the dialog makes: nothing is sent
-   * until it is confirmed, cancelling leaves the account exactly as it was, and
-   * what it describes is specific enough to check against what you meant.
-   */
-  it('sends nothing until the change is confirmed', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByRole('table', {}, TABLE_WAIT)
-
-    await user.selectOptions(screen.getByLabelText('Role for Nadia Cherkaoui'), 'MANAGER')
-    await screen.findByRole('dialog', {}, TABLE_WAIT)
-
-    /* The control goes back to what the account still is: it has changed
-       nothing yet, and showing the new role would say otherwise. */
-    expect(screen.getByLabelText('Role for Nadia Cherkaoui')).toHaveValue('AGENT')
-  })
-
-  it('leaves the account alone when the change is cancelled', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByRole('table', {}, TABLE_WAIT)
-
-    await user.selectOptions(screen.getByLabelText('Role for Nadia Cherkaoui'), 'MANAGER')
-    const dialog = await screen.findByRole('dialog', {}, TABLE_WAIT)
-    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    }, TABLE_WAIT)
-    expect(screen.getByLabelText('Role for Nadia Cherkaoui')).toHaveValue('AGENT')
-  })
-
-  /* Named screens, not a general warning. "They will lose access to some
-     things" is a sentence people click past. */
-  it('names the screens the change opens and closes', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByRole('table', {}, TABLE_WAIT)
-
-    await user.selectOptions(screen.getByLabelText('Role for Nadia Cherkaoui'), 'MANAGER')
-    const dialog = await screen.findByRole('dialog', {}, TABLE_WAIT)
-
-    /* An AGENT reaches the visitor queue; a MANAGER adds employees, agencies
-       and presence, and gives up nothing. */
-    expect(within(dialog).getByText(/gains/i)).toBeInTheDocument()
-    expect(within(dialog).getByText(/Agencies/)).toBeInTheDocument()
-    expect(within(dialog).getByText(/Employees/)).toBeInTheDocument()
-  })
-
-  /**
-   * An admin's role is not changed here, on any row.
-   *
-   * The product rule from testing (2026-08-20): changing roles is something an
-   * admin does TO other accounts, never something done to theirs. It is
-   * stricter than the API - PATCH /api/users/{id}/access commits the demotion
-   * for anything calling it directly - so it is the screen that has to hold it,
-   * and these are the tests that say so.
-   *
-   * It also retires, from this screen, the demotion PR #75 added for issue #71.
-   */
-  it('will not let an admin move their own account out of admin', async () => {
-    renderScreen()
-    await screen.findByRole('table', {}, TABLE_WAIT)
-
-    /* No control at all, and the reason in the row rather than in a tooltip on
-       text that does not look hoverable. */
-    expect(screen.queryByLabelText('Role for Admin Test')).not.toBeInTheDocument()
-    expect(screen.getByText(/your own account/i)).toBeInTheDocument()
-  })
-
-  /**
-   * A peer admin, reached the only way left.
-   *
-   * Promoting somebody used to produce this row; nothing can promote now, so
-   * the second admin has to already exist - which is the real case anyway, a
-   * database seeded with more than one owner. Signing in as an admin who is not
-   * the seeded one makes the seeded one the peer.
-   */
-  it("locks another admin's role too, not only your own", async () => {
-    renderAs({ ...mockAdmin(), id: 'u-a-different-admin' })
-    await screen.findByRole('table', {}, TABLE_WAIT)
-
-    expect(screen.queryByLabelText('Role for Admin Test')).not.toBeInTheDocument()
-    /* The wording unique to a row that is not yours - both locks explain that
-       an admin owns the system, so that phrase alone matches two rows. */
-    expect(screen.getByText(/delete the account if it should no longer exist/i)).toBeInTheDocument()
   })
 
   /**
