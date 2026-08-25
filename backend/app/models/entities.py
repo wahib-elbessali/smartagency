@@ -92,6 +92,26 @@ class Agency(Base):
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="agency")
     zones: Mapped[list["Zone"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
     counters: Mapped[list["Counter"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
+    services: Mapped[list["Service"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
+
+
+class Service(Base):
+    __tablename__ = "services"
+    __table_args__ = (UniqueConstraint("agency_id", "code", name="uq_service_agency_code"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    agency_id: Mapped[str] = mapped_column(ForeignKey("agencies.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    point_type: Mapped[str] = mapped_column(String(20), nullable=False, default="COUNTER", server_default="COUNTER")
+    min_points: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    agency: Mapped["Agency"] = relationship(back_populates="services")
+    counters: Mapped[list["Counter"]] = relationship(back_populates="service")
+    tickets: Mapped[list["Ticket"]] = relationship(back_populates="service")
 
 
 class Zone(Base):
@@ -112,11 +132,14 @@ class Counter(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     agency_id: Mapped[str] = mapped_column(ForeignKey("agencies.id"), nullable=False, index=True)
+    service_id: Mapped[str | None] = mapped_column(ForeignKey("services.id"), index=True)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str | None] = mapped_column(String(100))
+    point_type: Mapped[str] = mapped_column(String(20), nullable=False, default="COUNTER", server_default="COUNTER")
     is_open: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     agency: Mapped["Agency"] = relationship(back_populates="counters")
+    service: Mapped["Service | None"] = relationship(back_populates="counters")
     tickets: Mapped[list["Ticket"]] = relationship(back_populates="counter")
 
 
@@ -183,6 +206,7 @@ class Ticket(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     visitor_id: Mapped[str] = mapped_column(ForeignKey("visitors.id"), nullable=False, index=True)
+    service_id: Mapped[str | None] = mapped_column(ForeignKey("services.id"), index=True)
     counter_id: Mapped[str | None] = mapped_column(ForeignKey("counters.id"), index=True)
     ticket_number: Mapped[str] = mapped_column(String(30), nullable=False)
     service_type: Mapped[str | None] = mapped_column(String(100))
@@ -192,6 +216,7 @@ class Ticket(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     visitor: Mapped["Visitor"] = relationship(back_populates="tickets")
+    service: Mapped["Service | None"] = relationship(back_populates="tickets")
     counter: Mapped["Counter | None"] = relationship(back_populates="tickets")
 
 
@@ -216,11 +241,13 @@ class Device(Base):
     device_type: Mapped[str] = mapped_column(String(80), nullable=False)
     mqtt_client_id: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     mqtt_topic: Mapped[str] = mapped_column(String(255), nullable=False)
+    device_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[DeviceStatus] = mapped_column(Enum(DeviceStatus), default=DeviceStatus.OFFLINE, nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     agency: Mapped["Agency"] = relationship(back_populates="devices")
     sensor_readings: Mapped[list["SensorReading"]] = relationship(back_populates="device", cascade="all, delete-orphan")
+    thresholds: Mapped[list["SensorThreshold"]] = relationship(back_populates="device", cascade="all, delete-orphan")
 
 
 class SensorReading(Base):
@@ -234,6 +261,21 @@ class SensorReading(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
 
     device: Mapped["Device"] = relationship(back_populates="sensor_readings")
+
+
+class SensorThreshold(Base):
+    __tablename__ = "sensor_thresholds"
+    __table_args__ = (UniqueConstraint("device_id", "sensor_type", name="uq_threshold_device_sensor"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    sensor_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(20))
+    warning_max: Mapped[float | None] = mapped_column(Float)
+    critical_max: Mapped[float | None] = mapped_column(Float)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="true")
+
+    device: Mapped["Device"] = relationship(back_populates="thresholds")
 
 
 class Camera(Base):

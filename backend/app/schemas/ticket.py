@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class TicketCreate(BaseModel):
     visitor_id: str
+    service_id: str
     service_type: str | None = Field(default=None, max_length=100)
 
 
@@ -18,6 +19,9 @@ class TicketResponse(BaseModel):
     visitor_id: str
     visitor_name: str
     agency_id: str
+    service_id: str | None
+    service_code: str | None
+    service_name: str | None
     counter_id: str | None
     ticket_number: str
     service_type: str | None

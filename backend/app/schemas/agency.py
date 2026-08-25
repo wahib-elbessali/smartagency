@@ -2,6 +2,8 @@ from datetime import time
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.service import PointType
+
 
 class ZoneCreate(BaseModel):
     name: str = Field(min_length=2, max_length=100)
@@ -18,6 +20,7 @@ class ZoneResponse(ZoneCreate):
 class CounterCreate(BaseModel):
     number: int = Field(ge=1)
     name: str | None = Field(default=None, max_length=100)
+    point_type: PointType = "COUNTER"
     is_open: bool = True
 
 
@@ -25,6 +28,7 @@ class CounterResponse(CounterCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    service_id: str | None = None
 
 
 class AgencyCreate(BaseModel):

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import (
@@ -11,7 +12,7 @@ from app.core.security import (
     verify_password,
 )
 from app.database.connection import get_db
-from app.models.entities import Role, RoleName, User
+from app.models.entities import Agency, Role, RoleName, User
 from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
@@ -37,10 +38,13 @@ def serialize_user(user: User) -> UserResponse:
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> UserResponse:
-    email = payload.email.strip().lower()
+    email = str(payload.email).strip().lower()
     existing_user = db.scalar(select(User).where(User.email == email))
     if existing_user is not None:
         raise HTTPException(status_code=409, detail="Cette adresse email existe deja")
+
+    if payload.agency_id is not None and db.get(Agency, payload.agency_id) is None:
+        raise HTTPException(status_code=404, detail="Agence introuvable")
 
     # Une inscription publique cree toujours un agent. Les roles privilegies
     # doivent etre attribues par un administrateur.
@@ -58,14 +62,18 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> UserRes
         agency_id=payload.agency_id,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Impossible de creer ce compte") from exc
     db.refresh(user)
     return serialize_user(user)
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    email = payload.email.strip().lower()
+    email = str(payload.email).strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
