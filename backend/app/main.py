@@ -7,7 +7,12 @@ from app.api.users import router as users_router
 from app.api.attendance import router as attendance_router
 from app.api.visitors import router as visitors_router
 from app.api.tickets import router as tickets_router
+from app.api.services import router as services_router
+from app.api.devices import router as devices_router
+from app.api.internal import router as internal_router
+from app.api.thresholds import router as thresholds_router
 from app.mqtt.attendance_consumer import attendance_consumer
+from app.mqtt.sensor_consumer import sensor_consumer
 from app.websocket.attendance import router as attendance_websocket_router
 
 
@@ -24,17 +29,23 @@ app.include_router(users_router, prefix="/api")
 app.include_router(attendance_router, prefix="/api")
 app.include_router(visitors_router, prefix="/api")
 app.include_router(tickets_router, prefix="/api")
+app.include_router(services_router, prefix="/api")
+app.include_router(devices_router, prefix="/api")
+app.include_router(internal_router)
+app.include_router(thresholds_router, prefix="/api")
 app.include_router(attendance_websocket_router)
 
 
 @app.on_event("startup")
 def start_mqtt_consumer() -> None:
     attendance_consumer.start()
+    sensor_consumer.start()
 
 
 @app.on_event("shutdown")
 def stop_mqtt_consumer() -> None:
     attendance_consumer.stop()
+    sensor_consumer.stop()
 
 
 @app.get("/health", tags=["System"])

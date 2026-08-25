@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import get_current_user, require_roles
 from app.database.connection import get_db
-from app.models.entities import Agency, Counter, RoleName, Ticket, TicketStatus, User, Visitor
+from app.models.entities import Counter, RoleName, Service, Ticket, TicketStatus, User, Visitor
 from app.schemas.ticket import TicketCallRequest, TicketCreate, TicketResponse
+from app.services.ticket_service import next_ticket_number
 
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -17,7 +18,11 @@ TICKET_ROLES = [
 
 
 def ticket_query():
-    return select(Ticket).options(selectinload(Ticket.visitor), selectinload(Ticket.counter))
+    return select(Ticket).options(
+        selectinload(Ticket.visitor),
+        selectinload(Ticket.service),
+        selectinload(Ticket.counter),
+    )
 
 
 def ensure_agency_scope(agency_id: str, current_user: User) -> None:
@@ -31,6 +36,9 @@ def ticket_to_response(ticket: Ticket) -> TicketResponse:
         visitor_id=ticket.visitor_id,
         visitor_name=ticket.visitor.full_name,
         agency_id=ticket.visitor.agency_id,
+        service_id=ticket.service_id,
+        service_code=ticket.service.code if ticket.service else None,
+        service_name=ticket.service.name if ticket.service else None,
         counter_id=ticket.counter_id,
         ticket_number=ticket.ticket_number,
         service_type=ticket.service_type,
@@ -39,20 +47,6 @@ def ticket_to_response(ticket: Ticket) -> TicketResponse:
         called_at=ticket.called_at,
         completed_at=ticket.completed_at,
     )
-
-
-def next_ticket_number(db: Session, agency_id: str) -> str:
-    today = datetime.now(timezone.utc).date()
-    prefix = f"{today.strftime('%Y%m%d')}%"
-    count = db.scalar(
-        select(func.count(Ticket.id))
-        .join(Ticket.visitor)
-        .where(
-            Visitor.agency_id == agency_id,
-            Ticket.ticket_number.like(prefix),
-        )
-    ) or 0
-    return f"{today.strftime('%Y%m%d')}-{count + 1:03d}"
 
 
 @router.post("", response_model=TicketResponse, status_code=status.HTTP_201_CREATED, dependencies=TICKET_ROLES)
@@ -66,10 +60,19 @@ def create_ticket(
         raise HTTPException(status_code=404, detail="Visiteur introuvable")
     ensure_agency_scope(visitor.agency_id, current_user)
 
+    service = db.get(Service, payload.service_id)
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service introuvable")
+    if service.agency_id != visitor.agency_id:
+        raise HTTPException(status_code=422, detail="Le service appartient a une autre agence")
+    if not service.is_active:
+        raise HTTPException(status_code=409, detail="Le service est inactif")
+
     ticket = Ticket(
         visitor_id=visitor.id,
-        ticket_number=next_ticket_number(db, visitor.agency_id),
-        service_type=payload.service_type,
+        service_id=service.id,
+        ticket_number=next_ticket_number(db, visitor.agency_id, service.id, service.code),
+        service_type=payload.service_type or service.name,
         status=TicketStatus.WAITING,
     )
     db.add(ticket)
@@ -80,6 +83,7 @@ def create_ticket(
 
 @router.get("/queue", response_model=list[TicketResponse], dependencies=TICKET_ROLES)
 def get_queue(
+    service_id: str | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[TicketResponse]:
@@ -91,6 +95,12 @@ def get_queue(
     )
     if current_user.role.name != RoleName.ADMIN:
         query = query.where(Visitor.agency_id == current_user.agency_id)
+    if service_id is not None:
+        service = db.get(Service, service_id)
+        if service is None:
+            raise HTTPException(status_code=404, detail="Service introuvable")
+        ensure_agency_scope(service.agency_id, current_user)
+        query = query.where(Ticket.service_id == service.id)
     return [ticket_to_response(ticket) for ticket in db.scalars(query).unique().all()]
 
 
@@ -115,6 +125,10 @@ def call_ticket(
         raise HTTPException(status_code=422, detail="Le guichet appartient a une autre agence")
     if not counter.is_open:
         raise HTTPException(status_code=409, detail="Le guichet est ferme")
+    if ticket.service_id is not None and counter.service_id != ticket.service_id:
+        raise HTTPException(status_code=422, detail="Le guichet n est pas affecte au service du ticket")
+    if ticket.service is not None and counter.point_type != ticket.service.point_type:
+        raise HTTPException(status_code=422, detail="Le type de point ne correspond pas au service du ticket")
 
     ticket.counter_id = counter.id
     ticket.status = TicketStatus.CALLED

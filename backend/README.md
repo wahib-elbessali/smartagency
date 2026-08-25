@@ -64,6 +64,21 @@ POST   /api/agencies
 GET    /api/agencies/{agency_id}
 PUT    /api/agencies/{agency_id}
 DELETE /api/agencies/{agency_id}
+
+GET    /api/agencies/{agency_id}/services
+POST   /api/agencies/{agency_id}/services
+GET    /api/services/{service_id}
+PUT    /api/services/{service_id}
+DELETE /api/services/{service_id}
+GET    /api/services/{service_id}/points
+PATCH  /api/counters/{counter_id}/service
+
+GET    /api/devices
+POST   /api/devices/agencies/{agency_id}
+GET    /api/devices/{device_id}
+PUT    /api/devices/{device_id}
+POST   /api/devices/{device_id}/rotate-key
+DELETE /api/devices/{device_id}
 ```
 
 Un ADMIN peut gérer toutes les agences. Un MANAGER peut gérer uniquement son agence.
@@ -110,21 +125,6 @@ PATCH  /api/users/{user_id}/access
 DELETE /api/users/{user_id}
 ```
 
-Pour modifier simultanément le rôle et l'agence d'un utilisateur, utilisez :
-
-```text
-PATCH /api/users/{user_id}/access
-```
-
-```json
-{
-  "role": "SECURITY",
-  "agency_id": "AGENCY_UUID"
-}
-```
-
-Le rôle et l'agence sont validés sur leur état final dans une seule transaction.
-
 Rôles disponibles :
 
 ```text
@@ -150,7 +150,126 @@ Un compte peut être relié à un employé avec `employee_id` :
 
 La relation est optionnelle et unique : un employé ne peut être lié qu'à un seul compte.
 
+Pour changer simultanément le rôle et l'agence, utiliser la route atomique :
+
+```text
+PATCH /api/users/{user_id}/access
+```
+
+```json
+{
+  "role": "SECURITY",
+  "agency_id": "AGENCY_UUID"
+}
+```
+
+Le serveur valide l'état final du couple rôle/agence dans une seule transaction.
+
 ## Visiteurs et tickets
+
+### Appareils IoT
+
+Un appareil doit être enregistré par un `ADMIN`, `MANAGER` ou `TECHNICIAN` avant
+d'envoyer des données. La clé `device_key` est affichée une seule fois lors de
+l'enregistrement et doit être conservée par Basma dans l'ESP32.
+
+```http
+POST /api/devices/agencies/{agency_id}
+```
+
+```json
+{
+  "name": "Borne tickets accueil",
+  "device_type": "TICKET_KIOSK",
+  "mqtt_client_id": "ticket-kiosk-01",
+  "mqtt_topic": "agency/AGENCY_UUID/device/ticket-kiosk-01/sensor"
+}
+```
+
+La réponse contient `device_key`. Cette clé ne doit jamais être committée dans
+Git ni envoyée dans Discord. Pour la remplacer, utiliser
+`POST /api/devices/{device_id}/rotate-key`.
+
+### Endpoints internes hardware
+
+Les deux endpoints internes exigent l'en-tête :
+
+```http
+X-Device-Key: DEVICE_KEY
+```
+
+Le `device_id` du contrat hardware correspond au `mqtt_client_id` enregistré
+dans `devices`, et non à l'UUID interne de la table.
+
+```http
+POST /internal/tickets/walk-in
+```
+
+```json
+{
+  "agency_id": "AGENCY_UUID",
+  "device_id": "ticket-kiosk-01",
+  "service_id": "SERVICE_UUID",
+  "visitor": {
+    "full_name": "Visiteur borne",
+    "phone": null,
+    "identity_reference": null
+  },
+  "timestamp": "2026-08-25T14:32:00Z"
+}
+```
+
+Réponse :
+
+```json
+{
+  "ticket_id": "TICKET_UUID",
+  "ticket_number": "20260825-OPERATIONS-001",
+  "service_id": "SERVICE_UUID",
+  "service_type": "Opérations courantes",
+  "status": "WAITING"
+}
+```
+
+Pour compatibilité temporaire, `service_type` peut remplacer `service_id` si
+sa valeur correspond exactement au `code` ou au nom du service. Basma doit
+privilégier `service_id`.
+
+```http
+POST /internal/attendance/check-rfid
+```
+
+```json
+{
+  "agency_id": "AGENCY_UUID",
+  "device_id": "rfid-gate-01",
+  "employee_rfid": "A1B2C3D4",
+  "event": "check_in",
+  "timestamp": "2026-08-25T09:15:00Z"
+}
+```
+
+Réponse valide :
+
+```json
+{
+  "valid": true,
+  "employee_name": "Ahmed Benali",
+  "event": "check_in",
+  "message": null
+}
+```
+
+Réponse pour carte inconnue ou opération impossible :
+
+```json
+{
+  "valid": false,
+  "employee_name": null,
+  "event": null,
+  "message": "Carte RFID ou employe introuvable"
+}
+```
 
 Visiteurs :
 
@@ -170,9 +289,125 @@ POST /api/tickets/{ticket_id}/complete
 POST /api/tickets/{ticket_id}/cancel
 ```
 
+La création d'un ticket nécessite désormais le service de l'agence :
+
+```json
+{
+  "visitor_id": "VISITOR_UUID",
+  "service_id": "SERVICE_UUID"
+}
+```
+
+La file peut être filtrée par service avec `GET /api/tickets/queue?service_id=SERVICE_UUID`.
+Un ticket ne peut être appelé que par un guichet ou un bureau affecté au même service.
+
+Affectation d'un guichet ou d'un bureau :
+
+```text
+PATCH /api/counters/{counter_id}/service
+```
+
+```json
+{
+  "service_id": "SERVICE_UUID"
+}
+```
+
+Le type du point (`COUNTER` ou `OFFICE`) est automatiquement aligné sur le service.
+
 États possibles : `WAITING`, `CALLED`, `IN_SERVICE`, `COMPLETED`, `CANCELLED`.
 Un ticket est créé pour un visiteur, reçoit un numéro quotidien, puis est appelé
 par un guichet de la même agence.
+
+## MQTT DHT22 et MQ-7
+
+Le backend écoute le sujet :
+
+```text
+agency/{agency_id}/device/{device_id}/sensor
+```
+
+Message DHT22 :
+
+```json
+{
+  "readings": [
+    { "sensor_type": "temperature", "value": 24.5, "unit": "C" },
+    { "sensor_type": "humidity", "value": 61.2, "unit": "%" }
+  ],
+  "timestamp": "2026-08-25T10:00:00Z"
+}
+```
+
+Message MQ-7 :
+
+```json
+{
+  "readings": [
+    { "sensor_type": "gas_co", "value": 12.4, "unit": "ppm" }
+  ],
+  "timestamp": "2026-08-25T10:00:05Z"
+}
+```
+
+Chaque mesure est enregistrée dans `sensor_readings`. L'appareil doit déjà
+être présent dans `devices` avec le même `mqtt_client_id` que celui du sujet.
+
+### Configuration des seuils
+
+```text
+GET /api/devices/{device_id}/thresholds
+PUT /api/devices/{device_id}/thresholds/{sensor_type}
+DELETE /api/devices/{device_id}/thresholds/{sensor_type}
+```
+
+Exemple pour la température :
+
+```json
+{
+  "unit": "C",
+  "warning_max": 30,
+  "critical_max": 40,
+  "is_active": true
+}
+```
+
+Une valeur supérieure ou égale à `warning_max` crée une alerte `HIGH`. Une
+valeur supérieure ou égale à `critical_max` crée une alerte `CRITICAL`.
+
+### Commandes backend vers hardware
+
+Lorsqu'un seuil est dépassé, le backend publie :
+
+```text
+agency/{agency_id}/device/{device_id}/alert
+```
+
+```json
+{
+  "alert_type": "gas_co",
+  "active": true,
+  "severity": "CRITICAL"
+}
+```
+
+Quand la valeur revient à la normale, `active` devient `false`.
+
+Pour le capteur `temperature`, le backend publie également l'état du
+climatiseur/stepper :
+
+```text
+agency/{agency_id}/device/{device_id}/climate
+```
+
+```json
+{
+  "active": true
+}
+```
+
+La commande `climate` suit le seuil `warning_max` de la température et est
+réémise à chaque mesure afin de restaurer l'état après un redémarrage.
 
 ## Présence RFID
 
