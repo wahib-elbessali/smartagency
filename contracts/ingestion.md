@@ -21,6 +21,7 @@ The checklist for Basma is included at the end of this document.
 | `agency/{agency_id}/device/{device_id}/sensor` | Hardware → Backend | MQTT | DHT22, MQ-7 |
 | `agency/{agency_id}/device/{device_id}/alert` | Backend → Hardware | MQTT | Buzzer / LED |
 | `agency/{agency_id}/device/{device_id}/climate` | Backend → Hardware | MQTT | Climate actuator |
+| `agency/{agency_id}/device/{device_id}/ticket-called` | Backend → Hardware | MQTT | Ticket queue display |
 
 The door-lock subsystem using NEMA17 and A4988 ×2 is not included yet.
 
@@ -301,7 +302,45 @@ it when `active` is `false`.
 
 ---
 
-## 5. Backend → Hardware: MQTT climate command
+## 5. Backend → Hardware: MQTT ticket-called command
+
+### MQTT agency/{agency_id}/device/{device_id}/ticket-called
+
+**Owner:** Basma (hardware)
+**Type:** MQTT command
+**Direction:** Backend → Hardware
+**Response:** No response is expected.
+
+The hardware must subscribe to:
+
+```text
+agency/{agency_id}/device/{device_id}/ticket-called
+```
+
+Published whenever `POST /api/tickets/{ticket_id}/call` successfully assigns a
+waiting ticket to a counter (agent-triggered "call next" action).
+
+**Payload:**
+
+```json
+{
+  "service_code": "SVC-A",
+  "ticket_number": "20260827-SVC-A-005"
+}
+```
+
+**Notes:**
+
+- `service_code` matches the calling service's `code`.
+- The ticket queue display extracts the trailing sequence number from
+  `ticket_number` and shows its last digit (mod 10) for the matching
+  service, alongside the other services it tracks.
+- One message per successful call; not retried by the backend, no delivery
+  guarantee beyond normal MQTT QoS.
+
+---
+
+## 6. Backend → Hardware: MQTT climate command
 
 ### MQTT agency/{agency_id}/device/{device_id}/climate
 
@@ -338,7 +377,7 @@ receives a temperature reading so the actuator can recover after a restart.
 
 ---
 
-## 6. Basma hardware integration checklist
+## 7. Basma hardware integration checklist
 
 ### Before connecting the ESP32
 
@@ -358,6 +397,17 @@ receives a temperature reading so the actuator can recover after a restart.
 3. Send `service_id`, not the visible service label, whenever possible.
 4. Read `ticket_number` from the `201` response and display it to the visitor.
 5. Treat `401`, `404` and `422` as request/configuration errors and log them.
+
+### Ticket queue display
+
+1. Subscribe to `agency/{agency_id}/device/{device_id}/ticket-called`.
+2. Parse `service_code` and the trailing digit of `ticket_number` from each
+   message and update only the matching service's counter.
+3. Keep the other tracked service's last known value unchanged when
+   refreshing the display.
+4. This requires `POST /api/tickets/{ticket_id}/call` to actually publish
+   the MQTT message on success — confirm with the backend owner before
+   relying on it end-to-end.
 
 ### RFID reader
 
