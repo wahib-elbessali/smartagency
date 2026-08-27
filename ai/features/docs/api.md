@@ -1,33 +1,32 @@
 # AI/CV Service Contract
 
-One process, one port: `uvicorn ai.features.main:app --port 8000` (local models) or `uvicorn
-ai.features.cloud.main:app --port 8000` (same routes, models on a remote GPU bridge — see the Cloud
-variant section). Ten features mounted under per-feature prefixes, plus four app-level routes.
+One process, one port: `uvicorn features.main:app --port 8000` (local models) or
+`uvicorn features.cloud.main:app --port 8000` (same routes, models on a molab GPU — see
+`features/cloud/README.md`). Ten features mounted under per-feature prefixes, plus four app-level
+routes.
 
 **No authentication.** Every endpoint is open to anyone who can reach the port — there is no API
 key, no token, no header to send. Three surfaces make this a deployment constraint rather than a
-convenience: `/wanted/alerts/stream` broadcasts the names of people flagged as wanted **with a
-photo of them attached**, and `/face` and `/wanted` both read out stored biometric embeddings.
-This service must sit behind an authenticating reverse proxy with TLS; it is not safe on an open
-network.
+convenience: `/wanted/alerts/stream` broadcasts the names of people flagged as wanted **with a photo
+of them attached**, and `/face` and `/wanted` both read out stored biometric embeddings. This
+service must sit behind an authenticating reverse proxy with TLS; it is not safe on an open network.
 
 **Configuration is a file, not environment variables.** The service reads none. Tunables
-(detector backend/confidence, image sizes, poll intervals, the wanted-list threshold) live in
-`ai/features/config.json` and are read once at startup — see `GET /config`. File locations are fixed
+(detector confidence, image sizes, poll intervals, the wanted-list threshold) live in
+`features/config.json` and are read once at startup — see `GET /config`. File locations are fixed
 inside the package and are not configurable at all. The only value changeable at runtime is
 `PUT /wanted/threshold`.
 
-**Everything the service writes** — zones, calibration, gates, both face galleries, employee
-workstations — goes to `ai/features/data/`, a fixed path relative to the package. It does **not** follow
-the working directory, so the service behaves identically under a shell, systemd or Docker. A
-fresh install starts empty.
+**Everything the service writes** — zones, calibration, both face galleries, employee-activity
+workstations — goes to `features/data/`, a fixed path relative to the package. It does **not**
+follow the working directory, so the service behaves identically under a shell, systemd or Docker.
+A fresh install starts empty.
 
 ---
 
 ## App-level
 
 ### GET /
-**Owner:**
 **Type:** REST
 **Payload:** none
 **Returns:**
@@ -37,17 +36,15 @@ fresh install starts empty.
               "/face", "/weapon", "/fire", "/emotion", "/wanted"],
  "routes": [{"path": "/frame", "methods": ["GET"]}, "…"]}
 ```
-**Notes:** Route map, so a caller can discover the surface without parsing OpenAPI (also served at `/docs`). The cloud app returns the identical shape plus one extra route, `GET /detector`.
+**Notes:** Route map, so a caller can discover the surface without parsing OpenAPI (also served at `/docs`). The cloud app (`features.cloud.main:app`) returns the identical shape plus one extra route, `GET /detector`.
 
 ### GET /frame
-**Owner:**
 **Type:** REST
 **Payload:** query `?camera=<id>` (preferred) or `?source=<rtsp url or file path>`, plus optional `&index=`, `&format=png|jpeg`, `&quality=`
-**Returns:** `200 image/png` (or `image/jpeg`) — raw frame bytes, not JSON
-**Notes:** `404` if the source can't be opened or that frame can't be read, or if `camera` isn't in the camera table. `camera=` looks up both the URL **and** the per-camera `quality` from the table, so the image returned is the same size the detectors actually see — matters for overlaying boxes on it. `source=` alone returns the camera's native resolution regardless of table quality. `index` omitted = whatever frame the source is currently at (frame 0 on a fresh open for a file; the newest frame for a live stream). Shared by every feature — how a frontend gets something to click on for calibration points / zone polygons.
+**Returns:** `200 image/png` (or `image/jpeg` if requested) — raw frame bytes, not JSON
+**Notes:** `404` if the source can't be opened or that frame can't be read, or if `camera` isn't in the camera table. `camera=` looks up both the URL **and** the per-camera `quality` from the table, so the image returned is the same size the detectors actually see — important for anything overlaying boxes on it. `source=` alone returns the camera's native resolution regardless of table quality. `index` omitted = whatever frame the source is currently at (frame 0 on a fresh open for a file; the newest frame for a live stream). Shared by every feature — how a frontend gets something to click on for calibration points / zone polygons.
 
 ### GET /video_meta
-**Owner:**
 **Type:** REST
 **Payload:** query `?source=...`
 **Returns:**
@@ -57,7 +54,6 @@ fresh install starts empty.
 **Notes:** `404` if unopenable. `fps` falls back to `25.0` if the source reports none. `n_frames` is always `0` for a live stream (RTSP/HTTP) — arithmetic on it there is meaningless.
 
 ### GET /config
-**Owner:**
 **Type:** REST
 **Payload:** none
 **Returns:**
@@ -77,45 +73,40 @@ fresh install starts empty.
                "cam_support_min": 2, "peak_min": 0.55, "foot_sigma_pw": 0.725,
                "diffusion_revive": false},
    "face": {"pack": "buffalo_s"}},
- "config_file": "…/ai/features/config.json",
- "data_dir":    "…/ai/features/data",
- "models_dir":  "…/ai/features/models"}
+ "config_file": "…/features/config.json",
+ "data_dir":    "…/features/data",
+ "models_dir":  "…/features/models"}
 ```
-**Notes:** Read-only — the effective settings, and where the service keeps its data and weights. `config.json` is edited on disk and read once at startup, so this is also how you confirm a running service is actually using the config you think it is. `detector.backend` picks the runtime for the shared person detector (`auto` chooses CUDA/OpenVINO/ncnn/CPU by what's present — all backends produce identical boxes, this is a hardware-utilisation choice, not an accuracy tradeoff). The only value changeable without a restart is the wanted threshold (`PUT /wanted/threshold`).
+**Notes:** Read-only — the effective settings, and where the service keeps its data and weights. `config.json` is edited on disk and read once at startup, so this is also how you confirm a running service is actually using the config you think it is. The only value changeable without a restart is the wanted threshold (`PUT /wanted/threshold`).
 
 ---
 
 ## /cameras — the site camera table
 
-The camera table every other feature reads from. Define a camera once (id, URL, quality), then
-tick which features watch it — a feature's own `POST .../sources` writes into this same table, so
-the two are two entry points to one truth, not two separate registries.
+The camera table every other feature reads from. Define a camera once (id, URL, quality), then tick
+which features watch it — a feature's own `POST .../sources` (below) writes into this same table,
+so the two are two entry points to one truth, not two separate registries.
 
 ### GET /cameras
-**Owner:**
 **Type:** REST · **Payload:** none
 **Returns:** `{"cameras": {"0": {"name": "Entrance", "url": "rtsp://…", "quality": 1.0, "features": ["people", "zoning"]}}, "valid_features": ["people", "zoning", "weapon", "fire", "emotion", "wanted"]}`
 
 ### POST /cameras
-**Owner:**
 **Type:** REST
 **Payload:** `{"id": "0", "url": "rtsp://…", "name": "Entrance", "quality": 1.0, "features": ["people", "zoning"]}` — only the fields sent are changed
 **Returns:** `{"id": "0", "camera": {…}, "warnings": [...]}`
 **Notes:** `warnings` flags a camera assigned to `people`/`zoning` with no calibration yet, or a calibration that predates resolution-tracking (can't be safely rescaled if quality changes) — not decorative, same as `/zoning/zones`'s warnings.
 
 ### DELETE /cameras/{id}
-**Owner:**
 **Type:** REST · **Payload:** none · **Returns:** `{"id": "0", "deleted": true}`
 
 ### PUT /cameras/{id}/features
-**Owner:**
 **Type:** REST
 **Payload:** `{"features": ["people", "zoning"]}` — replaces the full list for this camera
 **Returns:** `{"id": "0", "camera": {…}, "warnings": [...]}`
-**Notes:** The general mechanism — a feature's own `POST .../sources` is a convenience wrapper that does the same table write plus sets the URL in one call. Silently no-ops on a camera with no `url` set yet (a half-finished row is never handed to a feature).
+**Notes:** This is the general mechanism — a feature's own `POST .../sources` is a convenience wrapper that does the same table write plus sets the URL in one call. `404`-equivalent behaviour: silently no-ops on a camera with no `url` set yet (a half-finished row is never handed to a feature).
 
 ### PUT /cameras/{id}/quality
-**Owner:**
 **Type:** REST
 **Payload:** `{"quality": 0.5}` — fraction of native resolution, `0.05`–`1.0`
 **Returns:** `{"id": "0", "camera": {…}, "warnings": [...]}`
@@ -126,12 +117,10 @@ the two are two entry points to one truth, not two separate registries.
 ## /calibration — pixel ↔ floor geometry (one-time per-site setup)
 
 ### GET /calibration
-**Owner:**
 **Type:** REST · **Payload:** none
 **Returns:** `{"0": {"Hinv": [[…]], "diagnostics": {...}}}` — one entry per calibrated camera, `{}` if none yet. `Hinv` maps image pixels → floor centimetres.
 
 ### POST /calibration/rect
-**Owner:**
 **Type:** REST
 **Payload:** `{"camera": "0", "points": [[120,430],[980,410],[1010,700],[95,720]], "img_w": 1920, "img_h": 1080}` — exactly 4 points, in order around an assumed right angle
 **Returns:**
@@ -144,7 +133,6 @@ the two are two entry points to one truth, not two separate registries.
 **Notes:** `img_w`/`img_h` are **required** — the orthogonality solve needs the image centre as an assumed principal point, and `calib_res` (recorded from them) is what lets this calibration be safely rescaled if the frame size ever changes. The rectangle's true aspect ratio is **inferred** from the 4 points' own perspective geometry, not assumed square — `aspect_confident: false` (or `aspect_source` starting with `"fallback"`) means the geometry was too degenerate to trust and a square was guessed; treat the result as provisional and either re-click a larger, clearer rectangle or fix it via `/calibration/align` with ≥4 shared points instead (that replaces the homography outright). `422` if not exactly 4 points or near-collinear. **Do not treat `px_err_*` as validation** — a 4-point exact fit always reports ~0 error by construction. Result is `aligned: false` until `/calibration/align` reconciles it into the shared frame.
 
 ### POST /calibration/align
-**Owner:**
 **Type:** REST
 **Payload:** `{"points": [{"0": [512,300], "1": [140,290]}, {"1": [820,150], "2": [110,180]}]}` — the **full accumulated list** of shared-point observations, not a delta
 **Returns:**
@@ -160,29 +148,24 @@ the two are two entry points to one truth, not two separate registries.
 **Notes:** BFS from the most trustworthy already-calibrated camera (not necessarily the lowest id). Fits the **strongest transform the point count supports** per camera pair — a full homography with ≥4 shared points (repairs perspective, the clicked rectangle's own error drops out entirely), affine with exactly 3 (repairs aspect/shear, not perspective), similarity only below 3 (cannot repair a wrong aspect — reproduces it) — `results[cam]["fit"]` names which one ran. `400` if fewer than 2 cameras calibrated. **Check `results` per camera** — one that couldn't be reached comes back `aligned: false` with an `error` string, and the call still returns `200`. `results_warning` is set when every calibrated camera's rectangle aspect had to be guessed (the fallback above) — the whole shared frame's shape is then a guess too. `residual_checks` shows how far apart cameras now place each recorded point; small numbers mean the alignment took.
 
 ### POST /calibration/cross_check
-**Owner:**
 **Type:** REST
 **Payload:** `{"points": {"0": [512,300], "1": [140,290]}}` — ≥2 cameras, already aligned
 **Returns:** `{"worlds": {"0": [45.7,-45.6], "1": [45.7,-45.6]}, "pairs": [{"cam_a": "0", "cam_b": "1", "distance_cm": 0.0}]}`
 **Notes:** Read-only verification — click the same real point in ≥2 aligned cameras, get back how far apart they place it. Use points different from the ones used to align, or you're checking the fit against its own training data. `422` if any named camera is uncalibrated or unaligned.
 
 ### GET /calibration/gates
-**Owner:**
 **Type:** REST · **Payload:** none · **Returns:** `{"gates": [[x_cm, y_cm], ...]}`
 
 ### POST /calibration/gates
-**Owner:**
 **Type:** REST
 **Payload:** `{"gates": [{"camera": "0", "points": [[120,430],[140,460]]}]}` — **replaces** the whole gate list
-**Returns:** `{"gates": [[x_cm, y_cm], ...], "n": 2, "saved": "…/ai/features/data/gates.json"}`
+**Returns:** `{"gates": [[x_cm, y_cm], ...], "n": 2, "saved": "…/features/data/gates.json"}`
 **Notes:** Entry/exit points, world coordinates — used by `/people`'s tracker as a revival prior (an unmatched detection far from every gate is assumed to be an existing person whose position drifted, not someone new). Each referenced camera must already be calibrated (`422` otherwise); points convert via that camera's current `Hinv`.
 
 ### DELETE /calibration/gates
-**Owner:**
 **Type:** REST · **Payload:** none · **Returns:** `{"gates": [], "n": 0, "saved": "…"}`
 
 ### DELETE /calibration/{camera}
-**Owner:**
 **Type:** REST · **Payload:** none · **Returns:** `{"camera": "0", "deleted": true}` / `404` if unknown.
 
 ---
@@ -190,24 +173,20 @@ the two are two entry points to one truth, not two separate registries.
 ## /zoning — headcount inside floor polygons (no identities/trajectories)
 
 ### POST /zoning/zones
-**Owner:**
 **Type:** REST
 **Payload:** `{"name": "lobby", "camera": "0", "polygon": [[100,200],[400,200],[400,500],[100,500]], "sources": {"0": "rtsp://…", "1": "rtsp://…"}}`
 **Returns (pixel — one camera in `sources`):** `{"name": "till", "mode": "pixel", "saved": "…", "sources_known": ["0"], "warnings": []}`
 **Returns (world — two or more):** `{"name": "lobby", "mode": "world", "saved": "…", "sources_known": ["0","1"], "warnings": [], "polygon_m": [[…]], "converted_from": {"camera": "0", "polygon_px": [[…]]}}`
-**Notes:** Mode is inferred from `sources` count: 1 camera → `pixel` (that camera's own raw detections, no calibration needed), 2+ → `world` (drawn-on camera must be calibrated **and** aligned, else `422`). `camera` must be one of `sources` or `422` (prevents a silent-permanent-zero misconfiguration). `sources` accumulates into the site camera table across calls — registering cameras one call at a time costs nothing. Re-posting an existing `name` overwrites it, including mode. **World zones read `/people`'s live tracked positions** rather than fusing independently — this REQUIRES `/people` to be `running` for that camera set (`POST /people/sources`, check `GET /people/status`); if it isn't, `warnings` says so explicitly (`"'/people' is not currently running … this zone will count 0 until it is"`) rather than a silent, indistinguishable zero.
+**Notes:** Mode is inferred from `sources` count: 1 camera → `pixel` (that camera's own raw detections, no calibration needed), 2+ → `world` (drawn-on camera must be calibrated **and** aligned, else `422`). `camera` must be one of `sources` or `422` (prevents a silent-permanent-zero misconfiguration). `sources` accumulates into the site camera table across calls — registering cameras one call at a time costs nothing. Re-posting an existing `name` overwrites it, including mode. **World zones no longer run their own multi-camera fusion** — they read `/people`'s live tracked positions instead. This REQUIRES `/people` to be `running` for that camera set (`POST /people/sources`, check `GET /people/status`); if it isn't, `warnings` says so explicitly (`"'/people' is not currently running … this zone will count 0 until it is"`) rather than a silent, indistinguishable zero.
 
 ### GET /zoning/zones
-**Owner:**
 **Type:** REST · **Payload:** none
 **Returns:** `{"till": {"mode": "pixel", "camera": "0", "polygon_px": [[…]]}, "lobby": {"mode": "world", "polygon_m": [[…]], "converted_from": {…}}}` (`{}` if none exist)
 
 ### DELETE /zoning/zones/{name}
-**Owner:**
 **Type:** REST · **Payload:** none · **Returns:** `{"name": "lobby", "deleted": true}` / `404`.
 
 ### WS /zoning/occupancy/stream
-**Owner:**
 **Type:** WebSocket
 **Payload:** optional query `?threshold=N` (default 0), per-connection
 **Messages:**
@@ -223,28 +202,23 @@ the two are two entry points to one truth, not two separate registries.
 
 ## /employee_activity — presence/absence per workstation
 
-Built entirely on `/zoning`'s already-computed occupancy — no face recognition, no model of its
-own. A "workstation" is a name bound to an existing `zoning` zone (create the zone first).
+Built entirely on `/zoning`'s already-computed occupancy — no face recognition, no model of its own. A "workstation" is a name bound to an existing `zoning` zone (create the zone first).
 
 ### POST /employee_activity/workstations
-**Owner:**
 **Type:** REST
 **Payload:** `{"name": "desk1", "zone": "till"}` — `zone` must already exist in `/zoning`
 **Returns:** `{"name": "desk1", "zone": "till", "status": "unknown", "since": 1787600000.0, "zone_known": false}`
 **Notes:** `422` if the named zone doesn't exist yet.
 
 ### GET /employee_activity/workstations
-**Owner:**
 **Type:** REST · **Payload:** none
 **Returns:** `[{"name": "desk1", "zone": "till", "status": "present", "since": 1787600123.4, "zone_known": true}]`
 **Notes:** `status` is one of `unknown` (not classified yet, or the zone hasn't been read even once), `present` (the zone had ≥1 person at the last poll, or continuously since), `away` (the zone has been continuously empty for ≥ `employee_activity.absence_seconds`, default 300s/5min). `present` fires immediately on any sighting; `away` only after the full continuous-absence window — a brief step-away does not read as "not working". `zone_known: false` means "not measured yet", distinct from a real empty reading.
 
 ### DELETE /employee_activity/workstations/{name}
-**Owner:**
 **Type:** REST · **Payload:** none · **Returns:** `{"name": "desk1", "deleted": true}` / `404`.
 
 ### WS /employee_activity/status/stream
-**Owner:**
 **Type:** WebSocket · **Payload:** none
 **Messages:** `{"type":"snapshot","workstations":[...]}` on connect, then `{"type":"update", ...same shape as one GET row...}` each time a workstation's `status` actually flips.
 
@@ -252,34 +226,27 @@ own. A "workstation" is a name bound to an existing `zoning` zone (create the zo
 
 ## /people — live multi-camera person tracking (persistent identities + floor positions)
 
-Unlike every other feature, this one has a real one-time bootstrap cost (~30s on a live source)
-before it tracks anything — no `POST /people/start`; it triggers automatically once ≥2
-registered cameras are calibrated **and** aligned.
+Unlike every other feature, this one has a real one-time bootstrap cost (~30s on a live source) before it tracks anything — no `POST /people/start`; it triggers automatically once ≥2 registered cameras are calibrated **and** aligned.
 
 ### GET /people/sources
-**Owner:**
 **Type:** REST · **Payload:** none
 **Returns:** `{"sources_known": ["0","1"], "calibrated": ["0","1"], "aligned": ["0","1"]}`
 
 ### POST /people/sources
-**Owner:**
 **Type:** REST
 **Payload:** `{"sources": {"0": "rtsp://…", "1": "rtsp://…"}}` — merges into the site camera table
 **Returns:** `{"sources_known": [...], "calibrated": [...], "aligned": [...], "warnings": [...]}`
 **Notes:** Adding/removing a camera here invalidates any current bootstrap and re-triggers one.
 
 ### DELETE /people/sources/{camera}
-**Owner:**
 **Type:** REST · **Payload:** none · **Returns:** `{"camera": "0", "deleted": true}` — stops watching this camera; same re-bootstrap trigger.
 
 ### GET /people/status
-**Owner:**
 **Type:** REST · **Payload:** none
 **Returns:** `{"phase": "running", "warnings": [], "error": null, "person_scale": 33.1, "room": {...}, "fps": 25.0, "cams_bootstrapped": ["0","1"], "gates_loaded": 2, "active_tracks": 3}`
 **Notes:** `phase` is `idle` → `bootstrapping` → `running`, or `error`. `active_tracks` is `null` until running.
 
 ### WS /people/tracks/stream
-**Owner:**
 **Type:** WebSocket · **Payload:** none
 **Messages:**
 ```jsonc
@@ -296,23 +263,19 @@ registered cameras are calibrated **and** aligned.
 ## /face — access control (event-triggered, request/response) + anonymous visitor capture
 
 ### POST /face/enroll
-**Owner:**
 **Type:** REST (`multipart/form-data`)
 **Payload:** `name` (str) + `image` (one photo, exactly one face)
 **Returns:** `{"name": "employee1", "embeddings_count": 1}`
-**Notes:** `embeddings_count` is cumulative across every photo ever enrolled for that name — enrolling several photos per person improves robustness to pose and lighting. `400` undecodable image, `422` if zero or ≥2 faces found (it fails loudly rather than guessing which face you meant).
+**Notes:** `embeddings_count` is cumulative across every photo ever enrolled for that name. `400` undecodable image, `422` if zero or ≥2 faces found.
 
 ### GET /face/faces
-**Owner:**
 **Type:** REST · **Payload:** none
-**Returns:** `[{"name": "employee1", "embeddings": [[512 floats], "…"]}]` (`[]` when empty) — full gallery including raw vectors, for a backend to mirror into its own DB. Unlike `/wanted/watchlist`, embeddings are always included here.
+**Returns:** `[{"name": "employee1", "embeddings": [[512 floats], "…"]}]` (`[]` when empty) — full gallery including raw vectors, for a backend to mirror into its own DB.
 
 ### DELETE /face/faces/{name}
-**Owner:**
-**Type:** REST · **Payload:** none · **Returns:** `{"name": "employee1", "embeddings_removed": 3}` / `404`. Removes the person's entire entry (every enrolled photo). Touches only this gallery — the wanted watchlist is a separate file.
+**Type:** REST · **Payload:** none · **Returns:** `{"name": "employee1", "embeddings_removed": 3}` / `404`. Removes every enrolled photo for that name. Touches only this gallery — the wanted watchlist is a separate file.
 
 ### POST /face/scan
-**Owner:**
 **Type:** REST
 **Payload:** `{"source": "rtsp://gate-cam", "timeout_seconds": 15}`
 **Returns — four distinct outcomes, all `200`:**
@@ -322,50 +285,40 @@ registered cameras are calibrated **and** aligned.
 {"source":"…","name":null,"score":null,"timed_out":true,"error":null}       // fine, nobody appeared
 {"source":"…","name":null,"score":null,"timed_out":false,"error":"could not open source"}
 ```
-**Notes:** **Blocking** — opens the source, watches until a face appears or the timeout elapses, answers on the same request (the caller's connection stays open for up to `timeout_seconds`). `error` and `timed_out` are deliberately distinct: camera offline vs. camera fine but nobody showed. `409` if that source is already mid-scan (guards a double button-press opening two captures on one camera). `score` is cosine similarity, not a probability; match threshold `0.248` (measured on 1000 LFW pairs: AUC 0.998, 0 false accepts in 500 negatives at 98.8% true-accept). This is the endpoint a caller uses for an access-control decision on a badge tap — the grant/deny decision itself belongs to whichever service consumes this result, not to this service.
+**Notes:** **Blocking** — opens the source, watches until a face appears or the timeout elapses, answers on the same request. `error` vs `timed_out` are deliberately distinct: camera offline vs. camera fine but nobody showed. `409` if that source is already mid-scan. `score` is cosine similarity, not a probability; match threshold `0.248` (measured on 1000 LFW pairs: AUC 0.998, 0 false accepts in 500 negatives at 98.8% true-accept). The grant/deny decision belongs to whichever service consumes this result, not to this service.
 
 ### POST /face/capture
-**Owner:**
 **Type:** REST
-**Payload:** same shape as `/face/scan` — `{"source": "…", "timeout_seconds": 15}`
+**Payload:** same as `/face/scan` — `{"source": "…", "timeout_seconds": 15}`
 **Returns:** `{"source": "…", "image": "<base64 jpeg, 40% margin>", "bbox": [x1,y1,x2,y2], "det_score": 0.93, "embedding": [512 floats], "timed_out": false, "error": null}`
-**Notes:** Same blocking watch-until-a-face-appears behaviour as `/face/scan`, but **touches no gallery** — no name in, no name out, no identify step. For anonymous visitors: returns a photo + embedding and stops there. Deciding "new visitor vs. returning" and owning any resulting visitor id is entirely the caller's job — this service has no visitor gallery and no visitor-identity concept. Shares `/face/scan`'s `409` double-scan guard (keyed by source, not by route).
+**Notes:** Same blocking watch-until-a-face-appears shape as `/face/scan`, but **touches no gallery** — no name in, no name out, no `identify()` call. For anonymous visitors (ticket-kiosk triggered): returns a photo + embedding and stops there. Deciding "new visitor vs. returning" and owning any resulting visitor id is 100% the caller's job — this service has no visitor gallery and no visitor-identity concept. Shares `/face/scan`'s `409` double-scan guard (keyed by source, not by route).
 
 ---
 
 ## The four alert streams — /weapon, /fire, /emotion, /wanted (identical shape)
 
-Substitute `{f}` for `weapon`, `fire`, `emotion`, or `wanted`. Built on one shared implementation
-— learn one, you know all four; only the class vocabulary (and `/wanted`'s extra routes below)
-differs.
+Substitute `{f}` for `weapon`, `fire`, `emotion`, or `wanted`. Built on one shared implementation — learn one, you know all four; only the class vocabulary (and `/wanted`'s extra routes below) differs.
 
 ### POST /{f}/sources
-**Owner:**
 **Type:** REST
 **Payload:** `{"sources": {"cam1": "rtsp://…", "lobby": "/data/lobby.mp4"}}`
-**Returns:** `{"sources_known": ["cam1", "lobby"]}`
-**Notes:** Merges into the site camera table (`POST /cameras` / `PUT /cameras/{id}/features` do the identical thing) — re-posting an id updates just that camera. Detection begins the moment ≥1 source exists, and runs whether or not anyone is connected to the stream.
+**Returns:** `{"sources_known": ["cam1","lobby"]}`
+**Notes:** Merges into the site camera table (`POST /cameras` / `PUT /cameras/{id}/features` do the identical thing). Detection begins the moment ≥1 source exists, whether or not anyone's connected to the stream.
 
 ### GET /{f}/sources
-**Owner:** · **Type:** REST · **Payload:** none · **Returns:** `{"cam1": "rtsp://…", "lobby": "/data/lobby.mp4"}` — the registry (`{}` when empty).
+**Type:** REST · **Payload:** none · **Returns:** `{"cam1": "rtsp://…"}` (`{}` when empty).
 
 ### DELETE /{f}/sources/{camera}
-**Owner:** · **Type:** REST · **Payload:** none · **Returns:** `{"camera": "cam1", "deleted": true}` / `404`.
+**Type:** REST · **Payload:** none · **Returns:** `{"camera": "cam1", "deleted": true}` / `404`.
 
 ### WS /{f}/alerts/stream
-**Owner:**
-**Type:** WebSocket
-**Payload:** none
+**Type:** WebSocket · **Payload:** none
 **Messages:**
 ```jsonc
-// immediately on connect
-{"type":"snapshot","cameras":{"cam1":[{"class":"pistol","confidence":0.87,
-                                       "bbox":[900.5,332.0,1352.5,664.7]}]}}
-// then, per change
-{"type":"update","camera":"cam1","detections":[{"class":"pistol","confidence":0.87,
-                                                "bbox":[900.5,332.0,1352.5,664.7]}]}
+{"type":"snapshot","cameras":{"cam1":[{"class":"pistol","confidence":0.87,"bbox":[900.5,332.0,1352.5,664.7]}]}}
+{"type":"update","camera":"cam1","detections":[{"class":"pistol","confidence":0.87,"bbox":[…]}]}
 ```
-**Notes:** **Fires only when a camera's *set of detected classes* changes — not per frame** (confidence jitter alone sends nothing). `bbox` is `[x1,y1,x2,y2]` source-frame pixels. `"detections": []` is the all-clear. `/wanted` entries may additionally carry `"held": true` for a re-emitted stale entry during hysteresis and a `"snapshot"` base64 JPEG on the highest-confidence detection (see below). A repeated identical alert means the situation genuinely changed and changed back — don't build a UI expecting periodic refreshes, or you'll conclude the service died during a long quiet period.
+**Notes:** Fires only when a camera's **set of detected classes** changes — not per frame (confidence jitter alone sends nothing). `bbox` is `[x1,y1,x2,y2]` source-frame pixels. `"detections": []` is the all-clear. `/wanted` and `/face/capture`-adjacent entries may additionally carry `"held": true` for a re-emitted stale entry during hysteresis (see below) and a `"snapshot"` base64 JPEG on the highest-confidence detection.
 
 ### /weapon classes
 `pistol`, `knife`. (The underlying model also sees `smartphone`, `monedero`, `billete`, `tarjeta` as lookalike-distractor training classes, but this feature only ever alerts on the two weapon classes.) Known flicker: pistol↔smartphone label can flip frame-to-frame on the same object — treat presence as reliable over a short window, not on one frame.
@@ -384,74 +337,53 @@ differs.
 ## /wanted — watchlist management (additional routes)
 
 ### POST /wanted/watchlist
-**Owner:**
 **Type:** REST (`multipart/form-data`)
 **Payload:** `name` + `image` (exactly one face)
 **Returns:** `{"name": "SUSPECT-2024-114", "embeddings_count": 1}`
-**Notes:** Names restricted to `[A-Za-z0-9 ._+-]`, 1–80 chars (`422` otherwise — a `/` would be undeletable via the URL below). Deliberately different route names from `/face/enroll` — the catastrophic failure mode this guards against is enrolling someone into the wrong list, and same-shaped-but-differently-named routes can't be confused for one another the way identical ones could.
+**Notes:** Names restricted to `[A-Za-z0-9 ._+-]`, 1–80 chars (`422` otherwise). Deliberately different route names from `/face/enroll` — enrolling someone into the wrong list is the catastrophic failure mode this guards against, and differently-named routes can't be confused for one another the way two identical ones could.
 
 ### GET /wanted/watchlist
-**Owner:**
 **Type:** REST
 **Payload:** optional query `?include_embeddings=true`
 **Returns:** `[{"name": "SUSPECT-2024-114", "embeddings_count": 2}]`, plus `"embeddings": [[512 floats], …]` when opted in
-**Notes:** Embeddings are opt-in, unlike `/face/faces` which always returns them — dumping a wanted list's biometrics should be a deliberate act. `[]` when the watchlist is empty.
+**Notes:** Embeddings are opt-in, unlike `/face/faces` which always returns them.
 
 ### DELETE /wanted/watchlist/{name}
-**Owner:** · **Type:** REST · **Payload:** none · **Returns:** `{"name": "SUSPECT-2024-114", "embeddings_removed": 2}` / `404`. Touches only the watchlist — `/face`'s gallery is a separate file and provably cannot be affected.
+**Type:** REST · **Payload:** none · **Returns:** `{"name": "SUSPECT-2024-114", "embeddings_removed": 2}` / `404`. Touches only the watchlist — `/face`'s gallery is a separate file and provably cannot be affected.
 
 ### GET /wanted/threshold
-**Owner:**
-**Type:** REST
-**Payload:** none
-**Returns:**
-```json
-{"threshold": 0.5, "min_face_px": 30,
- "startup_default": {"threshold": 0.5, "min_face_px": 30},
- "floor": 0.25, "watchlist_size": 3, "embeddings_total": 7,
- "applies_within_seconds": 2.0}
-```
-**Notes:** `startup_default` is what `config.json` said at boot, so drift between that and the live value is visible. `watchlist_size`/`embeddings_total` are included because the safe threshold depends on them — more enrolled embeddings means more chances for any given face to false-match.
+**Type:** REST · **Payload:** none
+**Returns:** `{"threshold": 0.5, "min_face_px": 30, "startup_default": {"threshold": 0.5, "min_face_px": 30}, "floor": 0.25, "watchlist_size": 3, "embeddings_total": 7, "applies_within_seconds": 2.0}`
+**Notes:** `startup_default` is what `config.json` said at boot, so drift between that and the live value is visible.
 
 ### PUT /wanted/threshold
-**Owner:**
 **Type:** REST
 **Payload:** `{"threshold": 0.58}` — `threshold` and/or `min_face_px`, at least one required
-**Returns:**
-```json
-{"threshold": 0.58, "min_face_px": 30,
- "previous": {"threshold": 0.5, "min_face_px": 30},
- "warnings": ["0.3 is below the measured default 0.5, raising the false-accusation rate"],
- "applies_within_seconds": 2.0}
-```
-**Notes:** Takes effect on the next detection cycle, **not persisted** — a restart reverts to `config.json`'s value, so re-apply on boot for a standing change. `422` below the `0.25` floor (at or below the access-control-validated `0.248`, open-set matching false-alarms constantly). Lowering below the measured default succeeds but returns a `warnings` entry naming what you gave up.
+**Returns:** `{"threshold": 0.58, "min_face_px": 30, "previous": {...}, "warnings": [...], "applies_within_seconds": 2.0}`
+**Notes:** Takes effect on the next detection cycle, **not persisted** — a restart reverts to `config.json`. `422` below `floor` (0.25). Lowering below the measured default (0.50) succeeds but returns a `warnings` entry naming what you gave up.
 
 ### Wanted alert payload (inside the common `/wanted/alerts/stream` shape)
 ```json
 {"class": "MAROUANE-B-2024-114", "confidence": 0.612, "bbox": [412.0,88.0,501.0,205.0],
  "det_score": 0.881, "face_px": 94, "snapshot": "<base64 jpeg>"}
 ```
-**Notes:** `confidence` is cosine similarity in `[-1,1]` (typically 0.25–0.75), not a probability — don't render as "% confident." `snapshot` (base64 JPEG, downscaled to 960px, ~20KB, **nothing written to disk**) attaches once, to the highest-confidence detection — a property of the frame, not of an individual match. `face_px` is the detected face size; anything under `min_face_px` (default 30) is discarded before matching.
+**Notes:** `confidence` is cosine similarity in `[-1,1]` (typically 0.25–0.75), not a probability. `snapshot` (base64 JPEG, ~20KB, nothing written to disk) attaches once, to the highest-confidence detection. `face_px` under `min_face_px` (default 30) is discarded before matching.
 
-**Hysteresis, and what it means for your timings:** `confirm_cycles` (default 2) sightings before an alert, `hold_cycles` (default 5) consecutive misses before the all-clear. Face recognition is intermittent in a way object detection isn't — a head turn drops a face for a cycle — so without this a present person would flicker "gone" and back. Alert latency is therefore `(confirm_cycles − 1) × update_interval`, and the all-clear lags by `hold_cycles × update_interval`. Entries replayed from the hold window carry `"held": true` and a bbox that is up to that many cycles stale.
+**Hysteresis:** `confirm_cycles` (default 2) sightings before an alert, `hold_cycles` (default 5) consecutive misses before the all-clear. Alert latency is `(confirm_cycles − 1) × update_interval`; the all-clear lags by `hold_cycles × update_interval`. Held-window replays carry `"held": true` and a bbox up to that many cycles stale.
 
-**`"detections": []` is ambiguous** between "nobody wanted is here", "no faces at all" and "camera pointed at a wall" — unknown people are deliberately never emitted, so this stream **cannot** double as a camera-liveness check. Use `GET /frame` for that.
+**`"detections": []` is ambiguous** between "nobody wanted is here", "no faces at all" and "camera pointed at a wall" — unknown people are never emitted, so this stream cannot double as a camera-liveness check. Use `GET /frame` for that.
 
-**Unknown faces are never emitted anywhere** — not in the stream, not to disk, not to a log. An innocent passer-by's embedding exists only until it is garbage-collected.
+**Unknown faces are never emitted anywhere** — not in the stream, not to disk, not to a log.
 
-**A match is evidence for a human to review, never an automatic action.** Measured open-set on LFW (200-person watchlist, 400 impostor probes): `threshold 0.50 → 91.0% detection rate, 0.0000 measured false-accept rate`. Read the false-accept figure carefully — 400 probes only resolve it down to roughly `2.5e-3`, so "0.0000" means *unmeasurably small at this sample size*, not zero; the honest bound is on the order of tens of false alarms per camera per day, and demonstrating a genuinely quiet camera would need far more probes than LFW provides. `0.50` is set deliberately above the point where the measured false-accept rate first reaches zero (`0.44`), because real footage is harder than LFW's frontal photos, and `confirm_cycles=2` multiplies two largely independent false-match probabilities on top — which is where the real safety margin comes from. Face-recognition error rates are also not uniform across demographic groups, which no threshold setting can fix.
+**A match is evidence for a human to review, never an automatic action.** Measured open-set on LFW (200-person watchlist, 400 impostor probes): `thr 0.50 → DIR 0.910, FAR 0.0000`. Read that `FAR` carefully — 400 probes only resolve false-alarm rate down to ~2.5e-3, so "0.0000" means *unmeasurably small at this sample size*, not zero; the honest bound is up to ~22 false alarms/camera/day, and a genuinely quiet camera would need ~100k probes (far beyond LFW) to demonstrate. 0.50 is chosen deliberately above the first-zero point (0.44) because real footage is harder than LFW's frontal photos, and `confirm_cycles=2` multiplies two largely independent false-match probabilities on top — which is where the real safety margin comes from. Face-recognition error rates are also not uniform across demographic groups, which no threshold setting can fix.
 
 ---
 
-## Cloud variant
+## Cloud variant (`features.cloud.main:app`)
 
-Identical routes, identical payloads, identical responses to the local app — same underlying
-application, not a reimplementation. Every model (person, weapon, fire, face detect+embed) runs
-on a remote GPU bridge instead of locally; POM fusion, the tracker, calibration, zones, and
-gallery matching always stay local, whichever variant is running. One addition:
+Identical routes, identical payloads, identical responses — same `app` object, not a reimplementation. Every model (person, weapon, fire, face detect+embed) runs on a molab GPU instead of locally; POM fusion, the tracker, calibration, zones, and gallery matching always stay local. One addition:
 
 ### GET /detector
-**Owner:**
 **Type:** REST · **Payload:** none · **Only exists on the cloud app.**
 **Returns:** `{"backend": "molab_bridge", "config": {...}, "models": {"person": {"weights": "remote: person", "bridge": {...}, "last_detect": {...}}, "weapon": {...}, "fire": {...}, "faces": {...}}}`
-**Notes:** Reports each model's connection status and recent timings separately, since one can be reachable while another is misconfigured. `bridge.connected: false` (or an `error` key) on any model means every call to it will **fail** rather than return an empty result — check here first when any feature reports an `error` state. Its absence on the local app is itself the answer for that app: which backend is running is a property of which app was launched, never of a config file that could disagree with reality.
+**Notes:** Reports each model's connection status and recent timings separately, since one can be reachable while another is misconfigured. `bridge.connected: false` (or an `error` key) on any model means every call to it will **fail** rather than return an empty result — check here first when any feature reports an `error` state. Its absence on `features.main:app` is itself the answer for that app: which backend is running is a property of which app you launched, never of a config file that could disagree with reality.
