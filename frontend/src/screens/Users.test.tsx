@@ -168,7 +168,16 @@ describe('Users', () => {
     renderScreen()
     await screen.findByRole('table', {}, TABLE_WAIT)
 
-    await user.selectOptions(screen.getByLabelText('Agency for Nadia Cherkaoui'), AGENCY_ID_RABAT)
+    /* The agency select renders as soon as the users table does, but its
+       options come from a second, independent query (GET /api/agencies) with
+       its own random mock latency - so the control can exist before Rabat is
+       one of its options. Wait for the option itself, not just the table. */
+    const agencySelect = screen.getByLabelText('Agency for Nadia Cherkaoui')
+    await waitFor(() => {
+      expect(within(agencySelect).getAllByRole('option').length).toBeGreaterThan(1)
+    }, TABLE_WAIT)
+
+    await user.selectOptions(agencySelect, AGENCY_ID_RABAT)
 
     await waitFor(() => {
       expect(screen.getByLabelText('Agency for Nadia Cherkaoui')).toHaveValue(AGENCY_ID_RABAT)
