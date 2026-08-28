@@ -1049,6 +1049,137 @@ equal to `critical_max`.
 
 ---
 
+## 12. Cameras
+
+### GET /api/agencies/{agency_id}/cameras
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Response body:**
+
+```json
+[
+  {
+    "id": "CAMERA_UUID",
+    "agency_id": "AGENCY_UUID",
+    "name": "cam1",
+    "stream_url": "rtsp://192.168.1.16:8554/stream",
+    "status": "OFFLINE"
+  }
+]
+```
+
+**Success status:** `200 OK`
+
+---
+
+### POST /api/agencies/{agency_id}/cameras
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Request body:**
+
+```json
+{
+  "name": "cam1",
+  "stream_url": "rtsp://192.168.1.16:8554/stream"
+}
+```
+
+**Response body:** Camera object (see above). `status` defaults to `"OFFLINE"`.
+**Success status:** `201 Created`
+**Notes:** `name` must match exactly the label registered on the `ai/` side via
+`POST /{f}/sources` (`contracts/ai-service.md`) — that is the name
+`backend/app/ai_alerts/consumer.py::_resolve_camera_id()` looks up to attach
+an `Alert` to its camera. A name that matches no `ai/` source is still
+accepted — the camera row just stays unlinked from any alert until the two
+match.
+
+---
+
+### PUT /api/cameras/{camera_id}
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Request body:**
+
+```json
+{
+  "name": "cam1",
+  "stream_url": "rtsp://192.168.1.16:8554/stream"
+}
+```
+
+**Response body:** Camera object.
+**Success status:** `200 OK`
+
+---
+
+### DELETE /api/cameras/{camera_id}
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`
+**Response body:** Empty
+**Success status:** `204 No Content`
+
+---
+
+## 13. AI alert thresholds
+
+### GET /api/ai-alerts/thresholds/weapon
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Response body:**
+
+```json
+{
+  "confidence": 0.6
+}
+```
+
+**Success status:** `200 OK`
+
+---
+
+### PUT /api/ai-alerts/thresholds/weapon
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Request body:**
+
+```json
+{
+  "confidence": 0.65
+}
+```
+
+**Response body:**
+
+```json
+{
+  "confidence": 0.65
+}
+```
+
+**Success status:** `200 OK`
+**Notes:** Single global value — `ai/` has no multi-agency concept (see
+`DEFAULT_AGENCY_ID` in `CLAUDE.md`), so this isn't scoped per agency either.
+`confidence` must be in `]0, 1]`. Takes effect immediately, no restart
+needed — the backend must call `classifier.definir_seuil_confiance_arme()`
+in memory in addition to persisting to DB
+(`backend/app/ai_alerts/classifier.py`). Only covers the backend's
+business-level threshold for `weapon` — not the CV model's own `conf` in
+`ai/config.json`, which is a separate, currently non-adjustable layer.
+
+---
+
 ## Permission summary
 
 - **ADMIN:** global access to agencies, users, employees, visitors, tickets,
@@ -1057,5 +1188,5 @@ equal to `critical_max`.
   resources according to the endpoint role list.
 - **AGENT:** manages visitors, tickets and can read services and service
   points.
-- **SECURITY:** manages attendance and visitors.
+- **SECURITY:** manages attendance, visitors, cameras and AI alert thresholds.
 - **TECHNICIAN:** manages IoT devices and sensor thresholds.
