@@ -14,6 +14,7 @@ from app.api.thresholds import router as thresholds_router
 from app.mqtt.attendance_consumer import attendance_consumer
 from app.mqtt.sensor_consumer import sensor_consumer
 from app.websocket.attendance import router as attendance_websocket_router
+from app.ai_alerts.consumer import ai_alerts_consumer
 
 
 app = FastAPI(
@@ -46,6 +47,16 @@ def start_mqtt_consumer() -> None:
 def stop_mqtt_consumer() -> None:
     attendance_consumer.stop()
     sensor_consumer.stop()
+
+
+@app.on_event("startup")
+async def start_ai_alerts_consumer() -> None:
+    await ai_alerts_consumer.start()
+
+
+@app.on_event("shutdown")
+async def stop_ai_alerts_consumer() -> None:
+    await ai_alerts_consumer.stop()
 
 
 @app.get("/health", tags=["System"])

@@ -13,3 +13,5 @@ redis
 celery
 pytest
 httpx
+websockets
+requests
