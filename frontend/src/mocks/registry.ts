@@ -1,4 +1,5 @@
 import { ApiError } from '@/api/errors'
+import { assertRoleAllowed } from './roles'
 import type { MockScenario } from './scenario'
 
 /**
@@ -49,6 +50,10 @@ export function hasMockWriter(key: string): boolean {
 }
 
 export function resolveMockWrite<T>(key: string, body: unknown, path: string): T {
+  /* Before the writer, so a refused call changes nothing - the stores are real
+     mutable state and a 403 after the write would leave them out of step. */
+  assertRoleAllowed(key)
+
   const writer = writers.get(key)
   if (!writer) {
     throw new ApiError(
@@ -60,6 +65,11 @@ export function resolveMockWrite<T>(key: string, body: unknown, path: string): T
 }
 
 export function resolveMock<T>(key: string, scenario: MockScenario): T {
+  /* Ahead of the lookup, because the real API refuses a caller before it asks
+     whether the resource exists - a 403 for a role that may not read this
+     endpoint, whatever the fixture would have returned. */
+  assertRoleAllowed(key)
+
   const variants = registry.get(key) as MockVariants<T> | undefined
 
   if (!variants) {

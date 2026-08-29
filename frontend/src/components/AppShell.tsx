@@ -1,44 +1,42 @@
-import { NavLink, Outlet, useLocation } from 'react-router'
-import {
-  Bell,
-  Building2,
-  Fan,
-  FlaskConical,
-  Grid3x3,
-  IdCard,
-  KeyRound,
-  LogOut,
-  ShieldCheck,
-  UserCheck,
-  Users,
-} from 'lucide-react'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router'
+import { Building2, FlaskConical, LogOut, ShieldCheck } from 'lucide-react'
 import { MOCK_SCENARIO, USE_MOCKS } from '@/api/config'
+import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
+import { canReach } from '@/auth/access'
+import { landingPathFor } from '@/auth/landing'
+import { SCREENS } from '@/auth/screens'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
-
-const NAV = [
-  { to: '/presence', label: 'Employee presence', icon: UserCheck },
-  { to: '/employees', label: 'Employees', icon: IdCard },
-  { to: '/agencies', label: 'Agencies', icon: Building2 },
-  { to: '/users', label: 'User accounts', icon: ShieldCheck },
-  { to: '/climate', label: 'Climate', icon: Fan },
-  { to: '/visitors', label: 'Visitor queue', icon: Users },
-  { to: '/occupancy', label: 'Occupancy', icon: Grid3x3 },
-  { to: '/alerts', label: 'Alerts', icon: Bell },
-  { to: '/controls', label: 'Manual controls', icon: KeyRound },
-] as const
 
 export function AppShell() {
   // Keying the main region on pathname replays the enter animation per route,
   // so navigation reads as a transition rather than an instant swap.
   const { pathname } = useLocation()
   const { user, signOut } = useSession()
+  const scope = useScope()
+
+  /* Only what this role can actually use. A link that answers with a refusal
+     is not a link, and the nav is the one place that has to be true. */
+  const nav = SCREENS.filter(({ to }) => canReach(user?.role, to))
+
+  /* The URL is the other way in, and hiding the link without closing it would
+     leave the boundary half-applied. Sent to where their role starts rather
+     than to a refusal, because there is nothing here for them to act on.
+     Guarded once for every child route: this is the layout all of them share. */
+  if (!canReach(user?.role, pathname)) {
+    return <Navigate to={landingPathFor(user?.role)} replace />
+  }
 
   return (
-    <div className="bg-canvas flex min-h-screen flex-col md:flex-row">
+    /* No background here on purpose. The glow lives on <body>, and an opaque
+       fill on the app root would paint straight over it - which also takes the
+       translucent cards with it, since glass with nothing behind it is just a
+       dark rectangle. */
+    <div className="flex min-h-screen flex-col md:flex-row">
       <a
         href="#main"
         className="bg-accent bg-accent-gradient text-ink sr-only rounded-md px-3 py-2 text-sm font-medium focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50"
@@ -46,12 +44,22 @@ export function AppShell() {
         Skip to content
       </a>
 
-      {/* The sidebar sits DARKER than the content it frames, not lighter. A
-          navigation panel lit brighter than the work pulls the eye away from
-          the thing being looked at all day. */}
+      {/* The sidebar has no surface of its own and no dividing rule - it sits
+          directly on the canvas, and the only lit thing in it is the active
+          item. A navigation panel with its own fill competes with the cards it
+          frames; leaving it transparent lets the glass do all the layering. */}
+      {/* Pinned to the viewport rather than scrolling with the page. The
+          sidebar's bottom section - the theme control, the account, sign out -
+          used to sit at the end of a document that is several screens tall, so
+          reaching it meant scrolling past the whole roster. Those three are
+          the controls least related to the data being read, which makes
+          "scroll to the end of the data" exactly the wrong way to get to them.
+
+          h-screen with its own overflow, so a long nav scrolls inside the
+          column instead of pushing the account block off the bottom. */}
       <nav
         aria-label="Main"
-        className="bg-canvas ring-line/70 shrink-0 md:flex md:w-60 md:flex-col md:ring-1"
+        className="shrink-0 md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col md:overflow-y-auto"
       >
         <div className="flex items-center gap-2.5 px-5 pt-6 pb-7">
           <ShieldCheck className="text-accent size-[1.15rem]" aria-hidden />
@@ -61,43 +69,48 @@ export function AppShell() {
         </div>
 
         <ul className="flex flex-wrap gap-0.5 px-3 pb-4 md:flex-col md:flex-nowrap">
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {nav.map(({ to, label, icon: Icon }) => (
             <li key={to}>
               <NavLink
                 to={to}
                 className={({ isActive }) =>
                   cn(
-                    'group ease-soft rounded-control relative flex items-center gap-3 px-3 py-2 text-[0.8125rem] transition-colors duration-150',
-                    /* The active item is marked by its own surface plus the
-                       rail below - no tint. A coloured wash behind text is
-                       the easiest way to make a sidebar look templated, and
-                       it costs contrast on the label itself. */
+                    'group ease-soft relative flex items-center gap-3 rounded-[0.9375rem] p-2.5 text-sm transition-all duration-200',
+                    /* The selected item is a SOLID panel, not glass, and that
+                       is measured from the design rather than assumed. Glass
+                       here would be wrong twice over: the sidebar sits on the
+                       darkest part of the page, so there is nothing behind it
+                       worth showing through, and a translucent selection on a
+                       transparent column reads as a smudge rather than a
+                       press. Solid gives the item a definite edge. */
                     isActive
-                      ? 'bg-panel text-ink font-medium'
-                      : 'text-ink-2 hover:bg-panel/60 hover:text-ink',
+                      ? 'bg-panel-2 text-ink shadow-panel font-medium'
+                      : 'text-ink-2 hover:text-ink',
                   )
                 }
               >
                 {({ isActive }) => (
                   <>
-                    {/* The rail grows out of nothing rather than fading in.
-                        Scaling on the Y axis reads as the marker travelling to
-                        the new item; opacity alone reads as two separate
-                        things blinking. */}
+                    {/* The icon lives in a chip, and the chip is what carries
+                        the state - a flat accent fill when selected, the panel
+                        colour when not. Flat rather than the gradient the
+                        buttons use: at 32px a two-stop gradient reads as a
+                        muddle, and the design keeps its gradients for surfaces
+                        big enough to show them.
+
+                        Marking selection on a small square of colour rather
+                        than on the label keeps the text at full contrast in
+                        both states, which a highlighted row never manages. */}
                     <span
-                      aria-hidden
                       className={cn(
-                        'bg-accent ease-soft absolute top-2 bottom-2 -left-3 w-[3px] origin-center rounded-full transition-transform duration-300',
-                        isActive ? 'scale-y-100' : 'scale-y-0',
+                        'ease-soft grid size-8 shrink-0 place-items-center rounded-[0.75rem] transition-all duration-200',
+                        isActive
+                          ? 'bg-accent text-ink'
+                          : 'bg-panel-2 text-ink-2 group-hover:text-ink',
                       )}
-                    />
-                    <Icon
-                      className={cn(
-                        'size-4 transition-colors',
-                        isActive ? 'text-accent' : 'text-ink-3 group-hover:text-ink-2',
-                      )}
-                      aria-hidden
-                    />
+                    >
+                      <Icon className="size-4" aria-hidden />
+                    </span>
                     {label}
                   </>
                 )}
@@ -111,6 +124,11 @@ export function AppShell() {
              can't I see the other agency?" has a visible answer instead of
              looking like a bug. */
           <div className="mt-auto hidden px-3 pt-3 pb-4 md:block">
+            {/* Sits with the account block rather than in the page header:
+                it is a preference about the whole app, not about this screen,
+                and putting it beside the sign-out control groups it with the
+                other things that are about "you" rather than about the data. */}
+            <ThemeToggle className="mb-3 ml-1" />
             <div className="flex items-center gap-2.5 px-1 py-1">
               <Avatar name={user.full_name} />
               <div className="min-w-0 flex-1">
@@ -140,13 +158,30 @@ export function AppShell() {
         {USE_MOCKS && (
           /* Always visible while mocking. A screen of fake numbers must never
              be mistakable for a live one. */
-          <div className="bg-warn/8 flex items-center gap-2.5 px-6 py-2">
+          <div className="bg-warn/8 flex flex-wrap items-center gap-x-2.5 gap-y-1 px-6 py-2">
             <Badge tone="warn" icon={<FlaskConical className="size-3.5" aria-hidden />}>
               Fixture data
             </Badge>
             <span className="text-warn/85 text-xs">
               No backend connected · scenario <span className="tabular">{MOCK_SCENARIO}</span>
             </span>
+          </div>
+        )}
+
+        {/* Always on while a branch is open, and only leaveable by leaving it.
+            An admin reading one branch's numbers as the whole estate is the
+            failure this control could cause, so the state it puts them in is
+            never off-screen. */}
+        {scope.agencyName && (
+          <div className="border-accent/25 bg-accent/8 flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-6 py-2">
+            <Building2 className="text-accent size-3.5 shrink-0" aria-hidden />
+            <span className="text-ink text-xs">
+              Working inside <span className="font-medium">{scope.agencyName}</span> — everything
+              below is this branch only.
+            </span>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={scope.leave}>
+              Leave branch
+            </Button>
           </div>
         )}
 

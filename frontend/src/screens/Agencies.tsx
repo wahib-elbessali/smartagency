@@ -4,6 +4,7 @@ import { AlertTriangle, Building2, Pencil, Plus, PowerOff, Trash2 } from 'lucide
 import { createAgency, deleteAgency, fetchAgencies, updateAgency } from '@/api/endpoints/agencies'
 import { ApiError, describeApiError } from '@/api/errors'
 import type { Agency, AgencyCreate } from '@/api/types'
+import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { Badge } from '@/components/ui/Badge'
@@ -34,9 +35,9 @@ import { Screen } from './Screen'
  * clicking them succeeds. Edit stays visible for everyone who can see the row,
  * since a manager editing their own agency is exactly what the route allows.
  *
- * The screen itself is not hidden from other roles: reaching it and meeting the
- * refusal state tells you the boundary exists, where a missing nav item just
- * looks like the feature was never built.
+ * The screen is not offered to the other three roles at all - no nav item, and
+ * the URL redirects (auth/access.ts). The refusal state below is the backstop
+ * for a session whose role changed under it, not the normal way here.
  */
 
 /** "08:30:00" reads as machine output; "08:30" is what a person wrote down. */
@@ -48,6 +49,7 @@ function clockOf(value: string | null): string {
 
 export default function Agencies() {
   const { user } = useSession()
+  const scope = useScope()
   const queryClient = useQueryClient()
 
   const isAdmin = user?.role === 'ADMIN'
@@ -126,6 +128,22 @@ export default function Agencies() {
               <PanelHeader
                 action={
                   <div className="flex gap-1.5">
+                    {/* Only an admin has more than one branch to move between,
+                        so only an admin is offered the move. A manager is
+                        already inside theirs and always was. */}
+                    {isAdmin && (
+                      <Button
+                        size="sm"
+                        variant={scope.agencyId === agency.id ? 'primary' : 'ghost'}
+                        onClick={() =>
+                          scope.agencyId === agency.id
+                            ? scope.leave()
+                            : scope.enter({ id: agency.id, name: agency.name })
+                        }
+                      >
+                        {scope.agencyId === agency.id ? 'Leave' : 'Open'}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="ghost"

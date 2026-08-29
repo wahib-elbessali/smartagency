@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { ROLES, type Agency, type Role, type UserAccount, type UserCreate } from '@/api/types'
+import { type Agency, type Role, type UserAccount, type UserCreate } from '@/api/types'
+import { ASSIGNABLE_ROLES } from '@/auth/access'
 import type { Employee } from '@/api/types'
 import { ApiError, describeApiError } from '@/api/errors'
 import { Button } from '@/components/ui/Button'
@@ -10,11 +11,14 @@ import { Field } from '@/components/ui/Field'
  *
  * Two things make this different from EmployeeForm.
  *
- * First, the agency rule is inverted from the intuitive one: an ADMIN must have
- * NO agency and every other role must have one. Somebody filling this in will
- * not guess that, so the picker disappears entirely when ADMIN is chosen and
- * says why, rather than sitting there greyed out or - worse - collecting a
- * value that produces a 422.
+ * First, this form cannot make an admin. ADMIN is absent from the role picker
+ * because nobody is made an admin from this application (auth/access.ts), and
+ * with it goes the awkward case this form used to be shaped around: the agency
+ * rule is inverted for ADMIN - it must have NO agency where every other role
+ * must have one - so the picker had to disappear and explain itself. Every role
+ * it can now assign needs an agency, which is the intuitive rule and the only
+ * one left to implement. The API still accepts role=ADMIN; this form does not
+ * offer it.
  *
  * Second, editing is genuinely narrower than creating. PUT /api/users/{id}
  * accepts no role and no agency; both move through their own PATCH routes,
@@ -129,20 +133,19 @@ export function UserForm({
   const [touched, setTouched] = useState(false)
 
   const editing = user !== null
-  const isAdminRole = values.role === 'ADMIN'
 
   const fullNameError = nameError(values.full_name, touched)
   const mailError = emailError(values.email, touched)
   const passError = passwordError(values.password, !editing, touched)
-  /* An agency is required for every role except ADMIN, which must not have one. */
-  const agencyError =
-    !editing && touched && !isAdminRole && values.agency_id === '' ? 'Required.' : undefined
+  /* Required for every role this form can assign. ADMIN - the one role that
+     must NOT have an agency - is not among them (auth/access.ts). */
+  const agencyError = !editing && touched && values.agency_id === '' ? 'Required.' : undefined
 
   const invalid =
     nameError(values.full_name, true) !== undefined ||
     emailError(values.email, true) !== undefined ||
     passwordError(values.password, !editing, true) !== undefined ||
-    (!editing && !isAdminRole && values.agency_id === '')
+    (!editing && values.agency_id === '')
 
   const set = <K extends keyof UserFormValues>(key: K, value: UserFormValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }))
@@ -164,8 +167,7 @@ export function UserForm({
       email: values.email.trim(),
       password: values.password,
       role: values.role,
-      /* Explicit null, not omitted: an ADMIN must positively have no agency. */
-      agency_id: isAdminRole ? null : values.agency_id,
+      agency_id: values.agency_id,
       employee_id: values.employee_id === '' ? null : values.employee_id,
     })
   }
@@ -232,19 +234,18 @@ export function UserForm({
               <select
                 {...props}
                 value={values.role}
-                onChange={(e) => {
-                  const role = e.target.value as Role
-                  /* Switching to ADMIN clears the agency, and the employee link
-                     with it - a link is only valid inside a shared agency. */
-                  setValues((current) => ({
-                    ...current,
-                    role,
-                    agency_id: role === 'ADMIN' ? '' : current.agency_id,
-                    employee_id: role === 'ADMIN' ? '' : current.employee_id,
-                  }))
-                }}
+                onChange={(e) =>
+                  setValues((current) => ({ ...current, role: e.target.value as Role }))
+                }
               >
-                {ROLES.map((role) => (
+                {/* ADMIN is not on offer. Nobody is made an admin from this
+                    application (auth/access.ts), so the whole inverted-agency
+                    branch this form used to carry - hide the picker, explain
+                    why, send an explicit null - is gone with it. The rule is
+                    still true of the API; it just cannot be reached from here,
+                    and a form that handled a case it can never see would be
+                    describing an application that does not exist. */}
+                {ASSIGNABLE_ROLES.map((role) => (
                   <option key={role} value={role}>
                     {role}
                   </option>
@@ -253,64 +254,54 @@ export function UserForm({
             )}
           </Field>
 
-          {isAdminRole ? (
-            <div className="self-end">
-              <p className="border-line bg-panel-2 text-ink-3 rounded-lg border p-3 text-xs leading-relaxed">
-                An admin is global and has no agency. Assigning one is rejected.
-              </p>
-            </div>
-          ) : (
-            <Field id="agency_id" label="Agency" required error={agencyError}>
-              {(props) => (
-                <select
-                  {...props}
-                  value={values.agency_id}
-                  onChange={(e) =>
-                    setValues((current) => ({
-                      ...current,
-                      agency_id: e.target.value,
-                      /* A link only holds inside one agency, so moving the
-                         agency drops it rather than sending a 422. */
-                      employee_id: '',
-                    }))
-                  }
-                >
-                  <option value="">Select an agency…</option>
-                  {agencies.map((agency) => (
-                    <option key={agency.id} value={agency.id}>
-                      {agency.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-          )}
+          <Field id="agency_id" label="Agency" required error={agencyError}>
+            {(props) => (
+              <select
+                {...props}
+                value={values.agency_id}
+                onChange={(e) =>
+                  setValues((current) => ({
+                    ...current,
+                    agency_id: e.target.value,
+                    /* A link only holds inside one agency, so moving the
+                       agency drops it rather than sending a 422. */
+                    employee_id: '',
+                  }))
+                }
+              >
+                <option value="">Select an agency…</option>
+                {agencies.map((agency) => (
+                  <option key={agency.id} value={agency.id}>
+                    {agency.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
         </div>
       )}
 
-      {!isAdminRole && (
-        <Field
-          id="employee_id"
-          label="Linked employee"
-          hint="Optional. Connects this login to the person with the card, in the same agency."
-        >
-          {(props) => (
-            <select
-              {...props}
-              value={values.employee_id}
-              onChange={(e) => set('employee_id', e.target.value)}
-              disabled={values.agency_id === ''}
-            >
-              <option value="">Not linked</option>
-              {linkable.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.first_name} {employee.last_name}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-      )}
+      <Field
+        id="employee_id"
+        label="Linked employee"
+        hint="Optional. Connects this login to the person with the card, in the same agency."
+      >
+        {(props) => (
+          <select
+            {...props}
+            value={values.employee_id}
+            onChange={(e) => set('employee_id', e.target.value)}
+            disabled={values.agency_id === ''}
+          >
+            <option value="">Not linked</option>
+            {linkable.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.first_name} {employee.last_name}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
 
       {serverMessage && (
         <p

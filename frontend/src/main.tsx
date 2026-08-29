@@ -4,6 +4,8 @@ import { BrowserRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './App'
 import { SessionProvider } from '@/auth/session'
+import { ScopeProvider } from '@/agency/scope'
+import { ThemeProvider } from '@/theme/theme'
 import { ApiError } from '@/api/errors'
 import './mocks'
 import './index.css'
@@ -26,12 +28,20 @@ if (!rootElement) throw new Error('Root element #root is missing from index.html
 
 createRoot(rootElement).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <SessionProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </SessionProvider>
-    </QueryClientProvider>
+    {/* Outermost: the theme applies to the login screen and to any error
+        boundary too, both of which render outside the session. */}
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider>
+          {/* Inside the session because the branch an admin is working in is
+              theirs, and has to be dropped when they are. */}
+          <ScopeProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </ScopeProvider>
+        </SessionProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   </StrictMode>,
 )

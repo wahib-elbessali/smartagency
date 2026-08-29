@@ -1,5 +1,6 @@
-import { registerMock } from '../registry'
-import type { AttendanceRecord } from '@/api/types'
+import { registerMock, registerMockWriter } from '../registry'
+import * as attendanceStore from '../attendanceStore'
+import type { AttendanceMark, AttendanceRecord } from '@/api/types'
 import { AGENCY_ID, fullNameOf, makeEmployees } from './people'
 
 /**
@@ -74,3 +75,32 @@ registerMock<AttendanceRecord[]>('GET /api/attendance/today', {
   empty: () => [],
   large,
 })
+
+/* The id is in the path, not the body - same as the real request. */
+function idFrom(path: string): string {
+  return path.split('/').pop() ?? ''
+}
+
+/**
+ * Per-employee history comes from the writable store rather than from `normal`
+ * above, because it has to include anything just recorded through check-in.
+ * All three scenarios share it: the history is about one employee, so the
+ * empty/large distinction has nothing to vary.
+ */
+registerMock<AttendanceRecord[]>('GET /api/attendance/employee/{id}', {
+  normal: () => [],
+  empty: () => [],
+  large: () => [],
+})
+
+registerMockWriter('GET /api/attendance/employee/{id}', (_body, path) =>
+  attendanceStore.historyFor(idFrom(path)),
+)
+
+registerMockWriter('POST /api/attendance/check-in', (body) =>
+  attendanceStore.checkIn(body as AttendanceMark),
+)
+
+registerMockWriter('POST /api/attendance/check-out', (body) =>
+  attendanceStore.checkOut(body as AttendanceMark),
+)

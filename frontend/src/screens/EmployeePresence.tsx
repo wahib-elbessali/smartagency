@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, DoorOpen, LogIn, RefreshCw, UserCheck } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, DoorOpen, LogIn, RefreshCw, UserCheck, UserPlus } from 'lucide-react'
 import { isLate, type AttendanceEntry } from '@/api/attendanceMerge'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchEmployees } from '@/api/endpoints/employees'
 import { useAttendanceToday } from '@/hooks/useAttendanceToday'
+import { useScope, withinScope } from '@/agency/ScopeContext'
 import type { Agency, Employee } from '@/api/types'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { StreamStatusBadge } from '@/components/StreamStatusBadge'
@@ -16,8 +18,11 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Clock } from '@/components/ui/Time'
+import { Dialog } from '@/components/ui/Dialog'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { StatTile } from '@/components/ui/StatTile'
+import { EmployeeHistory } from './EmployeeHistory'
+import { RecordAttendance } from './RecordAttendance'
 import { arrivalsByHalfHour, busiestIndex, headcountSeries, methodMix } from './presenceSeries'
 import { Screen } from './Screen'
 
@@ -38,6 +43,21 @@ import { Screen } from './Screen'
 
 export default function EmployeePresence() {
   const attendance = useAttendanceToday()
+  const scope = useScope()
+
+  /**
+   * Filtered once, here, and everything downstream follows.
+   *
+   * The stat tiles, the three charts and the table all derive from this list,
+   * so scoping it at the source is what keeps "in the building" and the roster
+   * underneath it counting the same people. Filtering in the table alone would
+   * leave an admin reading one branch's roster under the whole estate's totals,
+   * which is a worse answer than either one on its own.
+   */
+  const entries = useMemo(
+    () => withinScope(attendance.entries, scope.agencyId),
+    [attendance.entries, scope.agencyId],
+  )
 
   const employees = useQuery({
     queryKey: ['employees'],
@@ -63,17 +83,22 @@ export default function EmployeePresence() {
 
   const lateCount = useMemo(
     () =>
-      attendance.entries.filter(
+      entries.filter(
         (entry) => isLate(entry.check_in, agencyById.get(entry.agency_id)?.opening_time) === true,
       ).length,
-    [attendance.entries, agencyById],
+    [entries, agencyById],
   )
 
   const knowsOpeningTime = agencyById.size > 0
 
-  const arrivals = useMemo(() => arrivalsByHalfHour(attendance.entries), [attendance.entries])
-  const headcount = useMemo(() => headcountSeries(attendance.entries), [attendance.entries])
-  const methods = useMemo(() => foldToPalette(methodMix(attendance.entries)), [attendance.entries])
+  const [recording, setRecording] = useState(false)
+  /* The employee whose history is open, or null. Held as the row rather than
+     just an id so the dialog can title itself without a second lookup. */
+  const [viewing, setViewing] = useState<AttendanceEntry | null>(null)
+
+  const arrivals = useMemo(() => arrivalsByHalfHour(entries), [entries])
+  const headcount = useMemo(() => headcountSeries(entries), [entries])
+  const methods = useMemo(() => foldToPalette(methodMix(entries)), [entries])
 
   return (
     <Screen
@@ -85,6 +110,12 @@ export default function EmployeePresence() {
           <Button size="sm" onClick={attendance.refetch} aria-label="Refresh attendance">
             <RefreshCw className="size-3.5" aria-hidden />
             Refresh
+          </Button>
+          {/* Attendance otherwise only arrives from the RFID readers over MQTT,
+              so somebody who forgot their badge cannot be recorded at all. */}
+          <Button variant="primary" size="sm" onClick={() => setRecording(true)}>
+            <UserPlus className="size-3.5" aria-hidden />
+            Record attendance
           </Button>
         </>
       }
@@ -181,7 +212,7 @@ export default function EmployeePresence() {
       <AsyncBoundary
         isPending={attendance.isPending}
         error={attendance.error}
-        isEmpty={attendance.entries.length === 0}
+        isEmpty={entries.length === 0}
         emptyMessage="Nobody has checked in today yet."
         /* GET /api/attendance/today is restricted to ADMIN, MANAGER and
            SECURITY, so AGENT and TECHNICIAN land here. Naming the roles saves
@@ -201,13 +232,37 @@ export default function EmployeePresence() {
           </PanelHeader>
           <PanelBody className="px-0 py-0">
             <RosterTable
-              entries={attendance.entries}
+              entries={entries}
               employeeById={employeeById}
               agencyById={agencyById}
+              onSelect={setViewing}
             />
           </PanelBody>
         </Panel>
       </AsyncBoundary>
+
+      <Dialog
+        open={recording}
+        title="Record attendance"
+        description="Stands in for a badge reader, for anyone who arrived without their card."
+        onClose={() => setRecording(false)}
+      >
+        {recording && <RecordAttendance onDone={() => setRecording(false)} />}
+      </Dialog>
+
+      <Dialog
+        open={viewing !== null}
+        title={viewing ? viewing.employee_name : ''}
+        description="Attendance history, most recent first."
+        onClose={() => setViewing(null)}
+      >
+        {viewing && (
+          <EmployeeHistory
+            employeeId={viewing.employee_id}
+            openingTime={agencyById.get(viewing.agency_id)?.opening_time}
+          />
+        )}
+      </Dialog>
     </Screen>
   )
 }
@@ -238,10 +293,12 @@ function RosterTable({
   entries,
   employeeById,
   agencyById,
+  onSelect,
 }: {
   entries: AttendanceEntry[]
   employeeById: Map<string, Employee>
   agencyById: Map<string, Agency>
+  onSelect: (entry: AttendanceEntry) => void
 }) {
   return (
     <div className="overflow-x-auto">
@@ -280,7 +337,16 @@ function RosterTable({
                 className="border-line/70 hover:bg-panel-2/60 ease-soft border-b transition-colors duration-150 last:border-b-0"
               >
                 <th scope="row" className="px-5 py-3 text-left font-normal">
-                  <div className="flex items-center gap-3">
+                  {/* A button, not a row click: the history is a real
+                      navigation and has to be reachable from the keyboard.
+                      Wrapping the whole row instead would swallow any future
+                      control inside it. */}
+                  <button
+                    type="button"
+                    onClick={() => onSelect(entry)}
+                    className="ease-soft flex w-full items-center gap-3 text-left transition-opacity duration-150 hover:opacity-80"
+                    aria-label={`Attendance history for ${entry.employee_name}`}
+                  >
                     <Avatar name={entry.employee_name} />
                     <div className="min-w-0">
                       <div className="text-ink truncate font-medium">{entry.employee_name}</div>
@@ -290,7 +356,7 @@ function RosterTable({
                         </div>
                       )}
                     </div>
-                  </div>
+                  </button>
                 </th>
                 <td className="text-ink-2 px-5 py-3">
                   {/* Two different unknowns, deliberately worded differently.
