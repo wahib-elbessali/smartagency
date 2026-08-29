@@ -8,7 +8,7 @@ from app.core.security import get_current_user, require_roles
 from app.database.connection import get_db
 from app.models.entities import Counter, RoleName, Service, Ticket, TicketStatus, User, Visitor
 from app.schemas.ticket import TicketCallRequest, TicketCreate, TicketResponse
-from app.services.ticket_service import next_ticket_number
+from app.services.ticket_service import next_ticket_number, publish_ticket_called
 
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -135,6 +135,7 @@ def call_ticket(
     ticket.called_at = datetime.now(timezone.utc)
     db.commit()
     ticket = db.scalar(ticket_query().where(Ticket.id == ticket.id))
+    publish_ticket_called(db, ticket)
     return ticket_to_response(ticket)
 
 
