@@ -84,6 +84,66 @@ DELETE /api/devices/{device_id}
 Un ADMIN peut gérer toutes les agences. Un MANAGER peut gérer uniquement son agence.
 Une agence contient des zones, des guichets, des employés, des appareils et des caméras.
 
+## Caméras et alertes IA d'armes
+
+Routes de gestion des caméras :
+
+```text
+GET    /api/agencies/{agency_id}/cameras
+POST   /api/agencies/{agency_id}/cameras
+PUT    /api/cameras/{camera_id}
+DELETE /api/cameras/{camera_id}
+```
+
+Créer chaque caméra avec un nom unique qui correspond exactement au nom de la
+source déclarée dans le service IA :
+
+```json
+{
+  "name": "cam1",
+  "stream_url": "rtsp://192.168.1.16:8554/stream"
+}
+```
+
+Le backend synchronise automatiquement les caméras avec
+`POST /weapon/sources` du service IA et consomme
+`WS /weapon/alerts/stream`. Une détection reçue au-dessus du seuil est
+enregistrée dans `alerts` avec `camera_id`, `agency_id`, le niveau `CRITICAL`
+et le statut `OPEN`. Une mise à jour sans détection clôture l'alerte ouverte.
+
+Le service IA doit être lancé sur un port différent de l'API backend, par
+exemple :
+
+```powershell
+uvicorn ai.main:app --host 127.0.0.1 --port 8001
+```
+
+Configuration backend correspondante dans `.env` :
+
+```env
+AI_SERVICE_URL=http://127.0.0.1:8001
+AI_ALERTS_ENABLED=true
+```
+
+Seuil métier global pour les armes :
+
+```text
+GET /api/ai-alerts/thresholds/weapon
+PUT /api/ai-alerts/thresholds/weapon
+```
+
+Exemple :
+
+```json
+{
+  "confidence": 0.60
+}
+```
+
+Le seuil accepte une valeur strictement supérieure à `0` et inférieure ou
+égale à `1`. Il est conservé dans PostgreSQL et appliqué immédiatement. Il
+est distinct du `conf` interne du modèle IA.
+
 ## Employés
 
 ```text
