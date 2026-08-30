@@ -1,5 +1,6 @@
 from app.models.entities import (
     Agency,
+    AIAlertThreshold,
     Alert,
     Attendance,
     AuditLog,
@@ -20,6 +21,7 @@ from app.models.entities import (
 
 __all__ = [
     "Agency",
+    "AIAlertThreshold",
     "Alert",
     "Attendance",
     "AuditLog",

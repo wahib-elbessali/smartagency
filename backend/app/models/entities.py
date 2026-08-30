@@ -280,6 +280,7 @@ class SensorThreshold(Base):
 
 class Camera(Base):
     __tablename__ = "cameras"
+    __table_args__ = (UniqueConstraint("name", name="uq_camera_name"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     agency_id: Mapped[str] = mapped_column(ForeignKey("agencies.id"), nullable=False, index=True)
@@ -308,6 +309,25 @@ class Alert(Base):
 
     agency: Mapped["Agency"] = relationship(back_populates="alerts")
     camera: Mapped["Camera | None"] = relationship(back_populates="alerts")
+
+
+class AIAlertThreshold(Base):
+    """Persisted business thresholds used by the backend AI consumers.
+
+    The AI service has its own model-level confidence setting. This table stores
+    the threshold used by the backend before an AI detection becomes a business
+    alert. It is intentionally global because the current AI service exposes a
+    single site-wide camera registry.
+    """
+
+    __tablename__ = "ai_alert_thresholds"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    alert_type: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.6, server_default="0.6")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
 
 class AuditLog(Base):

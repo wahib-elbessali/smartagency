@@ -45,9 +45,31 @@ class SensorMqttConsumer:
         else:
             logger.warning("MQTT connection refused: %s", reason_code)
 
-    def publish_command(self, topic: str, payload: dict) -> None:
-        if self.client is not None:
-            self.client.publish(topic, json.dumps(payload), qos=1, retain=False)
+    def publish_command(self, topic: str, payload: dict) -> bool:
+        """Publish a backend command without making the HTTP caller fail.
+
+        MQTT delivery is intentionally best-effort here. The ticket is already
+        committed in PostgreSQL when this method is called, so a broker outage
+        must be logged instead of turning a successful ticket call into a 500.
+        """
+        if self.client is None:
+            logger.warning("MQTT publisher is not started; message not sent to %s", topic)
+            return False
+
+        try:
+            result = self.client.publish(
+                topic,
+                json.dumps(payload),
+                qos=1,
+                retain=False,
+            )
+            if result.rc != mqtt.MQTT_ERR_SUCCESS:
+                logger.warning("MQTT publish failed for %s: rc=%s", topic, result.rc)
+                return False
+            return True
+        except Exception:
+            logger.exception("MQTT publish failed for %s", topic)
+            return False
 
     def on_message(self, client: mqtt.Client, userdata, message: mqtt.MQTTMessage) -> None:
         try:

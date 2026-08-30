@@ -1030,7 +1030,129 @@ equal to `critical_max`.
 
 ---
 
-## 11. System
+## 11. Cameras
+
+### GET /api/agencies/{agency_id}/cameras
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Response body:**
+
+```json
+[
+  {
+    "id": "CAMERA_UUID",
+    "agency_id": "AGENCY_UUID",
+    "name": "cam1",
+    "stream_url": "rtsp://192.168.1.16:8554/stream",
+    "status": "OFFLINE"
+  }
+]
+```
+
+**Success status:** `200 OK`
+**Notes:** Non-`ADMIN` users can access only their own agency.
+
+### POST /api/agencies/{agency_id}/cameras
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Request body:**
+
+```json
+{
+  "name": "cam1",
+  "stream_url": "rtsp://192.168.1.16:8554/stream"
+}
+```
+
+**Response body:** Camera object.
+**Success status:** `201 Created`
+**Notes:** `name` is the exact source identifier used by the AI service.
+Camera names are unique globally because the current AI source registry is
+site-wide. `status` starts as `OFFLINE` and becomes `ONLINE` after the backend
+receives a detection stream event.
+
+### PUT /api/cameras/{camera_id}
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Request body:**
+
+```json
+{
+  "name": "cam1",
+  "stream_url": "rtsp://192.168.1.16:8554/stream"
+}
+```
+
+**Response body:** Camera object.
+**Success status:** `200 OK`
+
+### DELETE /api/cameras/{camera_id}
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`
+**Response body:** Empty
+**Success status:** `204 No Content`
+
+---
+
+## 12. AI weapon alert threshold
+
+### GET /api/ai-alerts/thresholds/weapon
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Response body:**
+
+```json
+{
+  "confidence": 0.6
+}
+```
+
+**Success status:** `200 OK`
+
+### PUT /api/ai-alerts/thresholds/weapon
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**Request body:**
+
+```json
+{
+  "confidence": 0.65
+}
+```
+
+**Response body:**
+
+```json
+{
+  "confidence": 0.65
+}
+```
+
+**Success status:** `200 OK`
+**Notes:** The value is global and must be strictly greater than `0` and less
+than or equal to `1`. It is persisted in PostgreSQL and applied immediately
+by the backend consumer. It is separate from the AI model's own `conf` value.
+
+The backend consumes `WS /weapon/alerts/stream`, registers all configured
+camera names and stream URLs with the AI service, filters detections below this
+threshold, and creates or resolves `weapon` alerts linked to the matching
+camera and agency.
+
+---
+
+## 13. System
 
 ### GET /health
 
