@@ -11,7 +11,7 @@ import {
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchEmployees } from '@/api/endpoints/employees'
 import { ApiError, describeApiError } from '@/api/errors'
-import { ROLES, type Role, type UserAccount, type UserCreate } from '@/api/types'
+import { type Role, type UserAccount, type UserCreate } from '@/api/types'
 import { useSession } from '@/auth/SessionContext'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { Avatar } from '@/components/ui/Avatar'
@@ -31,16 +31,28 @@ import { Screen } from './Screen'
  * history are the employee record, which is why employees come first and why
  * an account can exist with nothing linked to it.
  *
- * Role and agency are changed inline rather than in the edit dialog, because
- * PUT accepts neither and each has a side effect: promoting to ADMIN clears the
- * agency, and moving the agency moves the linked employee with it.
+ * A ROLE IS NOT CHANGED HERE, on any row. It is chosen once, when the account
+ * is created, and after that it is a fact the table reports rather than a
+ * setting the table edits. Asked for on 2026-08-21; the admin-only version of
+ * the same rule arrived a day earlier, after an admin demoted their own account
+ * in the database trying to preview a manager's screens.
  *
- * Both controls now go through PATCH /access, which sets the pair in one call
- * and validates the result rather than the current state. Until PR #75 added
- * it, this screen had to lock an ADMIN row entirely - the two single-field
- * routes could not demote one in any order (issue #71). That lock is gone; the
- * one thing a demotion still needs is somewhere to send them, which is what the
- * branch dialog below asks for.
+ * ONE ADMIN DOES NOT ADMINISTER ANOTHER either: a peer admin's account cannot
+ * be edited or deleted from this screen. What is left on their row is the fact
+ * of it - name, email, and the Global badge.
+ *
+ * The agency IS still changed inline, and stays inline rather than moving into
+ * the edit dialog, because PUT accepts no agency and the change has a side
+ * effect the caller did not ask for: the linked employee moves with it. It goes
+ * through PATCH /access, sending the role the account already has.
+ *
+ * Neither rule is derivable from the API, and both are stricter than it: the
+ * backend will move any account to any role, and lets an admin edit or delete
+ * any account except their own. This screen is what holds them.
+ *
+ * It also means the screen no longer uses what PR #75 added for issue #71 -
+ * moving an admin to another role. The route is still the right one for the
+ * agency half, because role and agency have to be validated as a pair.
  */
 
 const ROLE_TONE: Record<Role, Tone> = {
@@ -72,6 +84,7 @@ function deleteErrorMessage(error: unknown): string | null {
 
 export default function Users() {
   const { user } = useSession()
+  const isAdmin = user?.role === 'ADMIN'
   const queryClient = useQueryClient()
 
   const users = useQuery({
@@ -93,9 +106,6 @@ export default function Users() {
   const [editing, setEditing] = useState<UserAccount | null>(null)
   const [creating, setCreating] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState<UserAccount | null>(null)
-  /* Set when demoting an admin: they have no agency, and the new role needs
-     one, so the destination has to be asked for before anything is sent. */
-  const [demoting, setDemoting] = useState<{ account: UserAccount; role: Role } | null>(null)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['users'] })
 
@@ -130,10 +140,7 @@ export default function Users() {
   const changeAccess = useMutation({
     mutationFn: ({ id, role, agencyId }: { id: string; role: Role; agencyId: string | null }) =>
       updateUserAccess(id, role, agencyId),
-    onSuccess: async () => {
-      await refresh()
-      setDemoting(null)
-    },
+    onSuccess: refresh,
   })
 
   const remove = useMutation({
@@ -144,29 +151,8 @@ export default function Users() {
     },
   })
 
-  /**
-   * Picking a role for one row, resolved to the pair /access needs.
-   *
-   * Three cases, and only the third needs asking anything:
-   *   -> ADMIN            the agency must become null
-   *   -> anything else, and they already have an agency: keep it
-   *   -> anything else, and they have none (so they are an ADMIN today): there
-   *      is nowhere to put them, so ask which branch before sending.
-   */
-  function pickRole(account: UserAccount, role: Role) {
-    if (role === account.role) return
-    if (role === 'ADMIN') {
-      changeAccess.mutate({ id: account.id, role, agencyId: null })
-      return
-    }
-    if (account.agency_id) {
-      changeAccess.mutate({ id: account.id, role, agencyId: account.agency_id })
-      return
-    }
-    setDemoting({ account, role })
-  }
-
   const rows = useMemo(() => users.data ?? [], [users.data])
+
   const formOpen = creating || editing !== null
   const inlineError = inlineErrorMessage(changeAccess.error)
 
@@ -175,10 +161,17 @@ export default function Users() {
       title="User accounts"
       description="Who can sign in, what they may reach, and which employee they are."
       actions={
-        <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
-          <Plus className="size-3.5" aria-hidden />
-          Add account
-        </Button>
+        /* Hidden for anyone else, the way Agencies hides create and delete.
+           POST /api/users is ADMIN-only like the rest of the router, so a
+           manager reaching this screen meets the refusal state below - and an
+           Add button sitting above that refusal is an offer the API will not
+           honour, on the one screen where the boundary is the whole point. */
+        isAdmin ? (
+          <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+            <Plus className="size-3.5" aria-hidden />
+            Add account
+          </Button>
+        ) : undefined
       }
     >
       <AsyncBoundary
@@ -263,19 +256,12 @@ export default function Users() {
 
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2">
-                            <select
-                              aria-label={`Role for ${account.full_name}`}
-                              className="border-line bg-panel-2 text-ink rounded-lg border px-2 py-1 text-xs"
-                              value={account.role}
-                              disabled={changeAccess.isPending}
-                              onChange={(e) => pickRole(account, e.target.value as Role)}
-                            >
-                              {ROLES.map((role) => (
-                                <option key={role} value={role}>
-                                  {role}
-                                </option>
-                              ))}
-                            </select>
+                            {/* Read-only. Roles are set when an account is
+                                created and are not edited here at all, so this
+                                is a fact about the account rather than a
+                                control - no dropdown, and nothing disabled that
+                                somebody will keep clicking. */}
+                            <span className="text-ink text-xs font-medium">{account.role}</span>
                             {/* Colour alone would not carry this, and ADMIN is
                                 the one role worth spotting at a glance. */}
                             {isAdminRow && <Badge tone={ROLE_TONE.ADMIN}>Global</Badge>}
@@ -331,24 +317,41 @@ export default function Users() {
 
                         <td className="px-5 py-3">
                           <div className="flex justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditing(account)}
-                              aria-label={`Edit ${account.full_name}`}
-                            >
-                              <Pencil className="size-3.5" aria-hidden />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={isSelf}
-                              title={isSelf ? 'You cannot delete your own account' : undefined}
-                              onClick={() => setConfirmingDelete(account)}
-                              aria-label={`Delete ${account.full_name}`}
-                            >
-                              <Trash2 className="size-3.5" aria-hidden />
-                            </Button>
+                            {/* One admin does not administer another. Their own
+                                row keeps Edit - a name, an email and a password
+                                are yours to change - and every other control on
+                                an admin row is gone: no role, no branch, no
+                                edit, no delete. Asked for on 2026-08-20, and
+                                stricter than the API, which lets an admin edit
+                                and delete any account but their own. */}
+                            {(!isAdminRow || isSelf) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEditing(account)}
+                                aria-label={`Edit ${account.full_name}`}
+                              >
+                                <Pencil className="size-3.5" aria-hidden />
+                              </Button>
+                            )}
+                            {/* Hidden for another admin, disabled for yourself.
+                                The difference is deliberate: deleting yourself
+                                is a thing you might reasonably try, and the
+                                disabled control with its reason answers it -
+                                where deleting a peer admin is not on offer at
+                                all. */}
+                            {isAdminRow && !isSelf ? null : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={isSelf}
+                                title={isSelf ? 'You cannot delete your own account' : undefined}
+                                onClick={() => setConfirmingDelete(account)}
+                                aria-label={`Delete ${account.full_name}`}
+                              >
+                                <Trash2 className="size-3.5" aria-hidden />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -360,76 +363,6 @@ export default function Users() {
           </PanelBody>
         </Panel>
       </AsyncBoundary>
-
-      {/* Demoting an admin is the one role change that needs a second answer:
-          every role except ADMIN must belong to a branch, and an admin has
-          none. Asking here rather than sending a request that would 422. */}
-      <Dialog
-        open={demoting !== null}
-        title="Which branch?"
-        description={
-          demoting
-            ? `${demoting.account.full_name} is currently a global admin. A ${demoting.role} has to belong to one branch.`
-            : undefined
-        }
-        onClose={() => {
-          setDemoting(null)
-          changeAccess.reset()
-        }}
-      >
-        {demoting && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              {(agencies.data ?? []).map((agency) => (
-                <Button
-                  key={agency.id}
-                  className="w-full justify-start"
-                  disabled={changeAccess.isPending}
-                  onClick={() =>
-                    changeAccess.mutate({
-                      id: demoting.account.id,
-                      role: demoting.role,
-                      agencyId: agency.id,
-                    })
-                  }
-                >
-                  {agency.name}
-                </Button>
-              ))}
-            </div>
-
-            {/* The linked employee moves with them, and that touches a record
-                nobody named in this dialog. Worth saying before, not after. */}
-            {demoting.account.employee && (
-              <p className="text-ink-3 text-xs leading-relaxed">
-                {demoting.account.employee.first_name} {demoting.account.employee.last_name} moves
-                to the same branch, because a login and the person it belongs to cannot be in
-                different ones.
-              </p>
-            )}
-
-            {changeAccess.error !== null && (
-              <p
-                role="alert"
-                className="border-warn/30 bg-warn/8 text-warn rounded-lg border p-3 text-sm"
-              >
-                {inlineErrorMessage(changeAccess.error)}
-              </p>
-            )}
-
-            <div className="flex justify-end">
-              <Button
-                onClick={() => {
-                  setDemoting(null)
-                  changeAccess.reset()
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-      </Dialog>
 
       <Dialog
         open={formOpen}

@@ -22,7 +22,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -e
-          FILES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' | grep '^contracts/.*\.md$' | paste -sd ', ' -)
+          FILES=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' | grep '^contracts/.*\.md$' | paste -sd ', ' -)
 
           PREFIX=""
           if printf '%s' "$PR_TITLE" | grep -q '^BREAKING:'; then

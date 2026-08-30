@@ -6,30 +6,31 @@ type Size = 'sm' | 'md'
 type Shape = 'control' | 'pill'
 
 /**
- * Primary is a filled violet block with white text. On a dark surface a filled
- * saturated button is the only thing that reads as "press this" from across a
- * room - an outlined one disappears into the panel it sits on.
+ * Primary is the design's blue-to-cyan gradient with a white, bold label. On a
+ * page of translucent glass it is the only saturated surface, which is what
+ * makes it read as "press this" from across a room.
  *
- * The label is white rather than the near-black it used to be. That is not a
- * style preference: the accent moved from amber to violet, and amber is light
- * enough to carry dark text while this violet is not. Leaving it dark would
- * have left the primary action as the least readable text on the screen.
+ * The label is white rather than near-black: this blue is dark enough that
+ * dark text on it would leave the primary action as the least readable thing
+ * on the screen. See --gradient-accent in index.css for why the gradient's
+ * ANGLE is load-bearing rather than decorative - it keeps the light cyan end
+ * in a corner instead of under the text.
  *
- * The fill is a shallow gradient rather than a flat colour, and it is the ONLY
- * gradient in the system. That restraint is the point: one gradient reads as
- * the primary action having been given special treatment, while a screen of
- * them reads as a theme applied to everything. The two stops are close enough
- * together that it registers as a lit surface rather than as a colour ramp.
- *
- * Secondary carries no fill and no border, only a faint ring. Two visually
+ * Secondary is glass, one step denser than the cards. Against translucent
+ * surfaces an outlined button reads as a gap rather than a control, so it
+ * borrows the card treatment instead of drawing a border. Two visually
  * competing button styles side by side is the most common way a toolbar ends
  * up looking generated: everything shouts, so nothing leads.
  */
 const VARIANTS: Record<Variant, string> = {
   primary:
-    'bg-accent bg-accent-gradient text-ink font-medium shadow-[0_1px_0_rgb(255_255_255/0.22)_inset] hover:brightness-112 active:brightness-95',
-  secondary: 'text-ink ring-line-strong hover:bg-panel-2 hover:ring-accent/40 ring-1',
-  ghost: 'text-ink-2 hover:bg-panel-2 hover:text-ink',
+    'bg-accent bg-accent-gradient text-ink font-bold hover:brightness-110 active:brightness-95',
+  /* Secondary is glass rather than a ring on nothing. Against translucent
+     cards a bare outlined button reads as a gap in the surface; the same
+     treatment as the cards, one step denser, reads as a control resting on
+     them. */
+  secondary: 'text-ink surface-glass-2 hover:brightness-125',
+  ghost: 'text-ink-2 hover:surface-glass-2 hover:text-ink',
   danger: 'text-danger ring-danger/40 hover:bg-danger/12 ring-1',
 }
 

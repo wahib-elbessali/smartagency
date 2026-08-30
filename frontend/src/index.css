@@ -7,45 +7,67 @@
    `text-ink-2`, never `bg-[#141210]` — so a palette change is this block and
    nothing else, and eight screens can't drift into eight different greys.
 
-   Dark-only on purpose: this is a wall-mounted security dashboard, glanced at
-   to answer "is anything wrong right now?". A light theme is real work
-   (contrast re-tuning, a toggle, persistence) with no one asking for it.
+   DARK IS THE DEFAULT, not the only option. This is a wall-mounted security
+   dashboard glanced at to answer "is anything wrong right now?", and that is
+   what the values in @theme below describe. A light theme now exists too, as a
+   block of overrides further down - see the LIGHT THEME section for how the
+   two are kept from drifting apart.
 
-   DEEP INDIGO with a violet accent. The surfaces carry a blue-violet cast
-   rather than a neutral or warm grey, and the accent is the periwinkle violet
-   that the interactive elements are built from.
+   Because every component was written against token names rather than colours,
+   the light theme is that one block and nothing else: no component branches on
+   the theme, and none should start.
 
-   These values are sampled from the reference design rather than mixed by
-   hand, so they are the reference's actual colours and not an impression of
-   them. If this palette is revisited, resample rather than nudge - a set of
-   hues drifts fast once individual values start being adjusted in isolation.
+   VISION UI: deep navy surfaces with a bright blue accent.
 
-   The surfaces are not neutral greys: each step up in lightness also carries
-   slightly more violet, which is what stops a stack of dark panels reading as
-   flat. Ink follows the same rule - the muted text is a lavender grey, not a
-   neutral one, so it sits in the same family as the surfaces behind it.
+   Taken from the Vision UI Dashboard design. These are its published values,
+   not an impression of them - the canvas is read from the Figma frame's own
+   fill and the rest from the theme the design ships with. If this palette is
+   revisited, take the values again rather than nudging them; a set of hues
+   drifts fast once individual ones start being adjusted in isolation.
+
+   The surfaces are navy rather than neutral, and each step up in lightness
+   also gains a little blue, which is what stops a stack of dark panels reading
+   as flat. Ink follows the same rule: the muted steps are blue-greys.
+
+   ONE DEPARTURE, and it is deliberate. Every colour below is Vision UI's
+   except the four chart-series colours further down. Vision UI keeps its whole
+   identity in the cool half of the wheel and reserves its warm colours for
+   status, and four series drawn from blues and violets alone are not
+   distinguishable - measured, its own blue and indigo sit at a separation of
+   14.7 where 15 is the floor for NORMAL colour vision, before colourblindness
+   is even considered. The theme is its; the series colours are not.
 --------------------------------------------------------------------------- */
 @theme {
-  /* Surfaces, darkest to lightest. Indigo, not neutral. */
-  --color-canvas: #080614;
-  --color-panel: #131021;
-  --color-panel-2: #1e1b2e;
-  --color-line: #25233b;
-  --color-line-strong: #363154;
+  /* Surfaces, darkest to lightest. Navy, not neutral.
 
-  /* Text, most to least prominent. Near-white rather than pure #fff, and the
-     two muted steps are lavender rather than grey so they belong to the same
-     family as the surfaces. */
-  --color-ink: #fcfbff;
-  --color-ink-2: #978fba;
-  --color-ink-3: #6b6590;
+     `canvas` is the value the live Vision UI serves from its root element, and
+     it is darker than the one the Figma frame carries. That is not a
+     discrepancy to split the difference on: the cards are translucent, so the
+     canvas shows THROUGH them, and a lighter canvas would wash every card out
+     at once.
 
-  /* One accent, used only for interactive and active states. The periwinkle
-     violet the reference builds its buttons, active nav and lit marks from.
-     `accent-ink` is the light end of the same hue, for accent-coloured text
-     where the solid accent would be too dark to read. */
-  --color-accent: #616ce2;
-  --color-accent-ink: #c6ccfc;
+     `panel` is the solid fallback. The real card surface is --gradient-panel
+     below; this is what shows where a translucent fill would be wrong - inside
+     an already-translucent card, or on a browser without backdrop-filter. */
+  --color-canvas: #030c1d;
+  --color-panel: #0f1535;
+  --color-panel-2: #1a1f37;
+  --color-line: #242b4d;
+  --color-line-strong: #56577a;
+
+  /* Text, most to least prominent. Vision UI sets its headings in pure white
+     rather than an off-white, and on this navy it does not vibrate the way
+     pure white on near-black does - the surface is light enough to take it. */
+  --color-ink: #ffffff;
+  --color-ink-2: #a0aec0;
+  --color-ink-3: #718096;
+
+  /* One accent, used only for interactive and active states. Vision UI's brand
+     blue, which is what its buttons, active nav and lit marks are built from.
+     `accent-ink` is the lighter step of the same hue, for accent-coloured text
+     where the solid accent would be too dark to read against the canvas. */
+  --color-accent: #0075ff;
+  --color-accent-ink: #3993fe;
 
   /* The categorical chart ramp - series identity, nothing else.
 
@@ -53,80 +75,118 @@
      blue-violet, a purple, a pink, a coral. Assign in order, never cycled; a
      fifth series folds into "Other" rather than getting a generated hue.
 
-     WHAT TO KNOW BEFORE RELYING ON HUE ALONE HERE. These four span violet to
-     coral, which is a narrower range than a spread-out categorical set, and
-     three of them sit close together in lightness. That makes them handsome
-     side by side and harder to tell apart for a colourblind reader than a
-     wider set would be. The charts compensate structurally rather than by
-     changing the colours: the donut's legend carries a text label and a value
-     next to every swatch, and hovering a segment names it in the centre of the
-     ring. Colour is never the only thing distinguishing two quantities on
-     screen. Keep that true of any new chart built from these. */
-  --color-data-1: #6a79fb;
-  --color-data-2: #ad74fd;
-  --color-data-3: #ffa6f9;
-  --color-data-4: #f36559;
+     THE ONE PLACE THIS FILE DOES NOT USE VISION UI'S COLOURS, and the reason
+     is measured rather than aesthetic. Vision UI's palette is cool from end to
+     end - blue, cyan, indigo, violet - because its warm colours are all spoken
+     for as status. Three different four-series sets drawn from it were checked
+     against this card surface and all three failed: its blue against its
+     indigo separates by 14.7 where 15 is the floor for normal colour vision,
+     its blue against its violet drops to 5.8 under protanopia, and its indigo
+     sits at 2.39:1 against the card, close to invisible. Four categories
+     cannot be built from one half of the colour wheel.
 
-  /* The single highlighted mark - one lit bar against muted peers. The
-     reference's own lit-bar violet, which is the accent: a highlight is not a
-     peer series, it is the answer to "which one am I looking at", so it
-     borrows the colour the rest of the interface uses for "this one". */
-  --color-data-lit: #616ce2;
+     So these four are kept from the previous palette and re-checked against
+     the navy surface: every pair passes, not just adjacent ones, which is what
+     a donut needs since it puts each category next to all the others.
+
+     No green slot - green is the `ok` status colour, and a categorical green
+     also lands on top of the categorical red for a red-green colourblind
+     reader. Lightness varies across the four on purpose; hue alone does not
+     separate them for everyone and a value difference costs nothing. */
+  --color-data-1: #c18703;
+  --color-data-2: #009298;
+  --color-data-3: #c24d4f;
+  --color-data-4: #7152b5;
+
+  /* The single highlighted mark - one lit bar against muted peers. Vision UI's
+     brand blue, which is the accent: a highlight is not a peer series, it is
+     the answer to "which one am I looking at", so it borrows the colour the
+     rest of the interface uses for "this one". */
+  --color-data-lit: #0075ff;
 
   /* Status. Spend boldness on alerts, not on everything.
 
-     `ok` and `danger` are the reference's own delta colours - the emerald it
-     puts on a rising figure and the coral it puts on a falling one.
+     All four are Vision UI's own status colours. `danger` is its error.focus
+     rather than error.main: the main #e31a1a reaches only 3.95:1 against the
+     canvas, and this token is mostly worn by text - a refusal message, the
+     label on a destructive button - where that is not enough. The lighter step
+     is the same red, and reads. */
+  --color-ok: #01b574;
+  --color-warn: #ffb547;
+  --color-danger: #ee5d50;
+  --color-info: #21d4fd;
 
-     `warn` and `info` are not in the reference, which has no warning or
-     informational state to show. They are chosen to sit apart from the violet
-     accent rather than sampled: an amber for warning, because nothing else in
-     this palette is warm and a warning has to be findable at a glance, and a
-     cyan for information, because the blue end is now occupied by the accent
-     and an informational badge must not read as a button. */
-  --color-ok: #22c682;
-  --color-warn: #f2a93b;
-  --color-danger: #e25e59;
-  --color-info: #4fb0e8;
+  /* Three radii, all taken from the live design: 20px cards, 12px controls.
 
-  /* Three radii. Panels are the softest thing on screen, controls a step
-     tighter, and pills fully round.
-
-     Panels moved from 10px to 14px. That single number does more for "does
-     this look current" than any other value in this file - 8-10px is the
-     default a framework gives you, and it reads as untouched. The tighter
-     control radius is what keeps a button from dissolving into the surface it
-     sits on now that the surface itself is soft. */
-  --radius-panel: 0.875rem;
-  --radius-control: 0.625rem;
+     20px is a lot, and it is load-bearing rather than decorative. A
+     translucent card with a tight radius reads as a cut-out in the page; the
+     same fill with a soft one reads as a pane of glass resting on it. Halve
+     this and the glass effect stops working. */
+  --radius-panel: 1.25rem;
+  --radius-control: 0.75rem;
   --radius-pill: 999px;
 
-  /* Shadow does the work a border used to. Softer and deeper than a hairline
-     box, so panels lift off the canvas instead of being drawn onto it. */
-  --shadow-panel: 0 1px 1px rgb(0 0 0 / 0.5), 0 12px 32px -16px rgb(0 0 0 / 0.7);
-  --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.4), 0 16px 40px -20px rgb(0 0 0 / 0.8);
+  /* The live design's own card shadow: wide, far below the card, and very
+     faint. It is not there to darken anything - on a near-black page a
+     conventional shadow is invisible - it is there to keep the bottom edge of
+     a translucent pane from merging into the canvas. */
+  --shadow-panel: 0 20px 27px 0 rgb(0 0 0 / 0.05);
+  --shadow-raised: 0 24px 34px 0 rgb(0 0 0 / 0.18);
 
-  /* The lit top edge of a raised surface.
+  /* The well cut into a form control. A token rather than a literal because it
+     is one of the few shadows that has to be re-tuned per theme: a quarter-
+     opacity black reads as depth on navy and as grime on white. */
+  --shadow-control-inset: inset 0 1px 2px rgb(0 0 0 / 0.25);
 
-     A flat fill plus a shadow says "this floats". A fill that is fractionally
-     brighter along its top edge says "this floats AND there is a light source
-     above it", which is the whole difference between a card and a rectangle.
-     Kept under 5% - at the point you can see it as a gradient it has gone too
-     far and starts to look like a button from 2011. */
+  /* THE CARD SURFACE, and the single most important value in this file.
+
+     Vision UI's cards are not filled - they are translucent glass. The fill is
+     a diagonal gradient from 94% opaque at the top-left to 49% at the
+     bottom-right, so the page shows through the far corner of every card, and
+     a heavy backdrop blur turns what shows through into diffuse light rather
+     than a legible background.
+
+     That translucency is the entire look. Swap this for an opaque fill of the
+     average colour and the result is a competent dark theme that looks nothing
+     like the design - which is exactly what the previous palette-only pass
+     produced. Angles and stops are the design's own. */
+  --gradient-panel: linear-gradient(
+    127.09deg,
+    rgb(6 11 40 / 0.94) 19.41%,
+    rgb(10 14 35 / 0.49) 76.65%
+  );
+
+  /* The same treatment, denser, for a surface sitting INSIDE a card - a nested
+     well, an icon chip's backing, a recessed row. Nested glass at the outer
+     opacity disappears into its parent. */
+  --gradient-panel-2: linear-gradient(
+    126.97deg,
+    rgb(6 11 40 / 0.74) 28.26%,
+    rgb(10 14 35 / 0.71) 91.2%
+  );
+
+  /* The lit top edge of a raised surface. Kept for the few opaque surfaces
+     left; the glass cards carry their own light in the gradient above. */
   --gradient-lit: linear-gradient(to bottom, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0) 42%);
 
   /* Exactly one gradient accent, for the one primary action on a screen. One
      is modern; a screen of them is a themed template.
 
-     Both stops are a step DARKER than the accent, and that is deliberate. A
-     violet button carries white text - dark text on this hue is unreadable,
-     and the reference sets its own violet button in white. White needs 4.5:1
-     to pass at button text size, and the plain accent only reaches about 4.2.
-     Darkening the stops puts the lightest end at roughly 4.7:1 and the darkest
-     at 6:1, so the label passes across the whole sweep rather than only at the
-     dark end. The accent itself is unchanged - it is still the colour of the
-     nav rail, the focus ring and a lit mark, none of which sit under text. */
-  --gradient-accent: linear-gradient(135deg, #5f6ad9, #4d57c4);
+     Vision UI's own button gradient, angle included. 310deg puts the cyan in
+     one corner rather than across the middle, which is what keeps a white
+     label readable over most of the sweep.
+
+     Be careful editing this. White on #0075ff is about 4.25:1 and on #21d4fd
+     far less, so a label centred over the cyan end would fail outright. It
+     works here because at 310deg across a wide control the cyan is a corner
+     glint and the text sits over blue. Change the angle, or squeeze the button
+     narrow enough that the cyan reaches the middle, and the label stops being
+     readable. The status gradients below share the angle for the same reason
+     and are used on chips, which carry icons rather than text. */
+  --gradient-accent: linear-gradient(310deg, #0075ff, #21d4fd);
+  --gradient-ok: linear-gradient(310deg, #01b574, #c9fbd5);
+  --gradient-danger: linear-gradient(310deg, #f53939, #fbcf33);
+  --gradient-violet: linear-gradient(310deg, #4318ff, #9f7aea);
 
   --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 
@@ -147,8 +207,82 @@
   background-image: var(--gradient-lit);
 }
 
+/* The glass card. Gradient plus blur together, because either alone is wrong:
+   the gradient without the blur shows a legible page through the card, and the
+   blur without the gradient has nothing to tint what it blurs.
+
+   The background-color fallback matters. backdrop-filter is unsupported in a
+   few engines and disabled outright by some privacy settings, and without a
+   fallback those users get a card that is 50% transparent over a dark page -
+   text on text. Declaring the solid panel colour first means they lose the
+   effect and keep the legibility. */
+@utility surface-glass {
+  background-color: var(--color-panel);
+  background-image: var(--gradient-panel);
+  backdrop-filter: blur(120px);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  /* Only drop to the translucent fill where the blur will actually run. */
+  .surface-glass {
+    background-color: transparent;
+  }
+}
+
+@utility surface-glass-2 {
+  background-color: var(--color-panel-2);
+  background-image: var(--gradient-panel-2);
+}
+
 @utility bg-accent-gradient {
   background-image: var(--gradient-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Cursor-tracked edge glow.
+
+   Lights the BORDER of a surface with a soft pool of accent that follows the
+   pointer, brightening as the cursor approaches. The position and intensity
+   arrive as custom properties from useCursorGlow - this rule only draws them.
+
+   The mask is the whole trick. A radial gradient fills the element, then two
+   masks are composited so only the padding box survives: one covers the full
+   box, the other covers the content box, and `exclude` subtracts the second
+   from the first. What is left is a 1px ring. Without this the gradient would
+   wash over the entire card and drown the form sitting on it.
+
+   Falls back safely: a browser without mask-composite shows the gradient over
+   the card, which the low opacity keeps subtle rather than broken.
+--------------------------------------------------------------------------- */
+@utility glow-edge {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    /* Ring thickness - also the mask's content-box inset. */
+    padding: 1px;
+    background: radial-gradient(
+      240px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+      var(--color-accent),
+      transparent 70%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: var(--glow-strength, 0);
+    /* Short, because the strength itself is already eased by proximity - a
+       long transition here would lag the cursor rather than smooth it. */
+    transition: opacity 0.2s var(--ease-soft);
+    pointer-events: none;
+  }
 }
 
 @keyframes fade-rise {
@@ -174,13 +308,143 @@
 /* ---------------------------------------------------------------------------
    Base
 --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   LIGHT THEME
+
+   The tokens above are the DARK values and remain the defaults - this is a
+   wall-mounted dashboard and dark is what it runs in. This block re-points the
+   same names for light, so every component is themed without touching a single
+   component file: they were already written against `bg-panel` and `text-ink`
+   rather than against colours.
+
+   Only one selector, keyed on an explicit data-theme. The usual second copy
+   inside a prefers-color-scheme media query is not here on purpose: the
+   provider resolves "system" in script and always stamps a concrete light or
+   dark, so there is exactly one place these values live and no way for the two
+   copies to drift apart.
+
+   It sits in `base` rather than in `@theme` because Tailwind emits @theme into
+   the `theme` cascade layer, and `base` comes after it - so these win on layer
+   order rather than on specificity, which would otherwise be a tie.
+
+   Every text pair here was checked for contrast rather than picked by eye. The
+   muted step is #59697d and not something lighter because the obvious choice
+   measured 4.43:1 on the canvas, just under the 4.5 bar.
+--------------------------------------------------------------------------- */
 @layer base {
+  :root[data-theme='light'] {
+    /* Surfaces, lightest to darkest - the inverse of the dark stack. `panel`
+       is pure white so cards read as paper on a tinted desk; the canvas keeps
+       a blue cast so the theme still belongs to the same family. */
+    --color-canvas: #eef1f8;
+    --color-panel: #ffffff;
+    --color-panel-2: #f2f5fb;
+    --color-line: #e2e8f0;
+    --color-line-strong: #cbd5e0;
+
+    /* Ink is the brand navy rather than black - pure black on white is as
+       harsh as pure white on black, and this keeps the two themes related. */
+    --color-ink: #0f1535;
+    --color-ink-2: #4a5568;
+    --color-ink-3: #59697d;
+
+    /* The accent holds: #0075ff works on both grounds. `accent-ink` has to
+       change though - the light step used for text on dark is far too pale
+       against white, so it becomes a darker step of the same hue. */
+    --color-accent: #0075ff;
+    --color-accent-ink: #0057c4;
+
+    /* Status colours are re-stepped, not re-hued. The dark-theme values are
+       tuned to glow against near-black and several of them - the amber above
+       all - are close to invisible on white. */
+    --color-ok: #01875a;
+    --color-warn: #a35a00;
+    --color-danger: #c81e1e;
+    --color-info: #0e7490;
+
+    /* Chart series are UNCHANGED across themes, which is not a shortcut: the
+       four were re-run through the same validation against a white surface and
+       pass every pair there too, colourblind separation included. Keeping one
+       set means a screenshot of a chart means the same thing in either mode. */
+
+    /* Glass inverts: white panes over a light ground rather than navy over a
+       dark one. Same geometry, same blur, so cards keep their shape. */
+    --gradient-panel: linear-gradient(
+      127.09deg,
+      rgb(255 255 255 / 0.94) 19.41%,
+      rgb(242 245 251 / 0.62) 76.65%
+    );
+    --gradient-panel-2: linear-gradient(
+      126.97deg,
+      rgb(242 245 251 / 0.9) 28.26%,
+      rgb(226 232 240 / 0.85) 91.2%
+    );
+    /* The lit edge flips from a white highlight to a soft shadow: on a light
+       surface a brighter top edge is invisible, and what reads as "raised" is
+       the underside darkening instead. */
+    --gradient-lit: linear-gradient(to bottom, rgb(15 21 53 / 0.03), rgb(15 21 53 / 0) 42%);
+
+    /* Shadows have to do real work here. On near-black a shadow is nearly
+       invisible and the fill separates the card; on white it is the only thing
+       that does, so both steps go several times darker. */
+    --shadow-panel: 0 12px 24px -8px rgb(15 21 53 / 0.12);
+    --shadow-raised: 0 18px 32px -10px rgb(15 21 53 / 0.2);
+    --shadow-control-inset: inset 0 1px 2px rgb(15 21 53 / 0.06);
+
+    /* Avatar discs invert: a light tint carrying dark initials. See the
+       matching :root defaults for why these are lightness numbers rather than
+       colours. */
+    --avatar-bg-l: 0.91;
+    --avatar-fg-l: 0.4;
+  }
+}
+
+@layer base {
+  /* Avatar disc lightness, as OKLCH L values rather than colours.
+     The disc's HUE is derived per person at runtime, so the theme cannot
+     supply a finished colour here - only how light the fill and the initials
+     should be. Two numbers instead of two palettes. */
+  :root {
+    --avatar-bg-l: 0.32;
+    --avatar-fg-l: 0.86;
+  }
+
   html {
     color-scheme: dark;
   }
 
+  /* Tells the browser to render its own chrome - form controls, scrollbars,
+     the caret - in the matching mode. Without it a light page keeps dark
+     dropdowns, which is the most common tell that a theme was bolted on. */
+  html[data-theme='light'] {
+    color-scheme: light;
+  }
+
+  /* THE GLOW. Without it the palette is right and the page still looks wrong:
+     the cards are translucent, so if there is nothing behind them to show
+     through, "glass" renders as flat dark rectangles and the whole surface
+     treatment is wasted. The glow is what the glass is glass OVER.
+
+     The design ships this as a 1920x1328 PNG. Reproduced here as three radial
+     gradients instead, for two reasons that matter for this product: it runs
+     on one machine with no network, so a fetched image is a blank background
+     the day something goes wrong, and gradients re-tint from the tokens above
+     while a baked PNG would have to be re-exported.
+
+     Placement and colour are measured off the rendered design, not guessed -
+     near-black at the top (#0e091f), blooming toward the bottom, brightest
+     low-right (#344aac) with a second indigo bloom bottom-left (#272587).
+
+     `fixed` so it does not slide away as the roster scrolls: it is meant to be
+     the room the dashboard sits in, not part of the document. */
   body {
     background-color: var(--color-canvas);
+    background-image:
+      radial-gradient(ellipse 70% 58% at 80% 98%, rgb(62 88 196 / 1), transparent 72%),
+      radial-gradient(ellipse 55% 50% at 6% 100%, rgb(45 40 150 / 0.95), transparent 70%),
+      linear-gradient(to bottom, transparent 12%, rgb(42 48 155 / 0.68) 100%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
     color: var(--color-ink);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -201,6 +465,17 @@
     /* Slightly open by default. Dark text on light tightens; light text on
        dark blooms, and needs the extra room to stay legible. */
     letter-spacing: 0.005em;
+  }
+
+  /* The glow, restated for light. Same three sources in the same places, at
+     roughly a tenth of the strength and in the accent's own hue rather than
+     the deep indigo. The dark values here would not read as a bloom on a light
+     ground - they would read as a stain. */
+  :root[data-theme='light'] body {
+    background-image:
+      radial-gradient(ellipse 70% 58% at 80% 98%, rgb(0 117 255 / 0.13), transparent 72%),
+      radial-gradient(ellipse 55% 50% at 6% 100%, rgb(67 24 255 / 0.1), transparent 70%),
+      linear-gradient(to bottom, transparent 12%, rgb(0 117 255 / 0.07) 100%);
   }
 
   /* Headings tighten as they grow. Uniform tracking across sizes is one of the
@@ -265,6 +540,71 @@
   * {
     scrollbar-color: var(--color-line-strong) transparent;
     scrollbar-width: thin;
+  }
+
+  /* ---------------------------------------------------------------------
+     Modal enter and exit.
+
+     A native <dialog> is display:none when closed, and you cannot transition
+     from display:none - which is why modals so often snap in while everything
+     else on the page animates. The fix is three modern pieces working
+     together, and all three are needed:
+
+       @starting-style        gives the browser a "before" to animate FROM on
+                              the frame the dialog is first shown
+       display allow-discrete keeps display:none from applying until the exit
+                              transition has finished
+       overlay allow-discrete does the same for the top layer, without which
+                              the dialog vanishes from view at frame one and
+                              fades out somewhere nobody can see
+
+     Done in CSS rather than with a JS animation library, so it costs nothing
+     and cannot desynchronise from the open state. Browsers without
+     @starting-style simply show the dialog immediately, which is the current
+     behaviour - it degrades to exactly what we have today.
+
+     Motion is small on purpose: half a rem of rise and 3% of scale. A modal
+     that flies in from the edge or bounces draws attention to the animation;
+     this draws attention to the dialog.
+  --------------------------------------------------------------------- */
+  dialog {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.97);
+    transition:
+      opacity 0.2s var(--ease-soft),
+      transform 0.2s var(--ease-soft),
+      overlay 0.2s allow-discrete,
+      display 0.2s allow-discrete;
+  }
+
+  dialog[open] {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  @starting-style {
+    dialog[open] {
+      opacity: 0;
+      transform: translateY(0.5rem) scale(0.97);
+    }
+  }
+
+  dialog::backdrop {
+    opacity: 0;
+    transition:
+      opacity 0.2s var(--ease-soft),
+      overlay 0.2s allow-discrete,
+      display 0.2s allow-discrete;
+  }
+
+  dialog[open]::backdrop {
+    opacity: 1;
+  }
+
+  @starting-style {
+    dialog[open]::backdrop {
+      opacity: 0;
+    }
   }
 }
 

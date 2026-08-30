@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 import Agencies from './Agencies'
 import { SessionContext, type SessionValue } from '@/auth/SessionContext'
+import { ScopeProvider } from '@/agency/scope'
 import type { User } from '@/api/types'
 import { AGENCY_ID } from '@/mocks/fixtures/people'
 import { resetAgencyStore } from '@/mocks/agencyStore'
@@ -42,9 +43,11 @@ function renderAs(role: User['role']) {
   return render(
     <QueryClientProvider client={queryClient}>
       <SessionContext value={sessionFor(role)}>
-        <MemoryRouter>
-          <Agencies />
-        </MemoryRouter>
+        <ScopeProvider>
+          <MemoryRouter>
+            <Agencies />
+          </MemoryRouter>
+        </ScopeProvider>
       </SessionContext>
     </QueryClientProvider>,
   )
