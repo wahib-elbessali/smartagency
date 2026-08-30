@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import { AlertTriangle, Building2, Pencil, Plus, PowerOff, Trash2 } from 'lucide-react'
 import { createAgency, deleteAgency, fetchAgencies, updateAgency } from '@/api/endpoints/agencies'
 import { ApiError, describeApiError } from '@/api/errors'
@@ -167,7 +168,19 @@ export default function Agencies() {
               >
                 <div className="flex items-center gap-2.5">
                   <Building2 className="text-ink-3 size-4 shrink-0" aria-hidden />
-                  <h2 className="text-ink truncate text-sm font-semibold">{agency.name}</h2>
+                  {/* The name is the way in to the consolidated view - services,
+                      counters, employees and devices for this one branch
+                      (AgencyDetail.tsx). Edit and Delete stay on this card
+                      rather than moving there, since they act on the agency
+                      itself and not on what it contains. */}
+                  <h2 className="min-w-0 truncate text-sm font-semibold">
+                    <Link
+                      to={`/agencies/${agency.id}`}
+                      className="text-ink ease-soft hover:text-accent transition-colors duration-150"
+                    >
+                      {agency.name}
+                    </Link>
+                  </h2>
                   {!agency.is_active && <Badge tone="neutral">Inactive</Badge>}
                 </div>
                 <p className="text-ink-3 mt-1 truncate text-xs">

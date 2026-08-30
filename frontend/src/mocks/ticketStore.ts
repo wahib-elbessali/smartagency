@@ -1,6 +1,7 @@
-import type { Ticket, TicketCreate, Visitor, VisitorCreate } from '@/api/types'
+import type { Counter, Ticket, TicketCreate, Visitor, VisitorCreate } from '@/api/types'
 import { ApiError } from '@/api/errors'
 import { AGENCY_ID } from './fixtures/people'
+import { getService, SERVICE_ID_OUV, SERVICE_ID_VIR } from './serviceStore'
 
 /**
  * A writable visitor and ticket store for mock mode.
@@ -20,11 +21,39 @@ import { AGENCY_ID } from './fixtures/people'
 
 /* Counters belong to an agency and can be closed. Two open, one shut, so the
    "counter is closed" refusal is reachable by clicking rather than only in a
-   unit test. */
-export const COUNTERS = [
-  { id: 'c1000000-0000-4000-8000-000000000001', number: 1, name: 'Guichet 1', is_open: true },
-  { id: 'c1000000-0000-4000-8000-000000000002', number: 2, name: 'Guichet 2', is_open: true },
-  { id: 'c1000000-0000-4000-8000-000000000003', number: 3, name: 'Guichet 3', is_open: false },
+   unit test.
+ *
+ * Counter 1 is assigned to VIR (a COUNTER-type service), matching the point
+ * type both share. Counter 2 is unassigned, so "call to any open counter" and
+ * "call to the counter assigned to this ticket's service" both stay reachable.
+ * Counter 3 covers OUV (an OFFICE-type service) as well as being the closed
+ * one - a ticket for an office-type service being called there is the only
+ * way to see counter/service point_type mismatches on a matching pair. */
+export const COUNTERS: Counter[] = [
+  {
+    id: 'c1000000-0000-4000-8000-000000000001',
+    number: 1,
+    name: 'Guichet 1',
+    point_type: 'COUNTER',
+    is_open: true,
+    service_id: SERVICE_ID_VIR,
+  },
+  {
+    id: 'c1000000-0000-4000-8000-000000000002',
+    number: 2,
+    name: 'Guichet 2',
+    point_type: 'COUNTER',
+    is_open: true,
+    service_id: null,
+  },
+  {
+    id: 'c1000000-0000-4000-8000-000000000003',
+    number: 3,
+    name: 'Guichet 3',
+    point_type: 'OFFICE',
+    is_open: false,
+    service_id: SERVICE_ID_OUV,
+  },
 ]
 
 const SEED_VISITORS: Array<[string, string | null, string | null]> = [
@@ -54,32 +83,63 @@ function seed(): { visitors: Visitor[]; tickets: Ticket[] } {
     }))
 
     /* Four waiting, oldest first - enough to show ordering matters, and to see
-       the queue shorten as they are called. */
-    tickets = visitors.map((visitor, i) => ({
-      id: `t1000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
-      visitor_id: visitor.id,
-      visitor_name: visitor.full_name,
-      agency_id: visitor.agency_id,
-      counter_id: null,
-      ticket_number: ticketNumber(i + 1),
-      /* One with no service type: the column is nullable and the row has to
-         render without it. */
-      service_type: i === 2 ? null : ['Retrait', 'Ouverture de compte', '', 'Conseil'][i],
-      status: 'WAITING' as const,
-      created_at: visitor.created_at,
-      called_at: null,
-      completed_at: null,
-    }))
+       the queue shorten as they are called. One references no service at all:
+       service_id/service_code/service_name are nullable on a real ticket
+       (predates the Services contract, or its service was later deleted), and
+       a row that never populates them would hide that from the screen. */
+    const seeds: Array<{ serviceId: string | null; freeText: string | null }> = [
+      { serviceId: SERVICE_ID_VIR, freeText: null },
+      { serviceId: SERVICE_ID_OUV, freeText: null },
+      { serviceId: null, freeText: null },
+      { serviceId: SERVICE_ID_VIR, freeText: 'Conseil' },
+    ]
+    const built: Ticket[] = []
+    for (const [i, visitor] of visitors.entries()) {
+      const { serviceId, freeText } = seeds[i]
+      const service = serviceId ? getService(serviceId) : null
+      built.push({
+        id: `t1000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+        visitor_id: visitor.id,
+        visitor_name: visitor.full_name,
+        agency_id: visitor.agency_id,
+        service_id: service?.id ?? null,
+        service_code: service?.code ?? null,
+        service_name: service?.name ?? null,
+        counter_id: null,
+        ticket_number: nextTicketNumber(built, visitor.agency_id, service),
+        service_type: freeText ?? service?.name ?? null,
+        status: 'WAITING' as const,
+        created_at: visitor.created_at,
+        called_at: null,
+        completed_at: null,
+      })
+    }
+    tickets = built
     counter = tickets.length
   }
   return { visitors, tickets }
 }
 
-/** Same shape the backend builds: YYYYMMDD-NNN, restarting daily per agency. */
-function ticketNumber(n: number): string {
+/**
+ * Same shape ticket_service.py builds: "YYYYMMDD-CODE-NNN", counting only
+ * tickets that share the agency, the service code and today's date - so two
+ * services in the same agency each start their own sequence at 001, and a
+ * ticket with no service falls under the "GEN" bucket rather than colliding
+ * with a real code.
+ */
+function nextTicketNumber(
+  existing: Ticket[],
+  agencyId: string,
+  service: { code: string } | null,
+): string {
   const d = new Date()
   const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-  return `${stamp}-${String(n).padStart(3, '0')}`
+  const code = service?.code ?? 'GEN'
+  const prefix = `${stamp}-${code}-`
+  const count = existing.filter(
+    (t) => t.agency_id === agencyId && t.ticket_number.startsWith(prefix),
+  ).length
+  return `${prefix}${String(count + 1).padStart(3, '0')}`
 }
 
 export function listVisitors(): Visitor[] {
@@ -106,14 +166,23 @@ export function createTicket(body: TicketCreate): Ticket {
   const visitor = vs.find((v) => v.id === body.visitor_id)
   if (!visitor) throw new ApiError('http', 'Visiteur introuvable', 404)
 
+  const service = getService(body.service_id)
+  if (service.agency_id !== visitor.agency_id) {
+    throw new ApiError('http', 'Le service appartient a une autre agence', 422)
+  }
+  if (!service.is_active) throw new ApiError('http', 'Le service est inactif', 409)
+
   const created: Ticket = {
     id: `t9000000-0000-4000-8000-${String((counter += 1)).padStart(12, '0')}`,
     visitor_id: visitor.id,
     visitor_name: visitor.full_name,
     agency_id: visitor.agency_id,
+    service_id: service.id,
+    service_code: service.code,
+    service_name: service.name,
     counter_id: null,
-    ticket_number: ticketNumber(ts.length + 1),
-    service_type: body.service_type ?? null,
+    ticket_number: nextTicketNumber(ts, visitor.agency_id, service),
+    service_type: body.service_type ?? service.name,
     status: 'WAITING',
     created_at: new Date().toISOString(),
     called_at: null,
@@ -128,10 +197,12 @@ export function createTicket(body: TicketCreate): Ticket {
  *
  * Returning called tickets here would be more convenient and would teach the
  * screen a guarantee the backend does not make.
+ *
+ * `serviceId` mirrors the real `?service_id=` filter (contracts/api.md §8).
  */
-export function listQueue(): Ticket[] {
+export function listQueue(serviceId?: string | null): Ticket[] {
   return seed()
-    .tickets.filter((t) => t.status === 'WAITING')
+    .tickets.filter((t) => t.status === 'WAITING' && (!serviceId || t.service_id === serviceId))
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 }
 
@@ -152,11 +223,47 @@ export function callTicket(id: string, counterId: string): Ticket {
   const found = COUNTERS.find((c) => c.id === counterId)
   if (!found) throw new ApiError('http', 'Guichet introuvable', 404)
   if (!found.is_open) throw new ApiError('http', 'Le guichet est ferme', 409)
+  /* Both checks from tickets.py's call_ticket, in the same order: the counter
+     must be assigned to this ticket's service (when it has one), and its
+     point_type must match the service's - a ticket for an OFFICE-type service
+     cannot be called to a plain COUNTER even if nobody has assigned it yet. */
+  if (ticket.service_id !== null && found.service_id !== ticket.service_id) {
+    throw new ApiError('http', 'Le guichet n est pas affecte au service du ticket', 422)
+  }
+  if (ticket.service_id !== null) {
+    const service = getService(ticket.service_id)
+    if (found.point_type !== service.point_type) {
+      throw new ApiError('http', 'Le type de point ne correspond pas au service du ticket', 422)
+    }
+  }
 
   ticket.counter_id = found.id
   ticket.status = 'CALLED'
   ticket.called_at = new Date().toISOString()
   return { ...ticket }
+}
+
+/** GET /api/services/{id}/points, filtered to this agency's counters. */
+export function listServicePoints(serviceId: string): Counter[] {
+  return COUNTERS.filter((c) => c.service_id === serviceId).map((c) => ({ ...c }))
+}
+
+export function assignCounterService(counterId: string, serviceId: string | null): Counter {
+  const found = COUNTERS.find((c) => c.id === counterId)
+  if (!found) throw new ApiError('http', 'Guichet ou bureau introuvable', 404)
+
+  if (serviceId === null) {
+    found.service_id = null
+    found.point_type = 'COUNTER'
+  } else {
+    const service = getService(serviceId)
+    if (!service.is_active) {
+      throw new ApiError('http', 'Impossible d affecter un point a un service inactif', 409)
+    }
+    found.service_id = service.id
+    found.point_type = service.point_type
+  }
+  return { ...found }
 }
 
 export function completeTicket(id: string): Ticket {

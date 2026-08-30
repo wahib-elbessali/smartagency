@@ -15,9 +15,10 @@ import type { Role } from '@/api/types'
  *   MANAGER     /presence   their branch's roster, scoped server-side
  *   SECURITY    /alerts     the live camera stream is the whole of their job
  *   AGENT       /visitors   tickets are ADMIN, MANAGER, AGENT - the queue they serve
- *   TECHNICIAN  /controls   still <ContractPending>, and sent there anyway: it is
- *                           the screen about their job, and "not built yet" is a
- *                           truer answer than a screen about someone else's
+ *   TECHNICIAN  /devices    device registration and sensor thresholds are ADMIN,
+ *                           MANAGER, TECHNICIAN - added 2026-08-27, and the first
+ *                           screen actually built for this role. /controls (doors,
+ *                           locks, motors) is still <ContractPending>.
  *
  * This is a default, not a permission. Every route stays reachable by URL for
  * anyone signed in - hiding one would make a 403 look like a broken link
@@ -28,7 +29,7 @@ export const LANDING_BY_ROLE: Record<Role, string> = {
   MANAGER: '/presence',
   SECURITY: '/alerts',
   AGENT: '/visitors',
-  TECHNICIAN: '/controls',
+  TECHNICIAN: '/devices',
 }
 
 /** Used while the session is still resolving, and for a role added upstream. */

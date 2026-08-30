@@ -9,9 +9,10 @@ import { AGENCY_ID, AGENCY_ID_RABAT } from './fixtures/people'
  * Until now nothing outside the auth fixtures could read this, so every other
  * fixture answered as though an ADMIN were asking. That is wrong in the
  * direction the mock layer explicitly refuses to be wrong in (userStore.ts):
- * the default scenario signs you in as a MANAGER, and a MANAGER's reads are
- * scoped server-side. Handing them rows the real API filters out lets a screen
- * be built against a list that cannot happen.
+ * signing in with anything other than one of the five seeded emails below
+ * lands you on a MANAGER by default, and a MANAGER's reads are scoped
+ * server-side. Handing them rows the real API filters out lets a screen be
+ * built against a list that cannot happen.
  *
  * Kept in its own module rather than exported from fixtures/auth.ts, because
  * that file registers mocks as a module side effect and a store importing it
@@ -87,8 +88,30 @@ export function mockUserForRole(role: Role): User {
 }
 
 /**
- * The user the login fixtures hand out for the active scenario: 'normal' is the
- * MANAGER, everything else the ADMIN, matching the variants in fixtures/auth.ts.
+ * Which seeded account the login screen hands out for a typed email -
+ * case-insensitively and trimmed, since a person testing this by hand will not
+ * always match the seed's casing exactly.
+ *
+ * This is what makes "sign in as admin@test.com" vs "sign in as
+ * fatima@agency.com" actually produce two different roles in ONE running app,
+ * on the SAME login form - which is what a person testing role differences by
+ * hand expects the moment credentials exist at all. Passwords are still
+ * ignored; only the email is read.
+ *
+ * An email that matches none of the five seeded accounts falls back to the
+ * MANAGER, the same default `currentMockUser()` used before this existed -
+ * so typing throwaway credentials like "test@test.com" still gets you in.
+ */
+export function mockUserForEmail(email: string): User {
+  const normalized = email.trim().toLowerCase()
+  const match = Object.values(MOCK_USERS).find((user) => user.email.toLowerCase() === normalized)
+  return match ? { ...match } : mockManager()
+}
+
+/**
+ * The user the login fixtures hand out when nothing else is known - the
+ * default before email is read, and what backs 'GET /api/auth/me' when no
+ * session exists to ask instead.
  */
 export function currentMockUser(): User {
   return MOCK_SCENARIO === 'normal' ? mockManager() : mockAdmin()

@@ -17,12 +17,18 @@ registerMock<Visitor[]>('GET /api/visitors', {
   large: () => store.listVisitors(),
 })
 
+/** `?service_id=` narrows the queue - see fetchQueue in endpoints/tickets.ts. */
+function serviceIdFrom(path: string): string | undefined {
+  const query = path.split('?')[1]
+  return query ? (new URLSearchParams(query).get('service_id') ?? undefined) : undefined
+}
+
 registerMock<Ticket[]>('GET /api/tickets/queue', {
-  normal: () => store.listQueue(),
+  normal: (path) => store.listQueue(serviceIdFrom(path)),
   /* An empty queue is the normal state of a quiet branch, not a failure, and
      the screen has to say so warmly rather than looking broken. */
   empty: () => [],
-  large: () => store.listQueue(),
+  large: (path) => store.listQueue(serviceIdFrom(path)),
 })
 
 registerMockWriter('POST /api/visitors', (body) => store.createVisitor(body as VisitorCreate))
