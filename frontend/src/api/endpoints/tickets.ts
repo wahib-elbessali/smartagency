@@ -27,19 +27,24 @@ import type { Ticket, TicketCreate } from '../types'
  * a page reload - the screen has to remember it, and forgets on refresh.
  *
  * Ordered oldest first, which is the order they should be called in.
+ *
+ * `serviceId` narrows to one service's queue, added alongside `service_id` on
+ * TicketCreate (2026-08-27). Omit it for the whole agency's queue.
  */
-export function fetchQueue(signal?: AbortSignal): Promise<Ticket[]> {
-  return fetchJson<Ticket[]>(
-    { key: 'GET /api/tickets/queue', path: '/api/tickets/queue', auth: true },
-    { signal },
-  )
+export function fetchQueue(serviceId?: string, signal?: AbortSignal): Promise<Ticket[]> {
+  const path = serviceId
+    ? `/api/tickets/queue?service_id=${encodeURIComponent(serviceId)}`
+    : '/api/tickets/queue'
+  return fetchJson<Ticket[]>({ key: 'GET /api/tickets/queue', path, auth: true }, { signal })
 }
 
 /**
- * Issues a ticket to a visitor who already exists.
+ * Issues a ticket to a visitor who already exists, for a service that must
+ * belong to the same agency as the visitor.
  *
- * The number is assigned server-side as "YYYYMMDD-NNN", counted per agency and
- * restarting daily - so it is never sent and never guessed here.
+ * The number is assigned server-side as "YYYYMMDD-SERVICE_CODE-001", counted
+ * per agency, per service and restarting daily - so it is never sent and
+ * never guessed here.
  */
 export function createTicket(body: TicketCreate, signal?: AbortSignal): Promise<Ticket> {
   return fetchJson<Ticket>(

@@ -81,7 +81,7 @@ async function sendRequest<T>(
     if (hasMockWriter(endpoint.key)) {
       return resolveMockWrite<T>(endpoint.key, body, endpoint.path)
     }
-    return resolveMock<T>(endpoint.key, MOCK_SCENARIO)
+    return resolveMock<T>(endpoint.key, MOCK_SCENARIO, endpoint.path)
   }
 
   if (!API_BASE_URL) {

@@ -113,7 +113,17 @@ describe('Users', () => {
     await user.type(within(dialog).getByLabelText(/email/i), 'nour@agency.com')
     await user.type(within(dialog).getByLabelText(/^password/i), 'password123')
     await user.selectOptions(within(dialog).getByLabelText(/^role/i), 'SECURITY')
-    await user.selectOptions(within(dialog).getByLabelText(/^agency/i), AGENCY_ID)
+
+    /* Same race as the agency select fixed elsewhere in this file: this
+       dialog's agency options come from the same GET /api/agencies query,
+       with its own random mock latency, so the control can exist before
+       AGENCY_ID is one of its options. */
+    const agencySelect = within(dialog).getByLabelText(/^agency/i)
+    await waitFor(() => {
+      expect(within(agencySelect).getAllByRole('option').length).toBeGreaterThan(1)
+    }, TABLE_WAIT)
+
+    await user.selectOptions(agencySelect, AGENCY_ID)
     await user.click(within(dialog).getByRole('button', { name: /create account/i }))
 
     await waitFor(() => {
@@ -132,7 +142,13 @@ describe('Users', () => {
     /* Already belongs to the seeded MANAGER. */
     await user.type(within(dialog).getByLabelText(/email/i), 'fatima@agency.com')
     await user.type(within(dialog).getByLabelText(/^password/i), 'password123')
-    await user.selectOptions(within(dialog).getByLabelText(/^agency/i), AGENCY_ID)
+
+    const agencySelect = within(dialog).getByLabelText(/^agency/i)
+    await waitFor(() => {
+      expect(within(agencySelect).getAllByRole('option').length).toBeGreaterThan(1)
+    }, TABLE_WAIT)
+
+    await user.selectOptions(agencySelect, AGENCY_ID)
     await user.click(within(dialog).getByRole('button', { name: /create account/i }))
 
     await waitFor(() => {

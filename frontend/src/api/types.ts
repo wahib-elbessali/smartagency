@@ -25,6 +25,19 @@ export const EMPLOYEE_STATUSES = ['ACTIVE', 'INACTIVE', 'ON_LEAVE'] as const
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number]
 
 /**
+ * A service point serves one visitor at a time (`COUNTER`) or handles work
+ * that does not (`OFFICE`, e.g. a back-office loan review). Enforced by
+ * backend/app/schemas/service.py's `PointType` literal, not a database enum -
+ * still exact, since nothing else assigns the column.
+ */
+export const POINT_TYPES = ['COUNTER', 'OFFICE'] as const
+export type PointType = (typeof POINT_TYPES)[number]
+
+/** Enforced by the `devices.status` Enum column. */
+export const DEVICE_STATUSES = ['ONLINE', 'OFFLINE', 'ERROR', 'MAINTENANCE'] as const
+export type DeviceStatus = (typeof DEVICE_STATUSES)[number]
+
+/**
  * Enforced by the `attendance.method` Enum column.
  *
  * Only RFID is ever written today - record_check_in() hard-codes it. The other
@@ -74,11 +87,19 @@ export interface Zone {
   is_private: boolean
 }
 
+/**
+ * Nested in AgencyResponse, from backend/app/schemas/agency.py's
+ * `CounterResponse`. Added by the services contract update (2026-08-27):
+ * `service_id` and `point_type` did not exist before it.
+ */
 export interface Counter {
   id: string
   number: number
   name: string | null
+  point_type: PointType
   is_open: boolean
+  /** null until PATCH /api/counters/{id}/service assigns one. */
+  service_id: string | null
 }
 
 /** GET|POST /api/agencies. Four fields are optional in AgencyResponse. */
@@ -113,10 +134,14 @@ export interface ZoneCreate {
   is_private?: boolean
 }
 
-/** POST /api/agencies — nested counter. `number` must be unique per agency. */
+/**
+ * POST /api/agencies — nested counter. `number` must be unique per agency.
+ * `point_type` defaults to `COUNTER` server-side when omitted.
+ */
 export interface CounterCreate {
   number: number
   name?: string | null
+  point_type?: PointType
   is_open?: boolean
 }
 
@@ -217,6 +242,65 @@ export interface EmployeeCreate {
  */
 export type EmployeeUpdate = Partial<Omit<EmployeeCreate, 'agency_id'>> & {
   agency_id?: string
+}
+
+/**
+ * GET|POST /api/agencies/{agency_id}/services and GET|PUT /api/services/{id},
+ * from ServiceResponse. What a visitor's ticket is actually for - "Virement",
+ * "Ouverture de compte" - and the unit a counter is assigned to serve.
+ */
+export interface Service {
+  id: string
+  agency_id: string
+  /** Unique per agency, not globally. Normalized upper-case server-side. */
+  code: string
+  name: string
+  description: string | null
+  point_type: PointType
+  /** How many open points are needed before the service is considered staffed. */
+  min_points: number
+  is_active: boolean
+}
+
+/**
+ * POST /api/agencies/{agency_id}/services — from ServiceCreate.
+ * `point_type` and `min_points` default server-side (`COUNTER`, `1`); `is_active`
+ * defaults to `true`.
+ */
+export interface ServiceCreate {
+  code: string
+  name: string
+  description?: string | null
+  point_type?: PointType
+  min_points?: number
+  is_active?: boolean
+}
+
+/** PUT /api/services/{id} — from ServiceUpdate. All fields optional, exclude_unset. */
+export type ServiceUpdate = Partial<ServiceCreate>
+
+/**
+ * GET /api/services/{id}/points — from ServicePointResponse. The same row as
+ * `Counter`, but flattened with its own `agency_id` rather than inherited from
+ * a parent Agency object, because this list is not nested under one.
+ */
+export interface ServicePoint {
+  id: string
+  agency_id: string
+  service_id: string | null
+  number: number
+  name: string | null
+  point_type: PointType
+  is_open: boolean
+}
+
+/**
+ * PATCH /api/counters/{counter_id}/service — from CounterServiceAssignment.
+ * `service_id: null` clears the assignment and resets the counter's
+ * `point_type` back to `COUNTER` server-side.
+ */
+export interface CounterServiceAssignment {
+  service_id: string | null
 }
 
 /**
@@ -374,15 +458,26 @@ export interface VisitorCreate {
  *
  * `visitor_name` and `agency_id` are flattened out of the visitor by the
  * backend, so a queue row needs no second request to be readable.
+ *
+ * `service_id`/`service_code`/`service_name` were added alongside the Services
+ * contract (2026-08-27) and are nullable because a ticket predates them or its
+ * service was deleted after the fact - `service.py`'s relationship has no
+ * cascade rule that forbids that. `service_type` survives independently: the
+ * backend still stores it as free text on the ticket (defaulting to the
+ * service's name if the caller sends none), so it is not simply `service_name`
+ * under another key.
  */
 export interface Ticket {
   id: string
   visitor_id: string
   visitor_name: string
   agency_id: string
+  service_id: string | null
+  service_code: string | null
+  service_name: string | null
   /** null until the ticket is called to a counter. */
   counter_id: string | null
-  /** "YYYYMMDD-NNN", numbered per agency and restarting each day. */
+  /** "YYYYMMDD-SERVICE_CODE-001", numbered per agency, service and day. */
   ticket_number: string
   service_type: string | null
   status: TicketStatus
@@ -392,15 +487,101 @@ export interface Ticket {
   completed_at: string | null
 }
 
-/** POST /api/tickets — from TicketCreate. The visitor must already exist. */
+/**
+ * POST /api/tickets — from TicketCreate. The visitor must already exist, and
+ * `service_id` must reference a service in the visitor's own agency.
+ * `service_type` is optional free text; the backend falls back to the
+ * service's `name` when it is omitted.
+ */
 export interface TicketCreate {
   visitor_id: string
+  service_id: string
   service_type?: string | null
 }
 
 /** POST /api/tickets/{id}/call — from TicketCallRequest. */
 export interface TicketCall {
   counter_id: string
+}
+
+/**
+ * GET|POST /api/devices and GET|PUT /api/devices/{id}, from DeviceResponse.
+ * ADMIN, MANAGER and TECHNICIAN only - contracts/api.md §9, added 2026-08-27.
+ */
+export interface Device {
+  id: string
+  agency_id: string
+  name: string
+  /** Free text, upper-cased server-side (e.g. "DHT22"). No enum backs it. */
+  device_type: string
+  mqtt_client_id: string
+  mqtt_topic: string
+  status: DeviceStatus
+  /** ISO 8601. null until the device has ever published. */
+  last_seen_at: string | null
+}
+
+/**
+ * POST /api/devices/agencies/{agency_id} — from DeviceCreate. `mqtt_topic`
+ * defaults server-side to `agency/{agency_id}/device/{mqtt_client_id}/sensor`
+ * when omitted, matching the MQTT consumer's subscription pattern.
+ */
+export interface DeviceCreate {
+  name: string
+  device_type: string
+  mqtt_client_id: string
+  mqtt_topic?: string | null
+}
+
+/** PUT /api/devices/{id} — from DeviceUpdate. All fields optional, exclude_unset. */
+export interface DeviceUpdate {
+  name?: string
+  device_type?: string
+  mqtt_client_id?: string
+  mqtt_topic?: string | null
+  status?: DeviceStatus
+}
+
+/**
+ * POST /api/devices/agencies/{id} and POST /api/devices/{id}/rotate-key.
+ *
+ * `device_key` is the plaintext secret and is returned ONLY here - the backend
+ * stores just its hash (`device_key_hash`) and every other response omits it.
+ * There is no route to recover a lost key, only to rotate it and invalidate
+ * the old one, so the UI has exactly one chance to show this value.
+ */
+export interface DeviceRegistration extends Device {
+  device_key: string
+}
+
+/**
+ * GET /api/devices/{id}/thresholds and the two write routes, from
+ * SensorThresholdResponse. `sensor_type` is free text lower-cased server-side
+ * (e.g. "temperature"), not an enum - a device can report sensors this
+ * dashboard has never named.
+ */
+export interface SensorThreshold {
+  id: string
+  device_id: string
+  sensor_type: string
+  unit: string | null
+  warning_max: number | null
+  critical_max: number | null
+  is_active: boolean
+}
+
+/**
+ * PUT /api/devices/{id}/thresholds/{sensor_type} — from SensorThresholdUpsert.
+ * Creates the threshold if none exists for that sensor yet, otherwise replaces
+ * it - there is no separate POST. At least one of `warning_max` /
+ * `critical_max` is required, and `warning_max` must not exceed `critical_max`;
+ * both are 422 refusals the server enforces, not this type.
+ */
+export interface SensorThresholdUpsert {
+  unit?: string | null
+  warning_max?: number | null
+  critical_max?: number | null
+  is_active?: boolean
 }
 
 /**

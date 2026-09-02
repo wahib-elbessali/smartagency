@@ -42,6 +42,9 @@ function renderShell(role: Role, initialPath = '/presence') {
                   <Route path="visitors" element={<p>visitors screen</p>} />
                   <Route path="alerts" element={<p>alerts screen</p>} />
                   <Route path="controls" element={<p>controls screen</p>} />
+                  {/* TECHNICIAN's landing page (auth/landing.ts) - required so the
+                      default-path redirect below has somewhere to land. */}
+                  <Route path="devices" element={<p>devices screen</p>} />
                 </Route>
               </Routes>
             </MemoryRouter>

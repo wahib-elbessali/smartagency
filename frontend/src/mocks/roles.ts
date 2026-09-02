@@ -29,6 +29,12 @@ import { requestUser } from './currentUser'
  *   attendance   ADMIN, MANAGER, SECURITY               (ATTENDANCE_ROLES)
  *   tickets      ADMIN, MANAGER, AGENT                  (TICKET_ROLES)
  *   visitors     ADMIN, MANAGER, AGENT, SECURITY        (VISITOR_ROLES)
+ *   services     ADMIN, MANAGER, AGENT to read;         (SERVICE_READ_ROLES,
+ *                ADMIN, MANAGER to write                 SERVICE_WRITE_ROLES)
+ *   counters     ADMIN, MANAGER (the /service assignment) (SERVICE_WRITE_ROLES)
+ *   devices      ADMIN, MANAGER, TECHNICIAN;            (DEVICE_ROLES; rotate-key
+ *                rotate-key is ADMIN, MANAGER only        is its own dependency)
+ *   thresholds   ADMIN, MANAGER, TECHNICIAN             (THRESHOLD_ROLES)
  */
 
 /**
@@ -45,6 +51,18 @@ export function rolesFor(key: string): Role[] | null {
 
   if (path.startsWith('/api/users')) return ['ADMIN']
 
+  /* Checked ahead of /api/agencies: two routers share the "services"
+     substring - /api/agencies/{id}/services (list/create per agency) and
+     /api/services/{id}[/points] (read/update/delete one) - and both split
+     read from write the same way. */
+  if (path.includes('/services')) {
+    return method === 'GET' ? ['ADMIN', 'MANAGER', 'AGENT'] : ['ADMIN', 'MANAGER']
+  }
+
+  /* /api/counters/{id}/service - singular, the counter-to-service assignment.
+     Does not collide with the plural check above. */
+  if (path.startsWith('/api/counters')) return ['ADMIN', 'MANAGER']
+
   if (path.startsWith('/api/agencies')) {
     /* The one split router. Reading is ADMIN and MANAGER, and a MANAGER's list
        comes back scoped (fixtures/agencies.ts). Creating and deleting are ADMIN
@@ -58,6 +76,13 @@ export function rolesFor(key: string): Role[] | null {
   if (path.startsWith('/api/attendance')) return ['ADMIN', 'MANAGER', 'SECURITY']
   if (path.startsWith('/api/tickets')) return ['ADMIN', 'MANAGER', 'AGENT']
   if (path.startsWith('/api/visitors')) return ['ADMIN', 'MANAGER', 'AGENT', 'SECURITY']
+
+  /* Covers both /api/devices... and /api/devices/{id}/thresholds... - the
+     thresholds router hangs off the same prefix and shares the same roles,
+     except rotate-key, which drops TECHNICIAN. */
+  if (path.startsWith('/api/devices')) {
+    return path.endsWith('/rotate-key') ? ['ADMIN', 'MANAGER'] : ['ADMIN', 'MANAGER', 'TECHNICIAN']
+  }
 
   return null
 }
