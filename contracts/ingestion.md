@@ -17,11 +17,13 @@ The checklist for Basma is included at the end of this document.
 | Endpoint or topic | Direction | Protocol | Subsystem |
 |---|---|---|---|
 | `POST /internal/tickets/walk-in` | Hardware → Backend | HTTP | Ticket kiosk |
+| `GET /internal/tickets/kiosk-config` | Hardware → Backend | HTTP | Ticket kiosk |
 | `POST /internal/attendance/check-rfid` | Hardware → Backend | HTTP | RFID |
+| `POST /internal/tickets/call-next` | Hardware → Backend | HTTP | Queue counter display (7-segment) |
+| `agency/{agency_id}/device/{device_id}/ticket-called` | Backend → Hardware | MQTT | Queue counter display (7-segment) |
 | `agency/{agency_id}/device/{device_id}/sensor` | Hardware → Backend | MQTT | DHT22, MQ-7 |
 | `agency/{agency_id}/device/{device_id}/alert` | Backend → Hardware | MQTT | Buzzer / LED |
 | `agency/{agency_id}/device/{device_id}/climate` | Backend → Hardware | MQTT | Climate actuator |
-| `agency/{agency_id}/device/{device_id}/ticket-called` | Backend → Hardware | MQTT | Ticket queue display |
 
 The door-lock subsystem using NEMA17 and A4988 ×2 is not included yet.
 
@@ -111,6 +113,55 @@ X-Device-Key: DEVICE_SECRET_KEY
 - `409` means the service is inactive.
 - `422` means the service belongs to another agency or the payload is invalid.
 
+### GET /internal/tickets/kiosk-config
+
+**Owner:** Basma (hardware)
+**Type:** REST internal ingestion
+**Headers:**
+
+```http
+X-Device-Key: DEVICE_SECRET_KEY
+```
+
+**Query parameters:**
+
+```text
+agency_id=AGENCY_UUID
+device_id=ticket-kiosk-01
+```
+
+**Response body:**
+
+```json
+{
+  "services": [
+    { "service_id": "SERVICE_UUID_1", "code": "VIR", "name": "Virement et consultation" },
+    { "service_id": "SERVICE_UUID_2", "code": "OUV", "name": "Ouverture de compte" }
+  ],
+  "messages": {
+    "error_line1": "Erreur reseau",
+    "error_line2": "Reessayez",
+    "no_service_line1": "Aucun service",
+    "no_service_line2": "disponible"
+  }
+}
+```
+
+**Success status:** `200 OK`
+**Notes:**
+
+- Every `is_active` service for `agency_id`, ordered by `code` -- same
+  `services` table as `GET /api/agencies/{agency_id}/services`.
+- The Uno cycles through all entries returned, not limited to 2.
+- Send the selected entry's `service_id` (not `service_type`) to
+  `POST /internal/tickets/walk-in`.
+- Empty `services`: show "no service available", disable confirmation.
+- `name` may exceed 16 columns; Uno truncates for display only.
+- `messages`: 4 LCD lines, free text on `Device.kiosk_messages` (JSON),
+  default to the values above when unset.
+- `401` invalid/missing key. `404` unknown device.
+- Poll periodically, not just at boot.
+
 ### POST /internal/attendance/check-rfid
 
 **Owner:** Basma (hardware)
@@ -175,7 +226,138 @@ check_out
 
 ---
 
-## 3. Hardware → Backend: MQTT sensor ingestion
+## 3. Hardware ↔ Backend: Queue counter display (7-segment)
+
+A TM1637 4-digit display on the same ESP32 as the ticket kiosk shows the
+last-called ticket per service, formatted `A*C*` (e.g. `A5C2` -- the
+trailing digit of each service's last-called `ticket_number`).
+
+**Design principle:** the display never computes locally. It only ever
+renders what a `ticket-called` MQTT message tells it, no matter what
+triggered that message.
+
+Two triggers publish the same `ticket-called` message, via the same "call
+the next ticket" logic and the same `publish_ticket_called()`:
+
+- **Frontend** (already implemented): `POST /api/tickets/{ticket_id}/call`,
+  see `contracts/api.md`.
+- **Button** (new, this section): `POST /internal/tickets/call-next` below.
+
+So the display can never diverge between the two, and self-corrects on the
+next message after any restart -- no boot-time fetch is needed.
+
+### POST /internal/tickets/call-next
+
+**Owner:** Basma (hardware)
+**Type:** REST internal ingestion
+**Headers:**
+
+```http
+Content-Type: application/json
+X-Device-Key: DEVICE_SECRET_KEY
+```
+
+**Request body:**
+
+```json
+{
+  "agency_id": "AGENCY_UUID",
+  "device_id": "queue-display-01",
+  "service_id": "SERVICE_UUID",
+  "counter_id": "COUNTER_UUID"
+}
+```
+
+**Response body:**
+
+```json
+{
+  "called": true,
+  "ticket_id": "TICKET_UUID",
+  "ticket_number": "20260827-SVC-A-006",
+  "service_code": "SVC-A"
+}
+```
+
+**Response body when the service's queue is empty:**
+
+```json
+{
+  "called": false,
+  "ticket_id": null,
+  "ticket_number": null,
+  "service_code": "SVC-A"
+}
+```
+
+**Success status:** `200 OK`
+**Notes:**
+
+- `counter_id` fixed per device (in the ESP32's secrets, like `AGENCY_ID`);
+  must be an open counter assigned to `service_id`, matching its
+  `point_type`.
+- Same logic as `POST /api/tickets/{ticket_id}/call`: picks the oldest
+  `WAITING` ticket for `service_id`, one shared implementation, not a
+  second divergent one.
+- `called: false` (`200 OK`): queue empty, normal response, no auto-retry.
+- Response used for success/failure only -- display updates via
+  `ticket-called` below, never from this response.
+- `401` invalid/missing key. `404` unknown device/service/counter.
+  `409` counter closed. `422` counter/service/agency mismatch.
+
+### MQTT agency/{agency_id}/device/{device_id}/ticket-called
+
+**Owner:** Backend
+**Type:** MQTT command
+**Direction:** Backend → Hardware
+**Response:** No response is expected.
+**Status:** Already implemented (`c52dc51`) -- no new backend work.
+
+The hardware must subscribe to:
+
+```text
+agency/{agency_id}/device/{device_id}/ticket-called
+```
+
+Published on every successful call (frontend or this device's own button)
+to every `QUEUE_DISPLAY` device in the agency, including the one that
+triggered it.
+
+**Payload:**
+
+```json
+{
+  "service_code": "SVC-A",
+  "ticket_number": "20260827-SVC-A-005"
+}
+```
+
+**Notes:**
+
+- `service_code` identifies which digit (`A` or `C`) to update.
+- The display extracts the trailing sequence from `ticket_number` and shows
+  its last digit (`005` becomes `5`) for that service.
+- A failed ticket call (from either pipeline) does not publish a message.
+- Messages use normal MQTT QoS and are not retried by the backend.
+
+### Queue counter display behavior
+
+1. On button press: send `POST /internal/tickets/call-next` and block until
+   a response arrives -- do not touch the display from this call, in either
+   the success or the failure case.
+2. Regardless of which pipeline triggered it, the display only updates on a
+   `ticket-called` MQTT message: parse the trailing digit of `ticket_number`
+   and set the matching service's digit to it.
+3. On a failed button press (`called: false`, or `401`/`404`/`409`/`422`),
+   leave the digit unchanged; log the outcome, do not retry beyond the
+   connection-refused case noted above.
+4. Never fetch or poll for the current ticket number on boot -- the display
+   simply shows its last rendered state (or `A0C0` after a fresh flash)
+   until the first `ticket-called` message arrives.
+
+---
+
+## 4. Hardware → Backend: MQTT sensor ingestion
 
 ### MQTT agency/{agency_id}/device/{device_id}/sensor
 
@@ -246,7 +428,7 @@ gas_co
 
 ---
 
-## 4. Backend → Hardware: MQTT alert command
+## 5. Backend → Hardware: MQTT alert command
 
 ### MQTT agency/{agency_id}/device/{device_id}/alert
 
@@ -302,7 +484,7 @@ it when `active` is `false`.
 
 ---
 
-## 5. Backend → Hardware: MQTT climate command
+## 6. Backend → Hardware: MQTT climate command
 
 ### MQTT agency/{agency_id}/device/{device_id}/climate
 
@@ -339,53 +521,6 @@ receives a temperature reading so the actuator can recover after a restart.
 
 ---
 
-## 6. Backend → Hardware: MQTT ticket-called command
-
-### MQTT agency/{agency_id}/device/{device_id}/ticket-called
-
-**Owner:** Backend
-**Type:** MQTT command
-**Direction:** Backend → Hardware
-**Response:** No response is expected.
-
-The hardware must subscribe to:
-
-```text
-agency/{agency_id}/device/{device_id}/ticket-called
-```
-
-The backend publishes one message for each successful
-`POST /api/tickets/{ticket_id}/call`, after the ticket has been assigned to an
-open point of service.
-
-**Payload:**
-
-```json
-{
-  "service_code": "SVC-A",
-  "ticket_number": "20260827-SVC-A-005"
-}
-```
-
-**Notes:**
-
-- `service_code` is the code of the ticket's service.
-- The display extracts the trailing sequence from `ticket_number` and shows
-  its last digit (`005` becomes `5`) for the matching service.
-- A failed ticket call does not publish a message.
-- Messages use normal MQTT QoS and are not retried by the backend.
-- The backend publishes to every configured `QUEUE_DISPLAY` device in the
-  ticket's agency.
-
-### Ticket queue display behavior
-
-1. Subscribe to the `ticket-called` topic for the display device.
-2. Parse `service_code` and the trailing digit of `ticket_number`.
-3. Update only the matching service counter.
-4. Keep the last known value of other services unchanged.
-
----
-
 ## 7. Basma hardware integration checklist
 
 ### Before connecting the ESP32
@@ -415,6 +550,28 @@ open point of service.
 4. Send either `check_in` or `check_out`.
 5. Treat HTTP `200` with `valid: false` as a normal rejected-card response.
 6. Show or log the returned `message` without retrying indefinitely.
+
+### Queue counter display (7-segment)
+
+1. Register the device with `device_type: "QUEUE_DISPLAY"` exactly (the
+   backend's `publish_ticket_called()` matches on this, case-insensitively)
+   -- a device registered with any other `device_type` will never receive
+   `ticket-called` messages.
+2. Configure a fixed `counter_id` per physical button/service in the ESP32's
+   own secrets -- there is no endpoint to discover it dynamically.
+3. On a button press, send `POST /internal/tickets/call-next` and wait for
+   the response, only to know success/failure -- never read `ticket_number`
+   from it to update the display.
+4. On failure (`called: false`, `401`/`404`/`409`/`422`/timeout/network
+   drop), leave the digit unchanged and log the outcome; only auto-retry a
+   connection-refused failure, same rule as `walk-in`/`check-rfid`.
+5. Subscribe to `agency/{agency_id}/device/{device_id}/ticket-called` --
+   this is the *only* place the display digit is ever set, for both this
+   device's own button presses and every frontend-triggered call.
+6. On each message, extract the trailing digit of `ticket_number` and set
+   the matching service's digit to it.
+7. Do not fetch or poll for the current ticket number on boot -- both
+   triggers always end in a `ticket-called` push when they succeed.
 
 ### DHT22 and MQ-7
 
