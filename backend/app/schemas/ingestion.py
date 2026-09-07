@@ -27,6 +27,38 @@ class WalkInTicketResponse(BaseModel):
     status: Literal["WAITING"] = "WAITING"
 
 
+class KioskServiceResponse(BaseModel):
+    service_id: str
+    code: str
+    name: str
+
+
+class KioskMessages(BaseModel):
+    error_line1: str = "Erreur reseau"
+    error_line2: str = "Reessayez"
+    no_service_line1: str = "Aucun service"
+    no_service_line2: str = "disponible"
+
+
+class KioskConfigResponse(BaseModel):
+    services: list[KioskServiceResponse]
+    messages: KioskMessages
+
+
+class CallNextRequest(BaseModel):
+    agency_id: str
+    device_id: str
+    service_id: str
+    counter_id: str
+
+
+class CallNextResponse(BaseModel):
+    called: bool
+    ticket_id: str | None = None
+    ticket_number: str | None = None
+    service_code: str
+
+
 class RFIDCheckRequest(BaseModel):
     agency_id: str
     device_id: str
