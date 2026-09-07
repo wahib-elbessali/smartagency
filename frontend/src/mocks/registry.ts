@@ -14,11 +14,20 @@ import type { MockScenario } from './scenario'
  * entries yet - see src/mocks/fixtures/README.md.
  */
 
-/** `error` is optional: absent means "this endpoint has no error fixture yet". */
+/**
+ * `error` is optional: absent means "this endpoint has no error fixture yet".
+ *
+ * `path` is the real request path, query string included - e.g.
+ * `/api/tickets/queue?service_id=SERVICE_UUID` or `/api/devices/DEVICE_UUID`.
+ * Most variants ignore it, the same way most writers ignore the `path` they are
+ * handed (registerMockWriter below). It exists for the endpoints that cannot
+ * answer correctly without it: a detail read scoped by the id in the path, or a
+ * list filtered by a query parameter.
+ */
 export type MockVariants<T> = {
-  normal: () => T
-  empty: () => T
-  large: () => T
+  normal: (path: string) => T
+  empty: (path: string) => T
+  large: (path: string) => T
   error?: () => never
 }
 
@@ -64,7 +73,7 @@ export function resolveMockWrite<T>(key: string, body: unknown, path: string): T
   return writer(body, path) as T
 }
 
-export function resolveMock<T>(key: string, scenario: MockScenario): T {
+export function resolveMock<T>(key: string, scenario: MockScenario, path = ''): T {
   /* Ahead of the lookup, because the real API refuses a caller before it asks
      whether the resource exists - a 403 for a role that may not read this
      endpoint, whatever the fixture would have returned. */
@@ -86,5 +95,5 @@ export function resolveMock<T>(key: string, scenario: MockScenario): T {
     return variants.error()
   }
 
-  return variants[scenario]()
+  return variants[scenario](path)
 }

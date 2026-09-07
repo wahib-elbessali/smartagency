@@ -43,8 +43,9 @@ export const ASSIGNABLE_ROLES: readonly Role[] = ROLES.filter((role) => role !==
  *              account gets the roster but no opening_time, so nobody is marked
  *              late - the screen works and is missing a column of meaning.
  *   /visitors  reads tickets (ADMIN, MANAGER, AGENT), and also agencies for the
- *              branch picker when registering someone. An AGENT gets the queue
- *              and an empty picker.
+ *              branch picker when registering someone, and services for the
+ *              service picker. An AGENT gets the queue and an empty picker for
+ *              anything scoped ADMIN/MANAGER-only.
  *
  * Both are worth fixing properly one day - by scoping those two reads to the
  * caller's own agency in the backend rather than refusing them - and neither is
@@ -58,17 +59,29 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/presence': ['ADMIN', 'MANAGER', 'SECURITY'],
   '/employees': ['ADMIN', 'MANAGER'],
   '/agencies': ['ADMIN', 'MANAGER'],
+  '/services': ['ADMIN', 'MANAGER', 'AGENT'],
+  '/devices': ['ADMIN', 'MANAGER', 'TECHNICIAN'],
   '/users': ['ADMIN'],
   '/visitors': ['ADMIN', 'MANAGER', 'AGENT'],
-  /* No entry means every signed-in role. The four below read no role-guarded
-     endpoint at all: climate and controls are still <ContractPending>, and
-     occupancy and alerts read AI streams the backend proxies without a role
-     check of their own. */
+  /* No entry means every signed-in role. The three below read no role-guarded
+     endpoint at all: controls is still <ContractPending>, and occupancy and
+     alerts read AI streams the backend proxies without a role check of its
+     own. */
 }
 
-/** Every route in the shell, so the navigation and the guard cannot drift. */
+/**
+ * Every route in the shell, so the navigation and the guard cannot drift.
+ *
+ * ROUTE_ROLES is keyed on the top-level paths in SCREENS, all of which are
+ * static - but /agencies/{id} (the agency detail screen) is not, and an exact
+ * lookup on a path carrying a real id would never match its entry, silently
+ * treating it as unguarded (`!allowed` returns true). A nested path inherits
+ * its parent's rule instead: /agencies/{id} is exactly as restricted as
+ * /agencies, because it reads the same data one level deeper.
+ */
 export function canReach(role: Role | null | undefined, path: string): boolean {
-  const allowed = ROUTE_ROLES[path]
+  const base = `/${path.split('/')[1] ?? ''}`
+  const allowed = ROUTE_ROLES[path] ?? ROUTE_ROLES[base]
   if (!allowed) return true
   if (!role) return false
   return allowed.includes(role)

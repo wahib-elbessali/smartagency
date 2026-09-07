@@ -15,12 +15,12 @@ import '@/mocks'
  * The role split is the whole point of this screen, so the session is supplied
  * directly rather than signed in through the provider.
  *
- * Signing in cannot express it: the fixture ties the role to the mock SCENARIO
- * (normal is a MANAGER, large is an ADMIN) and the scenario is read into a
- * module constant at import time, so it cannot be flipped between tests in one
- * file. Providing the context is the only way to render both roles against the
- * same data, and it is what is actually being asserted - the screen branches on
- * `user.role` and nothing else.
+ * Signing in through POST /api/auth/login would work too now that the fixture
+ * reads the role from the typed email (mockUserForEmail in mocks/currentUser.ts)
+ * rather than from MOCK_SCENARIO - but it is still an extra async round trip
+ * this test has no use for. What is being asserted is that the screen branches
+ * on `user.role` and nothing else, so handing it a role directly is both
+ * simpler and faster than a sign-in this test does not otherwise need.
  */
 function sessionFor(role: User['role']): SessionValue {
   return {

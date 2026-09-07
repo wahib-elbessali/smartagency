@@ -2,11 +2,26 @@ import { type FormEvent, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { ShieldCheck } from 'lucide-react'
 import { useSession } from '@/auth/SessionContext'
+import { USE_MOCKS } from '@/api/config'
 import { ApiError, describeApiError } from '@/api/errors'
 import { Button } from '@/components/ui/Button'
 import { Panel, PanelBody } from '@/components/ui/Panel'
 import { ParticleField } from '@/components/ParticleField'
 import { ThemeToggle } from '@/components/ThemeToggle'
+
+/**
+ * The five accounts mocks/currentUser.ts seeds, in the same order as
+ * MOCK_USERS. Passwords are never checked in mock mode - only the email
+ * decides which role signs in (mockUserForEmail) - so any password works and
+ * none is shown here.
+ */
+const MOCK_ACCOUNTS = [
+  { email: 'admin@test.com', role: 'ADMIN' },
+  { email: 'fatima@agency.com', role: 'MANAGER' },
+  { email: 'nadia@agency.com', role: 'AGENT' },
+  { email: 'mehdi@agency.com', role: 'SECURITY' },
+  { email: 'karim@agency.com', role: 'TECHNICIAN' },
+] as const
 
 interface FromState {
   from?: string
@@ -129,6 +144,32 @@ export default function Login() {
             </form>
           </PanelBody>
         </Panel>
+
+        {/* Mock mode only - there is no backend to check a password against,
+            so the email alone picks which seeded account signs in. Anyone
+            testing role differences by hand needs to know these exist, since
+            nothing else on this screen hints at it. */}
+        {USE_MOCKS && (
+          <Panel className="mt-4">
+            <PanelBody className="py-4">
+              <p className="text-ink-3 tracked text-[11px] font-medium">Fixture accounts</p>
+              <p className="text-ink-3 mt-1 text-xs leading-relaxed">
+                No backend is connected. Any password works - the email below picks the role.
+              </p>
+              <ul className="mt-3 space-y-1.5">
+                {MOCK_ACCOUNTS.map((account) => (
+                  <li
+                    key={account.email}
+                    className="flex items-center justify-between gap-3 text-xs"
+                  >
+                    <span className="text-ink-2 tabular">{account.email}</span>
+                    <span className="text-ink-3">{account.role}</span>
+                  </li>
+                ))}
+              </ul>
+            </PanelBody>
+          </Panel>
+        )}
       </div>
     </div>
   )

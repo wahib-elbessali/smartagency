@@ -128,7 +128,12 @@ export function createAgency(body: AgencyCreate): Agency {
     id: `c9000000-0000-4000-8000-${suffix()}`,
     number: counter.number,
     name: counter.name ?? null,
+    point_type: counter.point_type ?? 'COUNTER',
     is_open: counter.is_open ?? true,
+    /* Not accepted on create: a counter has nothing to assign to until a
+       service exists, and services are created afterwards, against the
+       agency's own id. */
+    service_id: null,
   }))
 
   const created: Agency = {

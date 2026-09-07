@@ -61,7 +61,7 @@ function actionErrorMessage(error: unknown): string | null {
     case 404:
       return 'That ticket or counter no longer exists.'
     case 422:
-      return 'That counter belongs to a different branch.'
+      return 'That counter cannot take this ticket — wrong branch or wrong service. The queue has been refreshed.'
     default:
       return describeApiError(error)
   }
@@ -74,7 +74,7 @@ export default function VisitorQueue() {
 
   const queue = useQuery({
     queryKey: ['tickets', 'queue'],
-    queryFn: ({ signal }) => fetchQueue(signal),
+    queryFn: ({ signal }) => fetchQueue(undefined, signal),
     refetchInterval: POLL_MS,
   })
 
@@ -111,7 +111,7 @@ export default function VisitorQueue() {
       })
       return createTicket({
         visitor_id: visitor.id,
-        service_type: values.service_type.trim() || null,
+        service_id: values.service_id,
       })
     },
     onSuccess: async () => {
@@ -257,7 +257,9 @@ export default function VisitorQueue() {
                           {ticket.ticket_number}
                         </span>
                         <span className="text-ink truncate text-sm">{ticket.visitor_name}</span>
-                        {ticket.service_type && <Badge tone="neutral">{ticket.service_type}</Badge>}
+                        {(ticket.service_name ?? ticket.service_type) && (
+                          <Badge tone="neutral">{ticket.service_name ?? ticket.service_type}</Badge>
+                        )}
                       </div>
                       <p className="text-ink-3 mt-0.5 text-xs">
                         Arrived <Clock iso={ticket.created_at} />
@@ -271,18 +273,33 @@ export default function VisitorQueue() {
                         {/* Counters are a short, fixed list, so buttons beat a
                             dropdown - one click instead of three, which matters
                             at a desk with someone standing in front of you. */}
-                        {counters.map((counter) => (
-                          <Button
-                            key={counter.id}
-                            size="sm"
-                            variant={counter.is_open ? 'primary' : 'secondary'}
-                            disabled={!counter.is_open || call.isPending}
-                            title={counter.is_open ? undefined : 'This counter is closed'}
-                            onClick={() => call.mutate({ id: ticket.id, counterId: counter.id })}
-                          >
-                            {counter.name ?? `Counter ${counter.number}`}
-                          </Button>
-                        ))}
+                        {counters.map((counter) => {
+                          /* A ticket with a service can only be called to the
+                             one counter assigned to that exact service - the
+                             backend checks counter.service_id against the
+                             ticket's, not just a matching point_type, and
+                             refuses everything else with a 422. */
+                          const wrongService =
+                            ticket.service_id !== null && counter.service_id !== ticket.service_id
+                          const disabled = !counter.is_open || wrongService || call.isPending
+                          const reason = !counter.is_open
+                            ? 'This counter is closed'
+                            : wrongService
+                              ? 'Not assigned to this ticket’s service'
+                              : undefined
+                          return (
+                            <Button
+                              key={counter.id}
+                              size="sm"
+                              variant={disabled ? 'secondary' : 'primary'}
+                              disabled={disabled}
+                              title={reason}
+                              onClick={() => call.mutate({ id: ticket.id, counterId: counter.id })}
+                            >
+                              {counter.name ?? `Counter ${counter.number}`}
+                            </Button>
+                          )
+                        })}
                         <Button size="sm" onClick={() => setCallingId(null)}>
                           Cancel
                         </Button>

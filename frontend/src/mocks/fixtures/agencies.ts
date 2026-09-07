@@ -1,5 +1,6 @@
 import { registerMock, registerMockWriter } from '../registry'
 import type { Agency, AgencyCreate, AgencyUpdate } from '@/api/types'
+import { ApiError } from '@/api/errors'
 import * as store from '../agencyStore'
 import { requestUser } from '../currentUser'
 
@@ -50,20 +51,24 @@ function idFrom(path: string): string {
 }
 
 /**
- * One agency - and it cannot honour the id, because a read variant is called
- * with no arguments (registry.ts) and only the writers are handed the path. So
- * it answers with the first branch the caller is entitled to see, which for a
- * MANAGER is theirs rather than whichever row happens to sort first.
- *
- * Nothing calls fetchAgency yet; it exists for a detail view. When something
- * does, the id has to reach this function before the mock means anything, and
- * that is a change to the read signature in registry.ts rather than to this
- * file. Scoped now anyway so the boundary is not the thing that gets forgotten.
+ * One agency, honouring the real id now that read variants receive the
+ * request path (registry.ts) - the agency detail screen depends on this
+ * actually resolving the branch that was clicked, not just the first one a
+ * MANAGER happens to see. 404 mirrors the real route: a MANAGER who somehow
+ * requests another agency's id gets "not found" rather than a 403, the same
+ * as the backend's ensure_agency_scope leaking no information about agencies
+ * outside their own.
  */
+function oneAgency(id: string): Agency {
+  const found = visibleTo(store.listAgencies()).find((a) => a.id === id)
+  if (!found) throw new ApiError('http', 'Agence introuvable.', 404)
+  return found
+}
+
 registerMock<Agency>('GET /api/agencies/{id}', {
-  normal: () => visibleTo(store.listAgencies())[0],
-  empty: () => visibleTo(store.listAgencies())[0],
-  large: () => visibleTo(store.listAgencies())[0],
+  normal: (path) => oneAgency(idFrom(path)),
+  empty: (path) => oneAgency(idFrom(path)),
+  large: (path) => oneAgency(idFrom(path)),
 })
 
 registerMockWriter('POST /api/agencies', (body) => store.createAgency(body as AgencyCreate))

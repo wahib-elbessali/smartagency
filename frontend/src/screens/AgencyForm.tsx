@@ -1,6 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { Plus, X } from 'lucide-react'
-import type { Agency, AgencyCreate, CounterCreate, ZoneCreate } from '@/api/types'
+import {
+  POINT_TYPES,
+  type Agency,
+  type AgencyCreate,
+  type CounterCreate,
+  type ZoneCreate,
+} from '@/api/types'
 import { ApiError, describeApiError } from '@/api/errors'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
@@ -304,7 +310,7 @@ function RepeatableCounters({
     const used = new Set(counters.map((c) => c.number))
     let next = 1
     while (used.has(next)) next += 1
-    onChange([...counters, { number: next, name: '', is_open: true }])
+    onChange([...counters, { number: next, name: '', point_type: 'COUNTER', is_open: true }])
   }
 
   const update = (index: number, patch: Partial<CounterCreate>) =>
@@ -339,6 +345,24 @@ function RepeatableCounters({
                 value={counter.name ?? ''}
                 onChange={(e) => update(index, { name: e.target.value })}
               />
+              {/* Whether this point serves one visitor at a time (COUNTER) or
+                  handles work that does not (OFFICE, e.g. a back-office loan
+                  review). Assigning it to a service later can still change
+                  this - see PATCH /api/counters/{id}/service. */}
+              <select
+                aria-label={`Counter ${index + 1} point type`}
+                className={`${controlClass()} w-28 shrink-0`}
+                value={counter.point_type ?? 'COUNTER'}
+                onChange={(e) =>
+                  update(index, { point_type: e.target.value as CounterCreate['point_type'] })
+                }
+              >
+                {POINT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
               <label className="text-ink-2 flex h-[42px] shrink-0 items-center gap-2 text-xs">
                 <input
                   type="checkbox"

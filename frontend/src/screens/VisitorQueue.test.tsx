@@ -69,6 +69,13 @@ describe('VisitorQueue', () => {
     await user.click(screen.getByRole('button', { name: /register visitor/i }))
     const dialog = screen.getByRole('dialog')
     await user.type(within(dialog).getByLabelText(/full name/i), 'Nour Sabri')
+
+    /* service_id is required (contracts/api.md §8), and the picker only
+       populates once GET /api/agencies/{id}/services has resolved. */
+    const serviceSelect = within(dialog).getByLabelText(/what they need/i)
+    await waitFor(() => expect(serviceSelect).toBeEnabled(), WAIT)
+    await user.selectOptions(serviceSelect, 'Virement et consultation')
+
     await user.click(within(dialog).getByRole('button', { name: /register and issue ticket/i }))
 
     await waitFor(() => {
@@ -85,7 +92,10 @@ describe('VisitorQueue', () => {
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: /register and issue ticket/i }))
 
-    expect(within(dialog).getByText('Required.')).toBeInTheDocument()
+    /* Submitting empty now also flags the required service picker, so this
+       checks the full name field itself rather than counting "Required."
+       text nodes on the page. */
+    expect(within(dialog).getByLabelText(/full name/i)).toHaveAttribute('aria-invalid', 'true')
   })
 
   /**
@@ -139,7 +149,10 @@ describe('VisitorQueue', () => {
     renderScreen()
     await screen.findByText('Rachid El Fassi', {}, WAIT)
 
-    await user.click(screen.getByRole('button', { name: /cancel .*-001/i }))
+    /* Ticket numbers now restart at 001 per service, not per agency
+       (contracts/api.md §8), so every seeded ticket's first segment can be
+       "001" - Rachid's is uniquely identified by his service code, VIR. */
+    await user.click(screen.getByRole('button', { name: /cancel \d{8}-VIR-001/i }))
 
     await waitFor(() => {
       expect(screen.queryByText('Rachid El Fassi')).not.toBeInTheDocument()
