@@ -44,8 +44,8 @@ registerMockWriter('POST /api/tickets/{id}/call', (body, path) =>
   store.callTicket(idFrom(path), (body as { counter_id: string }).counter_id),
 )
 
-registerMockWriter('POST /api/tickets/{id}/complete', (_body, path) =>
-  store.completeTicket(idFrom(path)),
+registerMockWriter('POST /api/tickets/{id}/complete', (body, path) =>
+  store.completeTicket(idFrom(path), (body as { notes?: string } | undefined)?.notes),
 )
 
 registerMockWriter('POST /api/tickets/{id}/cancel', (_body, path) =>

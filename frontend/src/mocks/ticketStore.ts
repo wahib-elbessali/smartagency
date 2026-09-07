@@ -112,6 +112,7 @@ function seed(): { visitors: Visitor[]; tickets: Ticket[] } {
         created_at: visitor.created_at,
         called_at: null,
         completed_at: null,
+        notes: null,
       })
     }
     tickets = built
@@ -187,6 +188,7 @@ export function createTicket(body: TicketCreate): Ticket {
     created_at: new Date().toISOString(),
     called_at: null,
     completed_at: null,
+    notes: null,
   }
   ts.push(created)
   return created
@@ -266,13 +268,15 @@ export function assignCounterService(counterId: string, serviceId: string | null
   return { ...found }
 }
 
-export function completeTicket(id: string): Ticket {
+/** `notes` is PROPOSED - see the type's comment in api/types.ts. */
+export function completeTicket(id: string, notes?: string | null): Ticket {
   const ticket = find(id)
   if (ticket.status !== 'CALLED' && ticket.status !== 'IN_SERVICE') {
     throw new ApiError('http', 'Ce ticket ne peut pas etre termine', 409)
   }
   ticket.status = 'COMPLETED'
   ticket.completed_at = new Date().toISOString()
+  if (notes) ticket.notes = notes
   return { ...ticket }
 }
 

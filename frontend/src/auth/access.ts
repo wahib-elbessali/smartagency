@@ -51,6 +51,15 @@ export const ASSIGNABLE_ROLES: readonly Role[] = ROLES.filter((role) => role !==
  * caller's own agency in the backend rather than refusing them - and neither is
  * a reason to hide a screen that otherwise works.
  *
+ * /occupancy is a rule with nothing behind it yet. The AI stream it reads
+ * (contracts/ai-service.md, WS /zoning/occupancy/stream) has no role check and
+ * no agency_id on a zone - one physical site, not scoped per branch - so this
+ * entry only decides who may look at the one feed that exists. An ADMIN or
+ * MANAGER seeing "their own agency's zones" and nothing else needs zones to
+ * carry an agency_id all the way from the AI service through the backend
+ * proxy first; that's a contracts/backend/ai change, not one this file can
+ * make on its own.
+ *
  * Roles transcribed from backend/app/api/*.py. mocks/roles.ts carries the same
  * table keyed by API path; they describe the same rules from the two ends and
  * have to move together.
@@ -59,14 +68,14 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/presence': ['ADMIN', 'MANAGER', 'SECURITY'],
   '/employees': ['ADMIN', 'MANAGER'],
   '/agencies': ['ADMIN', 'MANAGER'],
-  '/services': ['ADMIN', 'MANAGER', 'AGENT'],
+  '/services': ['ADMIN', 'MANAGER'],
   '/devices': ['ADMIN', 'MANAGER', 'TECHNICIAN'],
   '/users': ['ADMIN'],
   '/visitors': ['ADMIN', 'MANAGER', 'AGENT'],
-  /* No entry means every signed-in role. The three below read no role-guarded
-     endpoint at all: controls is still <ContractPending>, and occupancy and
-     alerts read AI streams the backend proxies without a role check of its
-     own. */
+  '/occupancy': ['ADMIN', 'MANAGER'],
+  /* No entry means every signed-in role. The two below read no role-guarded
+     endpoint at all: controls is still <ContractPending>, and alerts reads an
+     AI stream the backend proxies without a role check of its own. */
 }
 
 /**

@@ -35,13 +35,24 @@ describe('canReach', () => {
     expect(canReach('AGENT', '/presence')).toBe(false)
   })
 
-  /* No role-guarded endpoint behind these, so no role is kept out. Two are
+  /* No role-guarded endpoint behind these, so no role is kept out. One is
      still <ContractPending>, which is a different thing from forbidden. */
   it('offers the unguarded screens to everyone', () => {
     for (const role of ROLES) {
-      for (const path of ['/climate', '/occupancy', '/alerts', '/controls']) {
+      for (const path of ['/climate', '/alerts', '/controls']) {
         expect(canReach(role, path)).toBe(true)
       }
+    }
+  })
+
+  /* Occupancy has no per-agency scoping behind it yet - every zone comes back
+     regardless of role - so restricting who may look is the only lever this
+     table has until the feed itself carries an agency_id. */
+  it('gives occupancy to admins and managers only', () => {
+    expect(canReach('ADMIN', '/occupancy')).toBe(true)
+    expect(canReach('MANAGER', '/occupancy')).toBe(true)
+    for (const role of ['AGENT', 'SECURITY', 'TECHNICIAN'] as const) {
+      expect(canReach(role, '/occupancy')).toBe(false)
     }
   })
 

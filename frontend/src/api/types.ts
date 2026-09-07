@@ -304,6 +304,37 @@ export interface CounterServiceAssignment {
 }
 
 /**
+ * PROPOSED - not in contracts/api.md, and nothing on the real backend stores
+ * this yet (backend/app/models/entities.py: neither User nor Employee carries
+ * a service or counter). Built ahead of the backend (2026-09-05, at the
+ * user's direction) so AgentQueue can read which counter a MANAGER put an
+ * agent on, instead of asking the agent to pick their own. See
+ * api/endpoints/assignments.ts for the anticipated `GET` this backs, and
+ * mocks/assignmentStore.ts for the seeded data standing in for it.
+ */
+export interface AgentAssignment {
+  counter_id: string
+  counter_name: string | null
+  service_id: string
+  service_name: string
+}
+
+/**
+ * PROPOSED - not in contracts/api.md. Backs GET /api/agencies/{id}/agents,
+ * the MANAGER-facing counterpart to AgentAssignment above: one row per AGENT
+ * account in the agency, with whatever they're currently assigned to (or
+ * null). Deliberately narrower than GET /api/users, which is ADMIN-only
+ * (contracts/api.md §5) - a MANAGER can't read that list at all today, so
+ * this doesn't loosen it, it's a separate, smaller surface built for exactly
+ * this screen. See api/endpoints/assignments.ts.
+ */
+export interface AgentSummary {
+  user_id: string
+  full_name: string
+  assignment: AgentAssignment | null
+}
+
+/**
  * The employee summary nested in a GET /api/users entry, from
  * EmployeeLinkResponse in backend/app/schemas/user.py.
  *
@@ -485,6 +516,14 @@ export interface Ticket {
   created_at: string
   called_at: string | null
   completed_at: string | null
+  /**
+   * PROPOSED - not in contracts/api.md yet. POST /api/tickets/{id}/complete
+   * has no request body on the real backend today; this is built ahead of it
+   * (2026-09-05, at the user's direction) so an agent can note how a visit
+   * went. Mocked only until the backend accepts `{ notes }` on complete - see
+   * api/endpoints/tickets.ts.
+   */
+  notes: string | null
 }
 
 /**

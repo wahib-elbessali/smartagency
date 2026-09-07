@@ -51,6 +51,16 @@ export function rolesFor(key: string): Role[] | null {
 
   if (path.startsWith('/api/users')) return ['ADMIN']
 
+  /* PROPOSED, not in the real backend - api/endpoints/assignments.ts. Kept
+     out of the "transcribed from backend" table above so nobody mistakes it
+     for something verified against backend source; checked separately here
+     only so a role this was never built for can't accidentally read it.
+     /me is an agent reading their own assignment; everything else under this
+     prefix (PATCH .../assignment) is a MANAGER or ADMIN setting one - checked
+     first because it's the more specific path. */
+  if (path.startsWith('/api/agents/me')) return ['AGENT']
+  if (path.startsWith('/api/agents')) return ['ADMIN', 'MANAGER']
+
   /* Checked ahead of /api/agencies: two routers share the "services"
      substring - /api/agencies/{id}/services (list/create per agency) and
      /api/services/{id}[/points] (read/update/delete one) - and both split
