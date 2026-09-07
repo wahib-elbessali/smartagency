@@ -43,6 +43,38 @@ def normalize_code(code: str) -> str:
     return code.strip().upper()
 
 
+def service_integrity_error_response(exc: IntegrityError) -> HTTPException | None:
+    """Translate known PostgreSQL constraint errors without masking them.
+
+    Only the service-code uniqueness constraint is a conflict (409). A
+    NOT-NULL or CHECK violation is invalid input (422), not a duplicate code.
+    Unknown database errors are re-raised so they remain visible in logs.
+    """
+    original = exc.orig
+    pgcode = getattr(original, "pgcode", None)
+    diagnostic = getattr(original, "diag", None)
+    constraint_name = getattr(diagnostic, "constraint_name", None)
+    error_text = str(original).lower()
+
+    duplicate_code = (
+        pgcode == "23505"
+        and constraint_name in {"uq_service_agency_code", "services_agency_id_code_key"}
+    ) or "uq_service_agency_code" in error_text or (
+        "unique constraint" in error_text and "code" in error_text
+    )
+    if duplicate_code:
+        return HTTPException(
+            status_code=409,
+            detail="Ce code de service existe deja dans cette agence",
+        )
+    if pgcode in {"23502", "23514"} or "not-null constraint" in error_text or "not null constraint" in error_text:
+        return HTTPException(
+            status_code=422,
+            detail="Les donnees du service sont invalides",
+        )
+    return None
+
+
 @router.get(
     "/services/{service_id}/points",
     response_model=list[ServicePointResponse],
@@ -140,7 +172,10 @@ def create_service(
         db.refresh(service)
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Ce code de service existe deja dans cette agence") from exc
+        response = service_integrity_error_response(exc)
+        if response is not None:
+            raise response from exc
+        raise
     return service
 
 
