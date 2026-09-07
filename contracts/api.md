@@ -637,6 +637,19 @@ case and `404` if the user does not exist.
 
 ## 6. RFID attendance
 
+The public REST endpoints in this section are explicit/manual operations: the
+authenticated client chooses `check-in` or `check-out`. RFID hardware does not
+choose or send an event. It sends only the card identifier through the internal
+ingestion contract in `contracts/ingestion.md`, and the backend decides the
+operation from the employee's current attendance state:
+
+- no open attendance record -> create a `check_in`;
+- an open attendance record -> close it with a `check_out`.
+
+The backend decision is returned in the internal response and is also exposed
+in the attendance WebSocket event. This prevents the hardware and backend from
+disagreeing about the employee's status.
+
 ### POST /api/attendance/check-in
 
 **Owner:** Backend
@@ -667,9 +680,11 @@ case and `404` if the user does not exist.
 ```
 
 **Success status:** `200 OK`
-**Notes:** The employee is identified by `employee_rfid`. `timestamp` and
-`agency_id` are optional. A `MANAGER` or `SECURITY` user is restricted to their
-own agency.
+**Notes:** This is the explicit check-in route for authenticated applications.
+The employee is identified by `employee_rfid`. `timestamp` and `agency_id` are
+optional. A `MANAGER` or `SECURITY` user is restricted to their own agency.
+RFID devices must use `POST /internal/attendance/check-rfid` instead and must
+not send an `event` field.
 
 ### POST /api/attendance/check-out
 
@@ -679,7 +694,10 @@ own agency.
 **Request body:** Same shape as check-in.
 **Response body:** Attendance object with a non-null `check_out`.
 **Success status:** `200 OK`
-**Notes:** Returns `409` if the employee has no open attendance record.
+**Notes:** This is the explicit check-out route for authenticated applications.
+It returns `409` if the employee has no open attendance record. RFID devices do
+not call this route directly; the backend automatically selects check-in or
+check-out through the internal RFID ingestion endpoint.
 
 ### GET /api/attendance/today
 
@@ -721,7 +739,9 @@ agency only.
 ```
 
 **Notes:** The `id` field is always present. MQTT-triggered messages also
-include `device_id`; REST-triggered messages do not.
+include `device_id`; REST-triggered messages do not. For an RFID-triggered
+message, `event` is the backend decision (`check_in` or `check_out`); the RFID
+reader did not provide that field.
 
 ---
 

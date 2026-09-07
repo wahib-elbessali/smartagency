@@ -1,6 +1,4 @@
 from datetime import datetime
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 
@@ -12,7 +10,6 @@ class AttendanceEventRequest(BaseModel):
 
 class MqttAttendanceMessage(BaseModel):
     employee_rfid: str = Field(min_length=1, max_length=100)
-    event: Literal["check_in", "check_out"]
     timestamp: datetime | None = None
 
 

@@ -31,7 +31,6 @@ class RFIDCheckRequest(BaseModel):
     agency_id: str
     device_id: str
     employee_rfid: str = Field(min_length=1, max_length=100)
-    event: Literal["check_in", "check_out"]
     timestamp: datetime | None = None
 
 

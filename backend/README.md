@@ -304,10 +304,14 @@ POST /internal/attendance/check-rfid
   "agency_id": "AGENCY_UUID",
   "device_id": "rfid-gate-01",
   "employee_rfid": "A1B2C3D4",
-  "event": "check_in",
   "timestamp": "2026-08-25T09:15:00Z"
 }
 ```
+
+Le lecteur RFID n'envoie pas `event`. Le backend décide automatiquement :
+une carte sans présence ouverte déclenche `check_in`, puis la prochaine lecture
+de cette carte déclenche `check_out`. La réponse indique la décision dans le
+champ `event`. L'ESP32 doit éviter d'envoyer plusieurs fois la même lecture.
 
 Réponse valide :
 
@@ -487,7 +491,6 @@ agency/{agency_id}/device/{device_id}/attendance
 ```json
 {
   "employee_rfid": "RFID-001",
-  "event": "check_in",
   "timestamp": "2026-08-01T12:00:00Z"
 }
 ```

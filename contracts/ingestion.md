@@ -180,16 +180,8 @@ X-Device-Key: DEVICE_SECRET_KEY
   "agency_id": "AGENCY_UUID",
   "device_id": "rfid-gate-01",
   "employee_rfid": "A1B2C3D4",
-  "event": "check_in",
   "timestamp": "2026-08-25T09:15:00Z"
 }
-```
-
-`event` accepts only:
-
-```text
-check_in
-check_out
 ```
 
 **Response when the event is accepted:**
@@ -219,8 +211,13 @@ check_out
 
 - An unknown card returns `200` with `valid: false`; this is a normal business
   response, not a network error.
+- The hardware must not send an `event`. The backend decides automatically:
+  the first scan without an open attendance creates `check_in`; the next scan
+  while an attendance is open records `check_out`.
+- The response `event` field reports the decision made by the backend.
 - The employee must be active and belong to the agency in the request.
-- A `check_out` without an open attendance returns `valid: false`.
+- The ESP32 must debounce a card and avoid sending the same scan repeatedly;
+  each accepted scan toggles the employee's open attendance state.
 - A missing or invalid device key returns `401`.
 - An unknown device returns `404`.
 
@@ -547,9 +544,12 @@ receives a temperature reading so the actuator can recover after a restart.
 1. Send `POST /internal/attendance/check-rfid`.
 2. Add `X-Device-Key` to the HTTP headers.
 3. Send the RFID value exactly as stored in `employees.rfid_uid`.
-4. Send either `check_in` or `check_out`.
+4. Do not send an `event`; the backend toggles check-in/check-out from the
+   employee's current open attendance.
 5. Treat HTTP `200` with `valid: false` as a normal rejected-card response.
-6. Show or log the returned `message` without retrying indefinitely.
+6. Read the returned `event` to know whether the backend recorded a
+   `check_in` or `check_out`.
+7. Show or log the returned `message` without retrying indefinitely.
 
 ### Queue counter display (7-segment)
 

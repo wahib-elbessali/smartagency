@@ -13,7 +13,7 @@ from app.schemas.ingestion import (
     WalkInTicketRequest,
     WalkInTicketResponse,
 )
-from app.services.attendance_service import record_check_in, record_check_out
+from app.services.attendance_service import record_rfid_event
 from app.services.ticket_service import next_ticket_number
 
 
@@ -110,15 +110,17 @@ def check_rfid(
         return RFIDCheckResponse(valid=False, message="Carte RFID ou employe introuvable")
 
     try:
-        if payload.event == "check_in":
-            record_check_in(db, payload.employee_rfid, payload.timestamp, payload.agency_id)
-        else:
-            record_check_out(db, payload.employee_rfid, payload.timestamp, payload.agency_id)
+        _, event = record_rfid_event(
+            db,
+            payload.employee_rfid,
+            payload.timestamp,
+            payload.agency_id,
+        )
     except HTTPException as exc:
         return RFIDCheckResponse(valid=False, message=str(exc.detail))
 
     return RFIDCheckResponse(
         valid=True,
         employee_name=f"{employee.first_name} {employee.last_name}",
-        event=payload.event,
+        event=event,
     )
