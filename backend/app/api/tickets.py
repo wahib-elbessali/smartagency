@@ -1,14 +1,12 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import get_current_user, require_roles
 from app.database.connection import get_db
-from app.models.entities import Counter, RoleName, Service, Ticket, TicketStatus, User, Visitor
+from app.models.entities import RoleName, Service, Ticket, TicketStatus, User, Visitor
 from app.schemas.ticket import TicketCallRequest, TicketCreate, TicketResponse
-from app.services.ticket_service import next_ticket_number, publish_ticket_called
+from app.services.ticket_service import call_ticket_by_id, next_ticket_number
 
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -115,27 +113,7 @@ def call_ticket(
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket introuvable")
     ensure_agency_scope(ticket.visitor.agency_id, current_user)
-    if ticket.status != TicketStatus.WAITING:
-        raise HTTPException(status_code=409, detail="Ce ticket n est plus en attente")
-
-    counter = db.get(Counter, payload.counter_id)
-    if counter is None:
-        raise HTTPException(status_code=404, detail="Guichet introuvable")
-    if counter.agency_id != ticket.visitor.agency_id:
-        raise HTTPException(status_code=422, detail="Le guichet appartient a une autre agence")
-    if not counter.is_open:
-        raise HTTPException(status_code=409, detail="Le guichet est ferme")
-    if ticket.service_id is not None and counter.service_id != ticket.service_id:
-        raise HTTPException(status_code=422, detail="Le guichet n est pas affecte au service du ticket")
-    if ticket.service is not None and counter.point_type != ticket.service.point_type:
-        raise HTTPException(status_code=422, detail="Le type de point ne correspond pas au service du ticket")
-
-    ticket.counter_id = counter.id
-    ticket.status = TicketStatus.CALLED
-    ticket.called_at = datetime.now(timezone.utc)
-    db.commit()
-    ticket = db.scalar(ticket_query().where(Ticket.id == ticket.id))
-    publish_ticket_called(db, ticket)
+    ticket = call_ticket_by_id(db, ticket_id, payload.counter_id)
     return ticket_to_response(ticket)
 
 

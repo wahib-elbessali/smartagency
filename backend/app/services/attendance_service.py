@@ -75,6 +75,45 @@ def record_check_out(
     return attendance
 
 
+def record_rfid_event(
+    db: Session,
+    employee_rfid: str,
+    timestamp: datetime | None = None,
+    agency_id: str | None = None,
+) -> tuple[Attendance, str]:
+    """Toggle attendance from one RFID scan.
+
+    The hardware only identifies the card. The backend treats a scan with no
+    open attendance as check-in, and a scan with an open attendance as
+    check-out. The returned event is the decision made by the backend.
+    """
+    employee = find_employee_by_rfid(db, employee_rfid, agency_id)
+    open_attendance = db.scalar(
+        select(Attendance)
+        .where(
+            Attendance.employee_id == employee.id,
+            Attendance.check_out.is_(None),
+        )
+        .order_by(Attendance.check_in.desc())
+    )
+
+    if open_attendance is not None:
+        open_attendance.check_out = event_time(timestamp)
+        db.commit()
+        db.refresh(open_attendance)
+        return open_attendance, "check_out"
+
+    attendance = Attendance(
+        employee_id=employee.id,
+        check_in=event_time(timestamp),
+        method=AttendanceMethod.RFID,
+    )
+    db.add(attendance)
+    db.commit()
+    db.refresh(attendance)
+    return attendance, "check_in"
+
+
 def attendance_to_dict(attendance: Attendance) -> dict:
     return {
         "id": attendance.id,

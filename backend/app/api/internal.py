@@ -8,13 +8,18 @@ from app.core.device_security import authenticate_ingestion_device
 from app.database.connection import get_db
 from app.models.entities import Employee, Service, Ticket, TicketStatus, Visitor
 from app.schemas.ingestion import (
+    CallNextRequest,
+    CallNextResponse,
+    KioskConfigResponse,
+    KioskMessages,
+    KioskServiceResponse,
     RFIDCheckRequest,
     RFIDCheckResponse,
     WalkInTicketRequest,
     WalkInTicketResponse,
 )
-from app.services.attendance_service import record_check_in, record_check_out
-from app.services.ticket_service import next_ticket_number
+from app.services.attendance_service import record_rfid_event
+from app.services.ticket_service import call_next_waiting_ticket, next_ticket_number
 
 
 router = APIRouter(prefix="/internal", tags=["Internal ingestion"])
@@ -92,6 +97,52 @@ def walk_in_ticket(
     )
 
 
+@router.get("/tickets/kiosk-config", response_model=KioskConfigResponse)
+def kiosk_config(
+    agency_id: str,
+    device_id: str,
+    x_device_key: str | None = Header(default=None, alias="X-Device-Key"),
+    db: Session = Depends(get_db),
+) -> KioskConfigResponse:
+    authenticate_ingestion_device(agency_id, device_id, x_device_key, db)
+    services = db.scalars(
+        select(Service)
+        .where(Service.agency_id == agency_id, Service.is_active.is_(True))
+        .order_by(Service.code)
+    ).all()
+    return KioskConfigResponse(
+        services=[
+            KioskServiceResponse(service_id=service.id, code=service.code, name=service.name)
+            for service in services
+        ],
+        messages=KioskMessages(),
+    )
+
+
+@router.post("/tickets/call-next", response_model=CallNextResponse)
+def call_next_from_device(
+    payload: CallNextRequest,
+    x_device_key: str | None = Header(default=None, alias="X-Device-Key"),
+    db: Session = Depends(get_db),
+) -> CallNextResponse:
+    authenticate_ingestion_device(payload.agency_id, payload.device_id, x_device_key, db)
+    ticket = call_next_waiting_ticket(
+        db,
+        agency_id=payload.agency_id,
+        service_id=payload.service_id,
+        counter_id=payload.counter_id,
+    )
+    if ticket is None:
+        service = db.get(Service, payload.service_id)
+        return CallNextResponse(called=False, service_code=service.code)
+    return CallNextResponse(
+        called=True,
+        ticket_id=ticket.id,
+        ticket_number=ticket.ticket_number,
+        service_code=ticket.service.code,
+    )
+
+
 @router.post("/attendance/check-rfid", response_model=RFIDCheckResponse)
 def check_rfid(
     payload: RFIDCheckRequest,
@@ -110,15 +161,17 @@ def check_rfid(
         return RFIDCheckResponse(valid=False, message="Carte RFID ou employe introuvable")
 
     try:
-        if payload.event == "check_in":
-            record_check_in(db, payload.employee_rfid, payload.timestamp, payload.agency_id)
-        else:
-            record_check_out(db, payload.employee_rfid, payload.timestamp, payload.agency_id)
+        _, event = record_rfid_event(
+            db,
+            payload.employee_rfid,
+            payload.timestamp,
+            payload.agency_id,
+        )
     except HTTPException as exc:
         return RFIDCheckResponse(valid=False, message=str(exc.detail))
 
     return RFIDCheckResponse(
         valid=True,
         employee_name=f"{employee.first_name} {employee.last_name}",
-        event=payload.event,
+        event=event,
     )

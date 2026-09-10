@@ -8,8 +8,7 @@ from app.database.connection import SessionLocal
 from app.schemas.attendance import MqttAttendanceMessage
 from app.services.attendance_service import (
     attendance_to_dict,
-    record_check_in,
-    record_check_out,
+    record_rfid_event,
 )
 from app.websocket.manager import attendance_manager
 
@@ -57,12 +56,14 @@ class AttendanceMqttConsumer:
             agency_id = topic_parts[1]
             device_id = topic_parts[3]
             with SessionLocal() as db:
-                if payload.event == "check_in":
-                    attendance = record_check_in(db, payload.employee_rfid, payload.timestamp, agency_id)
-                else:
-                    attendance = record_check_out(db, payload.employee_rfid, payload.timestamp, agency_id)
+                attendance, event_name = record_rfid_event(
+                    db,
+                    payload.employee_rfid,
+                    payload.timestamp,
+                    agency_id,
+                )
                 event = attendance_to_dict(attendance)
-                event.update({"type": "attendance_updated", "device_id": device_id, "event": payload.event})
+                event.update({"type": "attendance_updated", "device_id": device_id, "event": event_name})
                 attendance_manager.broadcast_from_thread(event)
         except Exception:
             logger.exception("Unable to process MQTT attendance message")
