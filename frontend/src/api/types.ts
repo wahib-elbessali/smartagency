@@ -670,6 +670,38 @@ export interface WeaponThreshold {
 }
 
 /**
+ * PROPOSED - not in contracts/api.md. Backs GET /api/devices/{id}/readings,
+ * which does not exist in the backend yet (2026-09-12).
+ *
+ * Every field is a column of `sensor_readings` (backend/app/models/entities.py,
+ * SensorReading) - the rows the MQTT consumer already writes for every DHT22
+ * and MQ-7 message (contracts/ingestion.md §4). Nothing here is invented; what
+ * is missing is only a route to read them back, and this is the shape to ask
+ * for so the request does not change when it lands:
+ *
+ *   GET /api/devices/{device_id}/readings?sensor_type=temperature&limit=50
+ *   -> SensorReading[], newest first
+ *
+ * Both query parameters optional. Same roles and agency scoping as the device
+ * itself (ADMIN, MANAGER, TECHNICIAN; 403 outside the caller's agency).
+ *
+ * `sensor_type` is one of the three names ingestion.md fixes for the hardware
+ * - temperature, humidity, gas_co - but typed as string, since the column is
+ * free text lower-cased on the way in and a device can report a type this
+ * dashboard has never named.
+ */
+export interface SensorReading {
+  id: string
+  device_id: string
+  sensor_type: string
+  value: number
+  /** As sent by the device, or the threshold's unit when the device sent none. */
+  unit: string | null
+  /** ISO 8601 - the hardware's own timestamp, not the time the row was written. */
+  recorded_at: string
+}
+
+/**
  * The four computer-vision features that publish an alerts stream.
  *
  * From contracts/ai-service.md, which mounts `/{f}/alerts/stream` separately

@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import {
+  AlertTriangle,
   Cloud,
   CloudDrizzle,
   CloudFog,
@@ -9,6 +11,7 @@ import {
   CloudSun,
   Droplets,
   Gauge,
+  Home,
   Sun,
   Thermometer,
   Umbrella,
@@ -16,24 +19,40 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { fetchAgencies } from '@/api/endpoints/agencies'
+import { fetchDevices } from '@/api/endpoints/devices'
+import { fetchReadings } from '@/api/endpoints/readings'
+import { fetchThresholds } from '@/api/endpoints/thresholds'
+import { ApiError } from '@/api/errors'
 import { describeWeatherCode, fetchCityWeather, type CityWeather } from '@/api/weather'
-import type { Agency } from '@/api/types'
+import type { Agency, Device, SensorReading, SensorThreshold } from '@/api/types'
 import { useScope } from '@/agency/ScopeContext'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { StatTile } from '@/components/ui/StatTile'
+import { Clock } from '@/components/ui/Time'
+import { formatReading, labelForSensor, latestBySensor, type IndoorStat } from './indoorReadings'
 import { Screen } from './Screen'
 
 /**
- * Live weather for each branch's city, from Open-Meteo (api/weather.ts) - not
- * the DHT22 sensors. Those measure conditions inside one room and have no
- * frontend yet; this is the outside weather, keyed off `Agency.address`.
+ * Outside and inside, per branch.
  *
- * No hot/cold thresholds are invented here. This screen used to say exactly
- * that as its <ContractPending> note: "what counts as too hot or too cold
- * comes from the contract or from Ahmed, not from this screen." That is still
- * true - every StatTile below stays neutral-toned, never warn, because this
- * screen has no authority to decide a reading is a problem.
+ * OUTSIDE is live weather for the branch's city from Open-Meteo
+ * (api/weather.ts), keyed off `Agency.address`. INSIDE is the DHT22 / MQ-7
+ * readings the hardware publishes over MQTT (contracts/ingestion.md §4) -
+ * added 2026-09-12 against a PROPOSED route, GET /api/devices/{id}/readings,
+ * since the backend stores every reading and exposes none yet (api/types.ts
+ * has the shape to ask for). Until it lands, a real server answers 404 and
+ * the inside section says "no readings" rather than failing the screen.
+ *
+ * WHO DECIDES A READING IS A PROBLEM. Not this screen - the threshold table
+ * does (contracts/api.md §10, set per device on the Devices screen), and the
+ * comparison is the backend's own (iot_service.severity_for), reproduced in
+ * indoorReadings.ts so a tile turns warn on exactly the reading that raises
+ * an alert. This screen used to say as its <ContractPending> note that "what
+ * counts as too hot or too cold comes from the contract or from Ahmed, not
+ * from this screen" - still true, which is why the OUTSIDE tiles stay neutral
+ * (no threshold applies to the weather) and an INSIDE tile with no threshold
+ * set says so instead of guessing.
  */
 
 function iconForCode(code: number): LucideIcon {
@@ -78,7 +97,10 @@ export default function Climate() {
     rows.find((agency) => agency.id === scope.agencyId) ?? (rows.length === 1 ? rows[0] : null)
 
   return (
-    <Screen title="Climate" description="Live outside weather for each branch's city.">
+    <Screen
+      title="Climate"
+      description="Outside weather for each branch's city, and the readings from the sensors inside."
+    >
       <AsyncBoundary
         isPending={agencies.isPending}
         error={agencies.error}
@@ -126,8 +148,151 @@ function AgencyWeatherDetail({ agency }: { agency: Agency }) {
         ) : (
           <WeatherStats weather={weather.data} />
         )}
+
+        <IndoorSection agency={agency} />
       </PanelBody>
     </Panel>
+  )
+}
+
+/**
+ * Everything the branch's sensors have said lately, reduced to one tile per
+ * sensor type. Three reads: the device list (already cached if the Devices
+ * screen was open), then readings and thresholds per device in parallel.
+ *
+ * Readings refetch every minute rather than on the dashboard's usual
+ * ten-second poll: the hardware publishes every few minutes at most
+ * (ingestion.md), so anything faster is asking the same question again.
+ */
+function useIndoorStats(agencyId: string) {
+  const devices = useQuery({
+    queryKey: ['devices'],
+    queryFn: ({ signal }) => fetchDevices(signal),
+  })
+  const branchDevices = useMemo(
+    () => (devices.data ?? []).filter((d) => d.agency_id === agencyId),
+    [devices.data, agencyId],
+  )
+
+  const readings = useQueries({
+    queries: branchDevices.map((device) => ({
+      queryKey: ['readings', device.id],
+      queryFn: ({ signal }: { signal?: AbortSignal }) =>
+        fetchReadings(device.id, { limit: 60 }, signal),
+      refetchInterval: 60_000,
+      /* PROPOSED route: a real backend without it answers 404, and that is
+         "no readings" for this device, not a broken screen. */
+      retry: (count: number, error: unknown) =>
+        !(error instanceof ApiError && error.status === 404) && count < 2,
+    })),
+  })
+  const thresholds = useQueries({
+    queries: branchDevices.map((device) => ({
+      queryKey: ['thresholds', device.id],
+      queryFn: ({ signal }: { signal?: AbortSignal }) => fetchThresholds(device.id, signal),
+    })),
+  })
+
+  const readingsByDevice: Record<string, SensorReading[] | undefined> = {}
+  const thresholdsByDevice: Record<string, SensorThreshold[] | undefined> = {}
+  branchDevices.forEach((device: Device, i) => {
+    readingsByDevice[device.id] = readings[i]?.data
+    thresholdsByDevice[device.id] = thresholds[i]?.data
+  })
+
+  const stats = latestBySensor(branchDevices, readingsByDevice, thresholdsByDevice)
+  const pending = devices.isPending || readings.some((q) => q.isPending)
+  /* The device list is the one read that can refuse (ADMIN, MANAGER,
+     TECHNICIAN). A per-device 404 or 403 is per-device and already folded
+     into "no readings" above. */
+  const error = devices.error
+
+  return { stats, pending, error, deviceCount: branchDevices.length }
+}
+
+function IndoorSection({ agency }: { agency: Agency }) {
+  const inside = useIndoorStats(agency.id)
+
+  return (
+    <section className="mt-5" aria-labelledby={`inside-${agency.id}`}>
+      <div className="mb-3 flex items-center gap-2">
+        <Home className="text-ink-3 size-4" aria-hidden />
+        <h3 id={`inside-${agency.id}`} className="text-ink text-sm font-semibold">
+          Inside
+        </h3>
+      </div>
+      {inside.error ? (
+        <p className="text-ink-3 text-sm">
+          {inside.error instanceof ApiError && inside.error.status === 403
+            ? 'Sensor readings are visible to administrators, managers and technicians.'
+            : 'Could not load the sensors for this branch.'}
+        </p>
+      ) : inside.pending ? (
+        <p className="text-ink-3 text-sm">Reading the sensors…</p>
+      ) : inside.deviceCount === 0 ? (
+        <p className="text-ink-3 text-sm">
+          No devices registered for this branch, so nothing is measuring the inside.
+        </p>
+      ) : inside.stats.length === 0 ? (
+        <p className="text-ink-3 text-sm">
+          The sensors here have not reported yet, so there are no indoor readings to show.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {inside.stats.map((stat) => (
+            <IndoorTile key={stat.sensorType} stat={stat} />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+const SENSOR_ICON: Record<string, LucideIcon> = {
+  temperature: Thermometer,
+  humidity: Droplets,
+  gas_co: Wind,
+}
+
+/**
+ * One reading, with what it was measured against underneath. The hint is
+ * where the threshold speaks: over the line it names the line, under it it
+ * still names the line, and with none set it says none is set - three
+ * different sentences so "24°C" never looks the same when it means "fine",
+ * "nobody has said what fine is" and "the alert has fired".
+ */
+function IndoorTile({ stat }: { stat: IndoorStat }) {
+  const over = stat.level === 'critical' || stat.level === 'warning'
+  const Icon = over ? AlertTriangle : (SENSOR_ICON[stat.sensorType] ?? Gauge)
+  const limit = (n: number | null | undefined) => (n == null ? null : formatReading(n, stat.unit))
+  const warning = limit(stat.threshold?.warning_max)
+  const critical = limit(stat.threshold?.critical_max)
+  const hint = {
+    critical: `Above the critical level of ${critical}`,
+    warning: `Above the warning level of ${warning}`,
+    normal:
+      warning !== null
+        ? `Under the warning level of ${warning}`
+        : `Under the critical level of ${critical}`,
+    unknown: 'No threshold set for this sensor',
+  }[stat.level]
+
+  return (
+    <StatTile
+      label={labelForSensor(stat.sensorType)}
+      value={formatReading(stat.value, stat.unit)}
+      tone={over ? 'warn' : 'neutral'}
+      icon={<Icon className="size-4" aria-hidden />}
+      hint={hint}
+      detail={
+        <p className="text-ink-3 text-xs">
+          {stat.device.name} · <Clock iso={stat.recordedAt} />
+          {stat.device.status !== 'ONLINE' && (
+            <span className="text-warn"> · sensor {stat.device.status.toLowerCase()}</span>
+          )}
+        </p>
+      }
+    />
   )
 }
 

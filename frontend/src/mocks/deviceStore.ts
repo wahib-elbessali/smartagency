@@ -14,6 +14,9 @@ import { deleteThresholdsForDevice } from './thresholdStore'
 
 export const DEVICE_ID_DHT22 = 'd1000000-0000-4000-8000-000000000001'
 export const DEVICE_ID_PIR = 'd1000000-0000-4000-8000-000000000002'
+/* Exported for readingStore, which stops this device's readings where its
+   last_seen_at stops. */
+export const DEVICE_ID_RABAT_DHT22 = 'd1000000-0000-4000-8000-000000000003'
 
 let devices: Device[] | null = null
 let nextId = 4000
@@ -44,7 +47,7 @@ function seed(): Device[] {
         last_seen_at: null,
       },
       {
-        id: 'd1000000-0000-4000-8000-000000000003',
+        id: DEVICE_ID_RABAT_DHT22,
         agency_id: AGENCY_ID_RABAT,
         name: 'Capteur DHT22 Rabat',
         device_type: 'DHT22',
