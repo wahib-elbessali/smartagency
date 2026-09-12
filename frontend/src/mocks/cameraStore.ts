@@ -35,9 +35,11 @@ let threshold: WeaponThreshold | null = null
 function seed(): Camera[] {
   if (cameras === null) {
     cameras = [
-      /* The one ONLINE camera: the backend flips a camera to ONLINE on its
-         first detection stream event, and the mock weapon stream starts with
-         this one in its snapshot. */
+      /* Both Casablanca cameras are ONLINE because both are in the mock
+         weapon stream's opening snapshot (aiStreams.ts), and the backend flips
+         a camera to ONLINE on its first stream event. cam-counter is also the
+         one the scripted pistol appears on, so the live view has something to
+         draw. */
       {
         id: CAMERA_ID_LOBBY,
         agency_id: AGENCY_ID,
@@ -50,11 +52,13 @@ function seed(): Camera[] {
         agency_id: AGENCY_ID,
         name: 'cam-counter',
         stream_url: 'rtsp://192.168.1.17:8554/counter',
-        status: 'OFFLINE',
+        status: 'ONLINE',
       },
       /* In Rabat, so an ADMIN switching branches sees the list change and a
          Casablanca MANAGER never sees it - and so the global uniqueness of
-         `name` has something in another branch to collide with. */
+         `name` has something in another branch to collide with. OFFLINE
+         because the mock streams never mention it, which also makes it the
+         camera whose frame answers 404. */
       {
         id: CAMERA_ID_STORE,
         agency_id: AGENCY_ID_RABAT,

@@ -93,7 +93,8 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
  * lookup on a path carrying a real id would never match its entry, silently
  * treating it as unguarded (`!allowed` returns true). A nested path inherits
  * its parent's rule instead: /agencies/{id} is exactly as restricted as
- * /agencies, because it reads the same data one level deeper.
+ * /agencies, because it reads the same data one level deeper. /cameras/{id}
+ * (the live view, 2026-09-12) relies on the same fallback.
  */
 export function canReach(role: Role | null | undefined, path: string): boolean {
   const base = `/${path.split('/')[1] ?? ''}`
