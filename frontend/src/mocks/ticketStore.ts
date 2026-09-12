@@ -1,4 +1,11 @@
-import type { Counter, Ticket, TicketCreate, Visitor, VisitorCreate } from '@/api/types'
+import type {
+  Counter,
+  Ticket,
+  TicketCreate,
+  TicketOutcome,
+  Visitor,
+  VisitorCreate,
+} from '@/api/types'
 import { ApiError } from '@/api/errors'
 import { AGENCY_ID } from './fixtures/people'
 import { getService, SERVICE_ID_OUV, SERVICE_ID_VIR } from './serviceStore'
@@ -113,6 +120,7 @@ function seed(): { visitors: Visitor[]; tickets: Ticket[] } {
         called_at: null,
         completed_at: null,
         notes: null,
+        outcome: null,
       })
     }
     tickets = built
@@ -189,6 +197,7 @@ export function createTicket(body: TicketCreate): Ticket {
     called_at: null,
     completed_at: null,
     notes: null,
+    outcome: null,
   }
   ts.push(created)
   return created
@@ -206,6 +215,16 @@ export function listQueue(serviceId?: string | null): Ticket[] {
   return seed()
     .tickets.filter((t) => t.status === 'WAITING' && (!serviceId || t.service_id === serviceId))
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
+}
+
+/**
+ * Every ticket in whatever state, for tests that need to see what was written
+ * rather than what is still waiting. `listQueue` answers the screens and is
+ * WAITING-only by design, so a completed ticket's `outcome` is invisible
+ * through it; this answers assertions instead.
+ */
+export function listTickets(): Ticket[] {
+  return seed().tickets.map((ticket) => ({ ...ticket }))
 }
 
 function find(id: string): Ticket {
@@ -268,14 +287,15 @@ export function assignCounterService(counterId: string, serviceId: string | null
   return { ...found }
 }
 
-/** `notes` is PROPOSED - see the type's comment in api/types.ts. */
-export function completeTicket(id: string, notes?: string | null): Ticket {
+/** `outcome` and `notes` are both PROPOSED - see the types in api/types.ts. */
+export function completeTicket(id: string, outcome: TicketOutcome, notes?: string | null): Ticket {
   const ticket = find(id)
   if (ticket.status !== 'CALLED' && ticket.status !== 'IN_SERVICE') {
     throw new ApiError('http', 'Ce ticket ne peut pas etre termine', 409)
   }
   ticket.status = 'COMPLETED'
   ticket.completed_at = new Date().toISOString()
+  ticket.outcome = outcome
   if (notes) ticket.notes = notes
   return { ...ticket }
 }

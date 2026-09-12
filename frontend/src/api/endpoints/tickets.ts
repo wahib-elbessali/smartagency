@@ -1,6 +1,6 @@
 import { fetchJson } from '../client'
 import { ApiError, describeApiError } from '../errors'
-import type { Ticket, TicketCreate } from '../types'
+import type { Ticket, TicketCreate, TicketOutcome } from '../types'
 
 /**
  * Ticket endpoints — ADMIN, MANAGER and AGENT only. SECURITY is deliberately
@@ -77,11 +77,26 @@ export function callTicket(id: string, counterId: string, signal?: AbortSignal):
 /**
  * Only valid from CALLED or IN_SERVICE; anything else is a 409.
  *
- * `notes` is PROPOSED - the real route takes no body today (contracts/api.md
- * §8), so this only reaches the mock until the backend accepts it. Omitting
- * it sends no body at all, unchanged from before notes existed.
+ * `outcome` and `notes` are both PROPOSED - the real route takes no body today
+ * (contracts/api.md §8), so they only reach the mock until the backend accepts
+ * them. FastAPI ignores an unexpected body on a route that declares none, so
+ * sending them costs nothing against a real server; the ticket completes and
+ * the outcome is dropped until someone adds the column.
+ *
+ * THE SHAPE TO ASK FOR, so the request does not change when it lands:
+ *
+ *   { "outcome": "SUCCESS" }
+ *   { "outcome": "PROBLEM", "notes": "Papiers incomplets" }
+ *
+ * `outcome` is required here rather than optional, because a completed ticket
+ * that does not say whether it worked is the exact gap this was added to close.
  */
-export function completeTicket(id: string, notes?: string, signal?: AbortSignal): Promise<Ticket> {
+export function completeTicket(
+  id: string,
+  outcome: TicketOutcome,
+  notes?: string,
+  signal?: AbortSignal,
+): Promise<Ticket> {
   return fetchJson<Ticket>(
     {
       key: 'POST /api/tickets/{id}/complete',
@@ -89,7 +104,7 @@ export function completeTicket(id: string, notes?: string, signal?: AbortSignal)
       method: 'POST',
       auth: true,
     },
-    { signal, body: notes === undefined ? undefined : { notes } },
+    { signal, body: notes === undefined ? { outcome } : { outcome, notes } },
   )
 }
 

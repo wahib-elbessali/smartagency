@@ -522,9 +522,36 @@ export interface Ticket {
    * (2026-09-05, at the user's direction) so an agent can note how a visit
    * went. Mocked only until the backend accepts `{ notes }` on complete - see
    * api/endpoints/tickets.ts.
+   *
+   * Null for a SUCCESS and populated for a PROBLEM, which the screen enforces
+   * - see `outcome`.
    */
   notes: string | null
+  /**
+   * PROPOSED alongside `notes`, and null on every ticket finished before this
+   * existed (2026-09-09, at the user's direction).
+   *
+   * How the visit ended, kept apart from `status` because they answer
+   * different questions. `status` says whether the agent is done with this
+   * person - COMPLETED either way - while this says whether the person got
+   * what they came for. A visit that ends because the client's papers are
+   * incomplete is a finished ticket and a failed operation at once, and
+   * counting those two as the same thing is what makes "how many operations
+   * succeeded" unanswerable. CANCELLED stays what it was: nobody came to the
+   * counter, so there is no outcome to record.
+   */
+  outcome: TicketOutcome | null
 }
+
+/**
+ * PROPOSED - see `Ticket.outcome`.
+ *
+ * Two values, not three: there is no PARTIAL, because an agent deciding
+ * between "mostly worked" and "sort of worked" produces a statistic that
+ * cannot be added up. SUCCESS carries no note; PROBLEM requires one, since a
+ * failure with no reason recorded is a number nobody can act on.
+ */
+export type TicketOutcome = 'SUCCESS' | 'PROBLEM'
 
 /**
  * POST /api/tickets — from TicketCreate. The visitor must already exist, and

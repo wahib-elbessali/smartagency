@@ -52,12 +52,13 @@ function idFrom(path: string): string {
 
 /**
  * One agency, honouring the real id now that read variants receive the
- * request path (registry.ts) - the agency detail screen depends on this
- * actually resolving the branch that was clicked, not just the first one a
- * MANAGER happens to see. 404 mirrors the real route: a MANAGER who somehow
- * requests another agency's id gets "not found" rather than a 403, the same
- * as the backend's ensure_agency_scope leaking no information about agencies
- * outside their own.
+ * request path (registry.ts). No screen reads it since the agency detail page
+ * went (2026-09-09), but the fixture stays honest about which branch was
+ * asked for rather than returning the first one a MANAGER happens to see, so
+ * the next caller does not inherit a mock that lies. 404 mirrors the real
+ * route: a MANAGER who somehow requests another agency's id gets "not found"
+ * rather than a 403, the same as the backend's ensure_agency_scope leaking no
+ * information about agencies outside their own.
  */
 function oneAgency(id: string): Agency {
   const found = visibleTo(store.listAgencies()).find((a) => a.id === id)

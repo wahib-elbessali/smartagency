@@ -1,5 +1,5 @@
 import { registerMock, registerMockWriter } from '../registry'
-import type { Ticket, TicketCreate, Visitor, VisitorCreate } from '@/api/types'
+import type { Ticket, TicketCreate, TicketOutcome, Visitor, VisitorCreate } from '@/api/types'
 import * as store from '../ticketStore'
 
 /**
@@ -44,9 +44,13 @@ registerMockWriter('POST /api/tickets/{id}/call', (body, path) =>
   store.callTicket(idFrom(path), (body as { counter_id: string }).counter_id),
 )
 
-registerMockWriter('POST /api/tickets/{id}/complete', (body, path) =>
-  store.completeTicket(idFrom(path), (body as { notes?: string } | undefined)?.notes),
-)
+registerMockWriter('POST /api/tickets/{id}/complete', (body, path) => {
+  /* Both PROPOSED (api/types.ts). The real route takes no body, so the fixture
+     has to decide what a request without one means: SUCCESS, because that is
+     what every caller before `outcome` existed was recording. */
+  const sent = body as { outcome?: TicketOutcome; notes?: string } | undefined
+  return store.completeTicket(idFrom(path), sent?.outcome ?? 'SUCCESS', sent?.notes)
+})
 
 registerMockWriter('POST /api/tickets/{id}/cancel', (_body, path) =>
   store.cancelTicket(idFrom(path)),

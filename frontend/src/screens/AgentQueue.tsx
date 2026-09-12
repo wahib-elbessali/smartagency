@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Check, TriangleAlert } from 'lucide-react'
 import { fetchMyAssignment } from '@/api/endpoints/assignments'
 import { actionErrorMessage, callTicket, completeTicket, fetchQueue } from '@/api/endpoints/tickets'
-import type { Ticket } from '@/api/types'
+import type { Ticket, TicketOutcome } from '@/api/types'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
@@ -35,11 +35,26 @@ import { Screen } from './Screen'
  * panel: GET /api/tickets/queue returns WAITING tickets only, so the one just
  * called has to be remembered locally rather than read back from the server.
  *
- * NOTES
+ * HOW A VISIT ENDS
  *
- * `notes` on complete is also PROPOSED - the real route takes no body today
- * (contracts/api.md §8). Sent regardless; the real backend will simply
- * ignore the extra field until it grows one to match.
+ * Two buttons, not one (2026-09-09, at the user's direction). Done and
+ * Problem both finish the ticket and call the next person - the difference is
+ * the `outcome` they record, which is what makes "how many operations
+ * succeeded today" a question anyone can answer later.
+ *
+ * The note follows the outcome rather than sitting there permanently. It used
+ * to be an always-visible optional box asking "How did it go?", which is a
+ * question an agent has to read and dismiss dozens of times a day in order to
+ * answer "fine" - so it stayed empty, and an empty box teaches people to skip
+ * boxes. It now appears only after Problem is pressed, and is required there:
+ * the note IS the reason, and a failure with no reason recorded is a number
+ * nobody can act on.
+ *
+ * `outcome` and `notes` are both PROPOSED - the real route takes no body today
+ * (contracts/api.md §8). Sent regardless; FastAPI drops an unexpected body, so
+ * against a real server the ticket still completes and the outcome is lost
+ * until the backend grows a column. See api/endpoints/tickets.ts for the exact
+ * request shape to ask for.
  */
 
 const POLL_MS = 10_000
@@ -48,6 +63,9 @@ export default function AgentQueue() {
   const queryClient = useQueryClient()
   const [current, setCurrent] = useState<Ticket | null>(null)
   const [note, setNote] = useState('')
+  /* Whether the agent has said something went wrong. Drives the note field,
+     which exists only in that branch. */
+  const [reporting, setReporting] = useState(false)
 
   const assignment = useQuery({
     queryKey: ['myAssignment'],
@@ -79,8 +97,10 @@ export default function AgentQueue() {
      * otherwise call the same ticket id twice and earn a 409 on the second
      * press, before the first press's own refetch had a chance to land.
      */
-    mutationFn: async () => {
-      if (current) await completeTicket(current.id, note.trim() || undefined)
+    /* `finish` is null when nobody is at the counter yet - the first press of
+       a shift calls someone without finishing anyone. */
+    mutationFn: async (finish: { outcome: TicketOutcome; notes?: string } | null) => {
+      if (current && finish) await completeTicket(current.id, finish.outcome, finish.notes)
       const fresh = await queryClient.fetchQuery({
         queryKey: ['tickets', 'queue', serviceId],
         queryFn: ({ signal }) => fetchQueue(serviceId ?? undefined, signal),
@@ -91,11 +111,13 @@ export default function AgentQueue() {
     onSuccess: (ticket) => {
       setCurrent(ticket)
       setNote('')
+      setReporting(false)
       void refresh()
     },
     onError: () => {
       setCurrent(null)
       setNote('')
+      setReporting(false)
       void refresh()
     },
   })
@@ -133,19 +155,19 @@ export default function AgentQueue() {
               )}
             </div>
 
-            {current && (
+            {current && reporting && (
               <div className="w-full max-w-sm text-left">
                 <Field
                   id="notes"
-                  label="Notes"
-                  hint="Optional. Saved when you move to the next person."
+                  label="What went wrong"
+                  hint="Required. This is the only record of why the visit did not finish."
                 >
                   {(props) => (
                     <textarea
                       {...props}
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      placeholder="How did it go?"
+                      placeholder="Papers incomplete, system error, wrong branch"
                       rows={3}
                     />
                   )}
@@ -159,14 +181,67 @@ export default function AgentQueue() {
               </p>
             )}
 
-            <Button
-              variant="primary"
-              disabled={(!current && !next) || advance.isPending}
-              onClick={() => advance.mutate()}
-            >
-              Next
-              <ArrowRight className="size-4" aria-hidden />
-            </Button>
+            {/* Three states, one at a time. Nobody at the counter yet: call
+                someone. Serving: say how it went. Reporting a problem: say
+                what went wrong, or back out of having pressed it. */}
+            {!current ? (
+              <Button
+                variant="primary"
+                disabled={!next || advance.isPending}
+                onClick={() => advance.mutate(null)}
+              >
+                Call next
+                <ArrowRight className="size-4" aria-hidden />
+              </Button>
+            ) : reporting ? (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  variant="primary"
+                  disabled={note.trim() === '' || advance.isPending}
+                  onClick={() => advance.mutate({ outcome: 'PROBLEM', notes: note.trim() })}
+                >
+                  Record problem
+                  <ArrowRight className="size-4" aria-hidden />
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={advance.isPending}
+                  onClick={() => {
+                    setReporting(false)
+                    setNote('')
+                  }}
+                >
+                  Back
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  variant="primary"
+                  disabled={advance.isPending}
+                  onClick={() => advance.mutate({ outcome: 'SUCCESS' })}
+                >
+                  <Check className="size-4" aria-hidden />
+                  Done
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={advance.isPending}
+                  onClick={() => setReporting(true)}
+                >
+                  <TriangleAlert className="size-4" aria-hidden />
+                  Problem
+                </Button>
+              </div>
+            )}
+
+            {current && !reporting && (
+              /* Says where the Next button went. Both buttons advance the
+                 queue; only the outcome they record differs. */
+              <p className="text-ink-3 text-xs">
+                Either one finishes this ticket and calls the next person.
+              </p>
+            )}
           </PanelBody>
         </Panel>
 

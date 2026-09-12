@@ -28,19 +28,44 @@ describe('canReach', () => {
     }
   })
 
-  /* Attendance is ADMIN, MANAGER and SECURITY - security staff read the roster
-     even though they cannot administer the people on it. */
-  it('includes security on presence', () => {
-    expect(canReach('SECURITY', '/presence')).toBe(true)
-    expect(canReach('AGENT', '/presence')).toBe(false)
+  /* No screen sits under another one today - /agencies/{id} was the last and
+     its screen is gone (2026-09-09) - so this pins the fallback rather than a
+     live route: a nested path added later inherits, instead of matching
+     nothing and being treated as unguarded. */
+  it('inherits the parent rule for a nested path', () => {
+    expect(canReach('ADMIN', '/users/u1000000-0000-4000-8000-000000000001')).toBe(true)
+    expect(canReach('MANAGER', '/users/u1000000-0000-4000-8000-000000000001')).toBe(false)
+  })
+
+  /* GET /api/attendance/* still takes SECURITY; this screen does not, which
+     is the one place the table is narrower than the API on purpose rather
+     than because the screen would break (2026-09-09). */
+  it('keeps presence to admins and managers', () => {
+    expect(canReach('ADMIN', '/presence')).toBe(true)
+    expect(canReach('MANAGER', '/presence')).toBe(true)
+    for (const role of ['AGENT', 'SECURITY', 'TECHNICIAN'] as const) {
+      expect(canReach(role, '/presence')).toBe(false)
+    }
   })
 
   /* No role-guarded endpoint behind these, so no role is kept out. One is
      still <ContractPending>, which is a different thing from forbidden. */
   it('offers the unguarded screens to everyone', () => {
     for (const role of ROLES) {
-      for (const path of ['/climate', '/alerts', '/controls']) {
+      for (const path of ['/alerts', '/controls']) {
         expect(canReach(role, path)).toBe(true)
+      }
+    }
+  })
+
+  /* Both read what only an admin or a manager may read, so the table says
+     what the API says and nobody else is offered either (2026-09-09). */
+  it('keeps services and climate to admins and managers', () => {
+    for (const path of ['/services', '/climate']) {
+      expect(canReach('ADMIN', path)).toBe(true)
+      expect(canReach('MANAGER', path)).toBe(true)
+      for (const role of ['AGENT', 'SECURITY', 'TECHNICIAN'] as const) {
+        expect(canReach(role, path)).toBe(false)
       }
     }
   })
