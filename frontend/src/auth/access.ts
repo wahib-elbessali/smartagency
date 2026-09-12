@@ -73,6 +73,13 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/users': ['ADMIN'],
   '/visitors': ['ADMIN', 'MANAGER', 'AGENT'],
   '/occupancy': ['ADMIN', 'MANAGER'],
+  /* Transcribed from CAMERA_ROLES / AI_ALERT_ROLES (cameras.py, ai_alerts.py),
+     added 2026-09-12. The one screen a guard can write to: they register the
+     cameras they watch and set how sure the detector has to be before an
+     alert reaches them. Deleting a camera is ADMIN and MANAGER only and the
+     screen hides that button for SECURITY; the route stays open to them
+     because everything else on it is theirs. */
+  '/cameras': ['ADMIN', 'MANAGER', 'SECURITY'],
   /* No entry means every signed-in role. The two below read no role-guarded
      endpoint at all: controls is still <ContractPending>, and alerts reads an
      AI stream the backend proxies without a role check of its own. */

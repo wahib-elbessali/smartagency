@@ -1,6 +1,7 @@
 import {
   Bell,
   Building2,
+  Camera,
   Cpu,
   Fan,
   Grid3x3,
@@ -34,6 +35,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   { to: '/visitors', label: 'Visitor queue', icon: Users },
   { to: '/occupancy', label: 'Occupancy', icon: Grid3x3 },
   { to: '/alerts', label: 'Alerts', icon: Bell },
+  { to: '/cameras', label: 'Cameras', icon: Camera },
   { to: '/devices', label: 'IoT devices', icon: Cpu },
   { to: '/controls', label: 'Manual controls', icon: KeyRound },
 ]

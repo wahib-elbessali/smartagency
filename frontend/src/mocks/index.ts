@@ -12,6 +12,7 @@ import './fixtures/services'
 import './fixtures/assignments'
 import './fixtures/devices'
 import './fixtures/thresholds'
+import './fixtures/cameras'
 import './fixtures/attendance'
 import './fixtures/auth'
 

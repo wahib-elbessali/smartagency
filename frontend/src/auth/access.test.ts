@@ -56,6 +56,17 @@ describe('canReach', () => {
     }
   })
 
+  /* Cameras and the weapon threshold are the guard's own tools - the one
+     screen SECURITY can write to. Transcribed from CAMERA_ROLES; delete is
+     narrower but that is hidden on the screen, not at the route. */
+  it('gives cameras to admins, managers and security', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SECURITY'] as const) {
+      expect(canReach(role, '/cameras')).toBe(true)
+    }
+    expect(canReach('AGENT', '/cameras')).toBe(false)
+    expect(canReach('TECHNICIAN', '/cameras')).toBe(false)
+  })
+
   it('refuses everything to a session with no role', () => {
     expect(canReach(null, '/users')).toBe(false)
     expect(canReach(undefined, '/presence')).toBe(false)

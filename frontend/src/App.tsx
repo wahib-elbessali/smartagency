@@ -17,6 +17,7 @@ const Climate = lazy(() => import('@/screens/Climate'))
 const VisitorQueue = lazy(() => import('@/screens/VisitorQueue'))
 const Occupancy = lazy(() => import('@/screens/Occupancy'))
 const Alerts = lazy(() => import('@/screens/Alerts'))
+const Cameras = lazy(() => import('@/screens/Cameras'))
 const ManualControls = lazy(() => import('@/screens/ManualControls'))
 const Employees = lazy(() => import('@/screens/Employees'))
 const Agencies = lazy(() => import('@/screens/Agencies'))
@@ -78,6 +79,7 @@ export function App() {
           <Route path="visitors" element={<VisitorQueue />} />
           <Route path="occupancy" element={<Occupancy />} />
           <Route path="alerts" element={<Alerts />} />
+          <Route path="cameras" element={<Cameras />} />
           <Route path="controls" element={<ManualControls />} />
           {/* An unknown path is not a reason to show someone a screen their
               role is refused from, so it resolves the same way "/" does. */}

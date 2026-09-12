@@ -624,6 +624,61 @@ export interface SensorThresholdUpsert {
 }
 
 /**
+ * GET|POST /api/agencies/{agency_id}/cameras and PUT /api/cameras/{id}, from
+ * CameraResponse in backend/app/schemas/camera.py. contracts/api.md §11,
+ * added 2026-09-12. ADMIN, MANAGER and SECURITY; delete drops SECURITY.
+ *
+ * `name` is not a display label - it is the exact source identifier the AI
+ * service knows the camera by, which is why it is unique across every branch
+ * and not just within one (the AI source registry is site-wide). The names on
+ * the Alerts screen come from that same registry, so a camera renamed here
+ * stops matching its own detections until the backend re-syncs.
+ *
+ * `status` reuses the device enum, but only two of its values are ever written
+ * for a camera: OFFLINE from creation until the backend receives its first
+ * detection stream event, then ONLINE. Nothing sets ERROR or MAINTENANCE on a
+ * camera today.
+ */
+export interface Camera {
+  id: string
+  agency_id: string
+  name: string
+  /**
+   * An RTSP address, typically - which a browser cannot play, so it is shown
+   * and edited here but never embedded. The schema allows null on the way out;
+   * the create/update routes refuse it blank.
+   */
+  stream_url: string | null
+  status: DeviceStatus
+}
+
+/** POST /api/agencies/{agency_id}/cameras — from CameraCreate. Both required. */
+export interface CameraCreate {
+  name: string
+  stream_url: string
+}
+
+/** PUT /api/cameras/{id} — from CameraUpdate. Both optional, exclude_unset. */
+export interface CameraUpdate {
+  name?: string
+  stream_url?: string
+}
+
+/**
+ * GET|PUT /api/ai-alerts/thresholds/weapon, from AIWeaponThresholdResponse.
+ * contracts/api.md §12, added 2026-09-12. ADMIN, MANAGER and SECURITY.
+ *
+ * One global number, not per camera or per agency: the minimum confidence a
+ * weapon detection needs before the backend turns it into an alert. Strictly
+ * greater than 0 and at most 1, enforced server-side (422). It is separate
+ * from the AI model's own `conf` cutoff - the model still reports everything
+ * above its own bar, and this decides which of those anyone hears about.
+ */
+export interface WeaponThreshold {
+  confidence: number
+}
+
+/**
  * The four computer-vision features that publish an alerts stream.
  *
  * From contracts/ai-service.md, which mounts `/{f}/alerts/stream` separately
