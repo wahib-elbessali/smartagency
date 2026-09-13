@@ -35,6 +35,9 @@ import { requestUser } from './currentUser'
  *   devices      ADMIN, MANAGER, TECHNICIAN;            (DEVICE_ROLES; rotate-key
  *                rotate-key is ADMIN, MANAGER only        is its own dependency)
  *   thresholds   ADMIN, MANAGER, TECHNICIAN             (THRESHOLD_ROLES)
+ *   cameras      ADMIN, MANAGER, SECURITY;              (CAMERA_ROLES; delete
+ *                delete is ADMIN, MANAGER only            is its own dependency)
+ *   ai-alerts    ADMIN, MANAGER, SECURITY               (AI_ALERT_ROLES)
  */
 
 /**
@@ -72,6 +75,15 @@ export function rolesFor(key: string): Role[] | null {
   /* /api/counters/{id}/service - singular, the counter-to-service assignment.
      Does not collide with the plural check above. */
   if (path.startsWith('/api/counters')) return ['ADMIN', 'MANAGER']
+
+  /* Also checked ahead of /api/agencies, for the same reason as services:
+     /api/agencies/{id}/cameras (list/create per agency) and /api/cameras/{id}
+     (update/delete one) are the same router, and the agencies prefix below
+     would otherwise claim the first and lock SECURITY out of its own list. */
+  if (path.includes('/cameras')) {
+    return method === 'DELETE' ? ['ADMIN', 'MANAGER'] : ['ADMIN', 'MANAGER', 'SECURITY']
+  }
+  if (path.startsWith('/api/ai-alerts')) return ['ADMIN', 'MANAGER', 'SECURITY']
 
   if (path.startsWith('/api/agencies')) {
     /* The one split router. Reading is ADMIN and MANAGER, and a MANAGER's list
