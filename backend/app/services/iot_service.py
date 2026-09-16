@@ -4,6 +4,7 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.entities import (
     Alert,
     AlertSeverity,
@@ -17,6 +18,31 @@ from app.schemas.sensor import SensorPayload
 
 
 PublishCommand = Callable[[str, dict], None]
+
+RAW_GAS_UNITS = {"raw", "adc", "counts", "count"}
+
+
+def normalize_gas_co(value: float, unit: str | None) -> tuple[float, str, bool]:
+    """Return (value, unit, comparable) for a MQ-7 gas reading.
+
+    Hardware can send calibrated ppm directly or a raw ADC value. Raw values
+    are only converted when explicitly enabled and calibrated in settings.
+    Until then they are stored as raw and excluded from ppm thresholding to
+    prevent false alerts.
+    """
+    normalized_unit = (unit or "ppm").strip().lower()
+    if normalized_unit == "ppm":
+        return value, "ppm", True
+    if normalized_unit not in RAW_GAS_UNITS:
+        return value, unit or normalized_unit, False
+    if not settings.mq7_raw_to_ppm_enabled:
+        return value, "raw", False
+    ppm = max(
+        0.0,
+        (value - settings.mq7_raw_baseline) * settings.mq7_raw_ppm_scale
+        + settings.mq7_raw_ppm_offset,
+    )
+    return ppm, "ppm", True
 
 
 def command_topic(agency_id: str, device_id: str, command: str) -> str:
@@ -65,17 +91,21 @@ def process_sensor_payload(
         sensor_type = item.sensor_type.strip().lower()
         threshold = thresholds.get(sensor_type)
         unit = item.unit or (threshold.unit if threshold else None)
+        value = item.value
+        threshold_comparable = True
+        if sensor_type == "gas_co":
+            value, unit, threshold_comparable = normalize_gas_co(value, unit)
         db.add(
             SensorReading(
                 device_id=device.id,
                 sensor_type=sensor_type,
-                value=item.value,
+                value=value,
                 unit=unit,
                 recorded_at=recorded_at,
             )
         )
 
-        if threshold is None:
+        if threshold is None or not threshold_comparable:
             continue
 
         alert_type = sensor_type
@@ -86,8 +116,8 @@ def process_sensor_payload(
                 Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED]),
             )
         )
-        severity = severity_for(item.value, threshold)
-        value_text = f"{item.value:g} {unit or ''}".strip()
+        severity = severity_for(value, threshold)
+        value_text = f"{value:g} {unit or ''}".strip()
 
         if severity is not None:
             changed = active_alert is None or active_alert.severity != severity

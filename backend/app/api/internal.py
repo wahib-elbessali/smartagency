@@ -2,14 +2,16 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.device_security import authenticate_ingestion_device
 from app.database.connection import get_db
-from app.models.entities import Employee, Service, Ticket, TicketStatus, Visitor
+from app.models.entities import Agency, Employee, RoleName, Service, Ticket, TicketStatus, Visitor, Zone
 from app.schemas.ingestion import (
     CallNextRequest,
     CallNextResponse,
+    DoorAccessRequest,
+    DoorAccessResponse,
     KioskConfigResponse,
     KioskMessages,
     KioskServiceResponse,
@@ -18,8 +20,10 @@ from app.schemas.ingestion import (
     WalkInTicketRequest,
     WalkInTicketResponse,
 )
+from app.schemas.ticket_template import TicketTemplateResponse
 from app.services.attendance_service import record_rfid_event
 from app.services.ticket_service import call_next_waiting_ticket, next_ticket_number
+from app.services.ticket_template_service import stored_or_default_ticket_template
 
 
 router = APIRouter(prefix="/internal", tags=["Internal ingestion"])
@@ -107,12 +111,25 @@ def kiosk_config(
     authenticate_ingestion_device(agency_id, device_id, x_device_key, db)
     services = db.scalars(
         select(Service)
+        .options(selectinload(Service.counters))
         .where(Service.agency_id == agency_id, Service.is_active.is_(True))
         .order_by(Service.code)
     ).all()
     return KioskConfigResponse(
         services=[
-            KioskServiceResponse(service_id=service.id, code=service.code, name=service.name)
+            KioskServiceResponse(
+                service_id=service.id,
+                code=service.code,
+                name=service.name,
+                counter_id=next(
+                    (
+                        counter.id
+                        for counter in sorted(service.counters, key=lambda item: item.number)
+                        if counter.is_open
+                    ),
+                    None,
+                ),
+            )
             for service in services
         ],
         messages=KioskMessages(),
@@ -141,6 +158,20 @@ def call_next_from_device(
         ticket_number=ticket.ticket_number,
         service_code=ticket.service.code,
     )
+
+
+@router.get("/tickets/ticket-template", response_model=TicketTemplateResponse)
+def ticket_template_from_device(
+    agency_id: str,
+    device_id: str,
+    x_device_key: str | None = Header(default=None, alias="X-Device-Key"),
+    db: Session = Depends(get_db),
+) -> TicketTemplateResponse:
+    authenticate_ingestion_device(agency_id, device_id, x_device_key, db)
+    agency = db.get(Agency, agency_id)
+    if agency is None:
+        raise HTTPException(status_code=404, detail="Agence introuvable")
+    return TicketTemplateResponse(template=stored_or_default_ticket_template(agency.ticket_template))
 
 
 @router.post("/attendance/check-rfid", response_model=RFIDCheckResponse)
@@ -174,4 +205,74 @@ def check_rfid(
         valid=True,
         employee_name=f"{employee.first_name} {employee.last_name}",
         event=event,
+    )
+
+
+@router.post("/access/door-access", response_model=DoorAccessResponse)
+def door_access(
+    payload: DoorAccessRequest,
+    x_device_key: str | None = Header(default=None, alias="X-Device-Key"),
+    db: Session = Depends(get_db),
+) -> DoorAccessResponse:
+    """Authorize an RFID employee to enter an agency zone.
+
+    Business denials intentionally return HTTP 200 with ``granted: false`` so
+    the ESP32 does not retry a valid but refused card indefinitely.
+    """
+    authenticate_ingestion_device(payload.agency_id, payload.device_id, x_device_key, db)
+
+    zone = db.scalar(
+        select(Zone).where(
+            Zone.id == payload.zone_id,
+            Zone.agency_id == payload.agency_id,
+        )
+    )
+    if zone is None:
+        zone_exists = db.get(Zone, payload.zone_id)
+        if zone_exists is None:
+            raise HTTPException(status_code=404, detail="Zone introuvable")
+        raise HTTPException(status_code=422, detail="La zone appartient a une autre agence")
+
+    employee = db.scalar(
+        select(Employee).where(
+            Employee.rfid_uid == payload.employee_rfid.strip(),
+            Employee.agency_id == payload.agency_id,
+        )
+    )
+    if employee is None:
+        return DoorAccessResponse(
+            granted=False,
+            zone_id=zone.id,
+            message="Carte RFID ou employe introuvable",
+        )
+    if not employee.is_active or employee.status.value != "ACTIVE":
+        return DoorAccessResponse(
+            granted=False,
+            employee_name=f"{employee.first_name} {employee.last_name}",
+            employee_role=employee.role.value,
+            zone_id=zone.id,
+            message="Employe inactif",
+        )
+
+    private_zone_roles = {
+        RoleName.ADMIN,
+        RoleName.MANAGER,
+        RoleName.SECURITY,
+        RoleName.TECHNICIAN,
+    }
+    if zone.is_private and employee.role not in private_zone_roles:
+        return DoorAccessResponse(
+            granted=False,
+            employee_name=f"{employee.first_name} {employee.last_name}",
+            employee_role=employee.role.value,
+            zone_id=zone.id,
+            message="Acces refuse pour cette zone",
+        )
+
+    return DoorAccessResponse(
+        granted=True,
+        employee_name=f"{employee.first_name} {employee.last_name}",
+        employee_role=employee.role.value,
+        zone_id=zone.id,
+        message="Acces autorise",
     )

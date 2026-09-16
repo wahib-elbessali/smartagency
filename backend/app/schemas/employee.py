@@ -11,6 +11,7 @@ class EmployeeCreate(BaseModel):
     position: str | None = Field(default=None, max_length=100)
     agency_id: str | None = None
     rfid_uid: str | None = Field(default=None, max_length=100)
+    role: str = Field(default="AGENT", max_length=20)
     status: str = Field(default="ACTIVE", max_length=20)
     hire_date: date | None = None
 
@@ -23,6 +24,7 @@ class EmployeeUpdate(BaseModel):
     position: str | None = Field(default=None, max_length=100)
     agency_id: str | None = None
     rfid_uid: str | None = Field(default=None, max_length=100)
+    role: str | None = Field(default=None, max_length=20)
     status: str | None = Field(default=None, max_length=20)
     hire_date: date | None = None
 
@@ -38,6 +40,7 @@ class EmployeeResponse(BaseModel):
     phone: str | None
     position: str | None
     rfid_uid: str | None
+    role: str
     status: str
     hire_date: date | None
     is_active: bool

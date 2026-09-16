@@ -22,6 +22,16 @@ def normalize_status(value: str) -> EmployeeStatus:
         ) from exc
 
 
+def normalize_role(value: str) -> RoleName:
+    try:
+        return RoleName(value.strip().upper())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Role invalide. Valeurs: ADMIN, MANAGER, AGENT, SECURITY, TECHNICIAN",
+        ) from exc
+
+
 def get_accessible_employee(employee_id: str, current_user: User, db: Session) -> Employee:
     employee = db.get(Employee, employee_id)
     if employee is None:
@@ -41,6 +51,7 @@ def to_response(employee: Employee) -> EmployeeResponse:
         phone=employee.phone,
         position=employee.position,
         rfid_uid=employee.rfid_uid,
+        role=employee.role.value,
         status=employee.status.value,
         hire_date=employee.hire_date,
         is_active=employee.is_active,
@@ -89,6 +100,7 @@ def create_employee(
         phone=payload.phone,
         position=payload.position,
         rfid_uid=payload.rfid_uid,
+        role=normalize_role(payload.role),
         status=normalize_status(payload.status),
         hire_date=payload.hire_date,
         is_active=payload.status.upper() == EmployeeStatus.ACTIVE.value,
@@ -140,6 +152,8 @@ def update_employee(
     if "status" in changes and changes["status"] is not None:
         changes["status"] = normalize_status(changes["status"])
         changes["is_active"] = changes["status"] == EmployeeStatus.ACTIVE
+    if "role" in changes and changes["role"] is not None:
+        changes["role"] = normalize_role(changes["role"])
     if "email" in changes and changes["email"]:
         changes["email"] = changes["email"].strip().lower()
 

@@ -82,6 +82,7 @@ class Agency(Base):
     closing_time: Mapped[time | None] = mapped_column(Time)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    ticket_template: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="agency")
     employees: Mapped[list["Employee"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
@@ -173,6 +174,12 @@ class Employee(Base):
     position: Mapped[str | None] = mapped_column(String(100))
     phone: Mapped[str | None] = mapped_column(String(30))
     rfid_uid: Mapped[str | None] = mapped_column(String(100), unique=True)
+    role: Mapped[RoleName] = mapped_column(
+        Enum(RoleName),
+        default=RoleName.AGENT,
+        server_default=RoleName.AGENT.value,
+        nullable=False,
+    )
     status: Mapped[EmployeeStatus] = mapped_column(
         Enum(EmployeeStatus),
         default=EmployeeStatus.ACTIVE,

@@ -31,6 +31,7 @@ class KioskServiceResponse(BaseModel):
     service_id: str
     code: str
     name: str
+    counter_id: str | None = None
 
 
 class KioskMessages(BaseModel):
@@ -70,4 +71,20 @@ class RFIDCheckResponse(BaseModel):
     valid: bool
     employee_name: str | None = None
     event: Literal["check_in", "check_out"] | None = None
+    message: str | None = None
+
+
+class DoorAccessRequest(BaseModel):
+    agency_id: str
+    device_id: str
+    employee_rfid: str = Field(min_length=1, max_length=100)
+    zone_id: str
+    timestamp: datetime | None = None
+
+
+class DoorAccessResponse(BaseModel):
+    granted: bool
+    employee_name: str | None = None
+    employee_role: str | None = None
+    zone_id: str
     message: str | None = None

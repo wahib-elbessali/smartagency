@@ -112,6 +112,8 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserRespo
     db.add(user)
     db.flush()
     link_employee(user, payload.employee_id, payload.agency_id, db)
+    if user.employee is not None:
+        user.employee.role = role_name
     try:
         db.commit()
     except IntegrityError as exc:
@@ -159,6 +161,8 @@ def update_user_role(user_id: str, payload: RoleUpdate, db: Session = Depends(ge
         db.add(role)
         db.flush()
     user.role = role
+    if user.employee is not None:
+        user.employee.role = new_role
     if new_role == RoleName.ADMIN:
         user.agency_id = None
     db.commit()
@@ -183,6 +187,8 @@ def update_user_access(user_id: str, payload: AccessUpdate, db: Session = Depend
 
     user.role = role
     user.agency_id = target_agency_id
+    if user.employee is not None:
+        user.employee.role = target_role
 
     # A linked employee follows the new agency. An ADMIN remains global,
     # but the linked employee keeps its professional agency assignment.

@@ -214,6 +214,61 @@ agency.
 **Notes:** `MANAGER` can access only their own agency. Returns `404` if the
 agency does not exist.
 
+### GET /api/agencies/{agency_id}/ticket-template
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER` for their own agency
+**Response body:**
+
+```json
+{
+  "template": [
+    { "type": "text", "content": "Bienvenue chez nous" },
+    { "type": "agency_name" },
+    { "type": "ticket_number" },
+    { "type": "service_name" },
+    { "type": "date" }
+  ]
+}
+```
+
+**Success status:** `200 OK`
+**Notes:** Returns the saved `Agency.ticket_template`, or the built-in
+default when it is unset. Image blocks are returned as processed 384-pixel-
+wide, 1-bit dithered bitmaps in base64 `data`, with `rows`.
+
+### PUT /api/agencies/{agency_id}/ticket-template
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER` for their own agency
+**Request body:**
+
+```json
+{
+  "template": [
+    { "type": "text", "content": "Bienvenue chez nous" },
+    { "type": "agency_name" },
+    { "type": "ticket_number" },
+    { "type": "service_name" },
+    { "type": "date" },
+    { "type": "qrcode", "content": "https://example.com" },
+    { "type": "spacing", "lines": 2 }
+  ]
+}
+```
+
+**Response body:** Updated template in the same processed shape as the GET
+endpoint.
+**Success status:** `200 OK`
+**Notes:** Replaces the complete template. Allowed block types are `text`,
+`agency_name`, `ticket_number`, `service_name`, `date`, `qrcode`, `image` and
+`spacing`. Image input uses a base64 image data URI in `content`; the backend
+resizes it to 384 pixels wide and applies 1-bit Floyd-Steinberg dithering.
+`422` is returned for an empty template, an unknown type or a missing required
+field. `404` is returned when the agency does not exist.
+
 ### PUT /api/agencies/{agency_id}
 
 **Owner:** Backend
@@ -395,6 +450,7 @@ service.
     "phone": "0612345678",
     "position": "Agent d'accueil",
     "rfid_uid": "RFID-001",
+    "role": "AGENT",
     "status": "ACTIVE",
     "hire_date": "2026-08-01",
     "is_active": true
@@ -421,6 +477,7 @@ service.
   "position": "Agent d'accueil",
   "agency_id": "AGENCY_UUID",
   "rfid_uid": "RFID-001",
+  "role": "AGENT",
   "status": "ACTIVE",
   "hire_date": "2026-08-01"
 }
@@ -429,7 +486,9 @@ service.
 **Response body:** Employee object.
 **Success status:** `201 Created`
 **Notes:** `ADMIN` must provide `agency_id`. `MANAGER` employees are always
-created in the manager's agency. `email` and `rfid_uid` must be unique.
+created in the manager's agency. `email` and `rfid_uid` must be unique. `role`
+controls zone-door authorization and accepts `ADMIN`, `MANAGER`, `AGENT`,
+`SECURITY` or `TECHNICIAN`.
 
 ### GET /api/employees/{employee_id}
 
@@ -494,7 +553,8 @@ All endpoints in this section require the `ADMIN` role.
       "first_name": "Sara",
       "last_name": "Security",
       "agency_id": "AGENCY_UUID",
-      "rfid_uid": "RFID-SEC-001"
+      "rfid_uid": "RFID-SEC-001",
+      "role": "SECURITY"
     }
   }
 ]

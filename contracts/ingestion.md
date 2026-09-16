@@ -18,14 +18,18 @@ The checklist for Basma is included at the end of this document.
 |---|---|---|---|
 | `POST /internal/tickets/walk-in` | Hardware → Backend | HTTP | Ticket kiosk |
 | `GET /internal/tickets/kiosk-config` | Hardware → Backend | HTTP | Ticket kiosk |
+| `GET /internal/tickets/ticket-template` | Hardware → Backend | HTTP | Ticket kiosk |
 | `POST /internal/attendance/check-rfid` | Hardware → Backend | HTTP | RFID |
+| `POST /internal/access/door-access` | Hardware → Backend | HTTP | Zone door access |
 | `POST /internal/tickets/call-next` | Hardware → Backend | HTTP | Queue counter display (7-segment) |
 | `agency/{agency_id}/device/{device_id}/ticket-called` | Backend → Hardware | MQTT | Queue counter display (7-segment) |
 | `agency/{agency_id}/device/{device_id}/sensor` | Hardware → Backend | MQTT | DHT22, MQ-7 |
 | `agency/{agency_id}/device/{device_id}/alert` | Backend → Hardware | MQTT | Buzzer / LED |
 | `agency/{agency_id}/device/{device_id}/climate` | Backend → Hardware | MQTT | Climate actuator |
 
-The door-lock subsystem using NEMA17 and A4988 ×2 is not included yet.
+The door-lock actuation subsystem using NEMA17 and A4988 ×2 is not included
+yet; `/internal/access/door-access` currently implements the authorization
+decision only.
 
 ---
 
@@ -44,7 +48,7 @@ ESP32 and must not be committed to GitHub or shared in Discord.
 The hardware `device_id` must be exactly the registered `mqtt_client_id`.
 It is not the internal database UUID of the device.
 
-The two internal REST endpoints require:
+Internal REST ingestion endpoints require:
 
 ```http
 Content-Type: application/json
@@ -135,8 +139,18 @@ device_id=ticket-kiosk-01
 ```json
 {
   "services": [
-    { "service_id": "SERVICE_UUID_1", "code": "VIR", "name": "Virement et consultation" },
-    { "service_id": "SERVICE_UUID_2", "code": "OUV", "name": "Ouverture de compte" }
+    {
+      "service_id": "SERVICE_UUID_1",
+      "code": "VIR",
+      "name": "Virement et consultation",
+      "counter_id": "COUNTER_UUID_1"
+    },
+    {
+      "service_id": "SERVICE_UUID_2",
+      "code": "OUV",
+      "name": "Ouverture de compte",
+      "counter_id": "COUNTER_UUID_2"
+    }
   ],
   "messages": {
     "error_line1": "Erreur reseau",
@@ -155,12 +169,53 @@ device_id=ticket-kiosk-01
 - The Uno cycles through all entries returned, not limited to 2.
 - Send the selected entry's `service_id` (not `service_type`) to
   `POST /internal/tickets/walk-in`.
+- `counter_id` is the first open counter assigned to the service, ordered by
+  counter number. It is `null` when the service has no open assigned counter.
 - Empty `services`: show "no service available", disable confirmation.
 - `name` may exceed 16 columns; Uno truncates for display only.
 - `messages`: 4 LCD lines, free text on `Device.kiosk_messages` (JSON),
   default to the values above when unset.
 - `401` invalid/missing key. `404` unknown device.
 - Poll periodically, not just at boot.
+
+### GET /internal/tickets/ticket-template
+
+**Owner:** Basma (hardware)
+**Type:** REST internal ingestion
+**Headers:**
+
+```http
+X-Device-Key: DEVICE_SECRET_KEY
+```
+
+**Query parameters:**
+
+```text
+agency_id=AGENCY_UUID
+device_id=ticket-kiosk-01
+```
+
+**Response body:**
+
+```json
+{
+  "template": [
+    { "type": "text", "content": "Bienvenue chez nous" },
+    { "type": "agency_name" },
+    { "type": "ticket_number" },
+    { "type": "service_name" },
+    { "type": "date" }
+  ]
+}
+```
+
+**Success status:** `200 OK`
+**Notes:** Returns the agency's saved template, or the built-in default when
+no template has been configured. The endpoint authenticates the device with
+`X-Device-Key`. `image` blocks are returned as a processed 384-pixel-wide,
+1-bit dithered bitmap in base64 `data`, with the number of rows in `rows`.
+`401` means the key is missing or invalid and `404` means the device or agency
+does not exist.
 
 ### POST /internal/attendance/check-rfid
 
@@ -220,6 +275,71 @@ X-Device-Key: DEVICE_SECRET_KEY
   each accepted scan toggles the employee's open attendance state.
 - A missing or invalid device key returns `401`.
 - An unknown device returns `404`.
+
+### POST /internal/access/door-access
+
+**Owner:** Basma (hardware)
+**Type:** REST internal ingestion
+**Headers:**
+
+```http
+Content-Type: application/json
+X-Device-Key: DEVICE_SECRET_KEY
+```
+
+**Request body:**
+
+```json
+{
+  "agency_id": "AGENCY_UUID",
+  "device_id": "door-reader-01",
+  "employee_rfid": "RFID-001",
+  "zone_id": "ZONE_UUID",
+  "timestamp": "2026-09-16T08:30:00Z"
+}
+```
+
+**Response when access is granted:**
+
+```json
+{
+  "granted": true,
+  "employee_name": "Ahmed Benali",
+  "employee_role": "SECURITY",
+  "zone_id": "ZONE_UUID",
+  "message": "Acces autorise"
+}
+```
+
+**Response when access is refused:**
+
+```json
+{
+  "granted": false,
+  "employee_name": "Ahmed Benali",
+  "employee_role": "AGENT",
+  "zone_id": "ZONE_UUID",
+  "message": "Acces refuse pour cette zone"
+}
+```
+
+**Success status:** `200 OK`
+**Notes:**
+
+- The ESP32 sends only the RFID, agency, device and zone identifiers. It does
+  not decide the employee role or access policy.
+- The backend returns `200` with `granted: false` for an unknown card,
+  inactive employee or denied private-zone access. These are normal business
+  decisions and must not be retried indefinitely.
+- The employee must be active and belong to the requested agency. The zone
+  must also belong to that agency.
+- Public zones allow active employees. Private zones allow `ADMIN`, `MANAGER`,
+  `SECURITY` and `TECHNICIAN`; `AGENT` is refused by the default policy.
+- `401` means the device key is missing or invalid. `404` means the device or
+  zone does not exist. `422` means the zone belongs to another agency.
+- The endpoint currently returns the authorization decision only. The actual
+  NEMA17/A4988 lock actuation will be added after its hardware command
+  contract is validated.
 
 ---
 
@@ -422,6 +542,16 @@ gas_co
 - `timestamp` must be an ISO-8601 UTC date-time.
 - The backend stores each reading in `sensor_readings`.
 - An unregistered device message is rejected and logged by the backend.
+- For `gas_co`, Basma may send calibrated `ppm` directly (recommended), or a
+  raw ADC value with unit `raw`, `adc`, `count` or `counts`.
+- Raw MQ-7 conversion is controlled by backend environment settings:
+  `MQ7_RAW_TO_PPM_ENABLED`, `MQ7_RAW_BASELINE`, `MQ7_RAW_PPM_SCALE` and
+  `MQ7_RAW_PPM_OFFSET`. The formula is
+  `(raw - baseline) * scale + offset`, clamped to zero.
+- Conversion is disabled by default. While disabled, raw values are stored as
+  `raw` and are not compared with ppm thresholds, preventing false alerts.
+- Basma must provide the calibrated baseline and scale from the real MQ-7
+  circuit before enabling the conversion in the deployment environment.
 
 ---
 
@@ -572,6 +702,22 @@ receives a temperature reading so the actuator can recover after a restart.
    the matching service's digit to it.
 7. Do not fetch or poll for the current ticket number on boot -- both
    triggers always end in a `ticket-called` push when they succeed.
+
+### Zone door reader
+
+1. Register the door reader as a backend device and store its `device_key`
+   securely on the ESP32.
+2. Send `POST /internal/access/door-access` with the reader's registered
+   `device_id`, the agency UUID, the zone UUID and the scanned RFID.
+3. Add `X-Device-Key` and do not send the device database UUID as `device_id`.
+4. Unlock only when the response contains `granted: true`.
+5. Treat `granted: false` as a normal access refusal: keep the door locked,
+   show/log the returned message and do not retry indefinitely.
+6. `401`, `404` and `422` indicate device or configuration errors and should
+   be logged for correction.
+7. The NEMA17/A4988 motor command is not part of this contract yet; keep the
+   lock actuator behind a local hardware function until that contract is
+   validated.
 
 ### DHT22 and MQ-7
 
