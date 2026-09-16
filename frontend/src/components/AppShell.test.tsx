@@ -41,6 +41,7 @@ function renderShell(role: Role, initialPath = '/presence') {
                   <Route path="users" element={<p>users screen</p>} />
                   <Route path="visitors" element={<p>visitors screen</p>} />
                   <Route path="alerts" element={<p>alerts screen</p>} />
+                  <Route path="cameras" element={<p>cameras screen</p>} />
                   <Route path="controls" element={<p>controls screen</p>} />
                   {/* TECHNICIAN's landing page (auth/landing.ts) - required so the
                       default-path redirect below has somewhere to land. */}
@@ -87,6 +88,14 @@ describe('AppShell navigation', () => {
     expect(navLink(/employees/i)).not.toBeInTheDocument()
   })
 
+  /* The guard's own screen. A technician registers sensors, not cameras. */
+  it('offers cameras to security and not to a technician', () => {
+    renderShell('SECURITY')
+    expect(navLink(/cameras/i)).toBeInTheDocument()
+    renderShell('TECHNICIAN')
+    expect(screen.queryAllByRole('link', { name: /cameras/i })).toHaveLength(1)
+  })
+
   it('leaves the unguarded screens for every role', () => {
     renderShell('TECHNICIAN')
     expect(navLink(/manual controls/i)).toBeInTheDocument()
@@ -107,6 +116,13 @@ describe('AppShell URL guard', () => {
     renderShell('AGENT', '/employees')
 
     expect(screen.queryByText('employees screen')).not.toBeInTheDocument()
+    expect(screen.getByText('visitors screen')).toBeInTheDocument()
+  })
+
+  it('sends an agent who types the cameras URL to the visitor queue', () => {
+    renderShell('AGENT', '/cameras')
+
+    expect(screen.queryByText('cameras screen')).not.toBeInTheDocument()
     expect(screen.getByText('visitors screen')).toBeInTheDocument()
   })
 

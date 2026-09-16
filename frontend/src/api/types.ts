@@ -304,6 +304,37 @@ export interface CounterServiceAssignment {
 }
 
 /**
+ * PROPOSED - not in contracts/api.md, and nothing on the real backend stores
+ * this yet (backend/app/models/entities.py: neither User nor Employee carries
+ * a service or counter). Built ahead of the backend (2026-09-05, at the
+ * user's direction) so AgentQueue can read which counter a MANAGER put an
+ * agent on, instead of asking the agent to pick their own. See
+ * api/endpoints/assignments.ts for the anticipated `GET` this backs, and
+ * mocks/assignmentStore.ts for the seeded data standing in for it.
+ */
+export interface AgentAssignment {
+  counter_id: string
+  counter_name: string | null
+  service_id: string
+  service_name: string
+}
+
+/**
+ * PROPOSED - not in contracts/api.md. Backs GET /api/agencies/{id}/agents,
+ * the MANAGER-facing counterpart to AgentAssignment above: one row per AGENT
+ * account in the agency, with whatever they're currently assigned to (or
+ * null). Deliberately narrower than GET /api/users, which is ADMIN-only
+ * (contracts/api.md §5) - a MANAGER can't read that list at all today, so
+ * this doesn't loosen it, it's a separate, smaller surface built for exactly
+ * this screen. See api/endpoints/assignments.ts.
+ */
+export interface AgentSummary {
+  user_id: string
+  full_name: string
+  assignment: AgentAssignment | null
+}
+
+/**
  * The employee summary nested in a GET /api/users entry, from
  * EmployeeLinkResponse in backend/app/schemas/user.py.
  *
@@ -485,6 +516,14 @@ export interface Ticket {
   created_at: string
   called_at: string | null
   completed_at: string | null
+  /**
+   * PROPOSED - not in contracts/api.md yet. POST /api/tickets/{id}/complete
+   * has no request body on the real backend today; this is built ahead of it
+   * (2026-09-05, at the user's direction) so an agent can note how a visit
+   * went. Mocked only until the backend accepts `{ notes }` on complete - see
+   * api/endpoints/tickets.ts.
+   */
+  notes: string | null
 }
 
 /**
@@ -582,6 +621,61 @@ export interface SensorThresholdUpsert {
   warning_max?: number | null
   critical_max?: number | null
   is_active?: boolean
+}
+
+/**
+ * GET|POST /api/agencies/{agency_id}/cameras and PUT /api/cameras/{id}, from
+ * CameraResponse in backend/app/schemas/camera.py. contracts/api.md §11,
+ * added 2026-09-12. ADMIN, MANAGER and SECURITY; delete drops SECURITY.
+ *
+ * `name` is not a display label - it is the exact source identifier the AI
+ * service knows the camera by, which is why it is unique across every branch
+ * and not just within one (the AI source registry is site-wide). The names on
+ * the Alerts screen come from that same registry, so a camera renamed here
+ * stops matching its own detections until the backend re-syncs.
+ *
+ * `status` reuses the device enum, but only two of its values are ever written
+ * for a camera: OFFLINE from creation until the backend receives its first
+ * detection stream event, then ONLINE. Nothing sets ERROR or MAINTENANCE on a
+ * camera today.
+ */
+export interface Camera {
+  id: string
+  agency_id: string
+  name: string
+  /**
+   * An RTSP address, typically - which a browser cannot play, so it is shown
+   * and edited here but never embedded. The schema allows null on the way out;
+   * the create/update routes refuse it blank.
+   */
+  stream_url: string | null
+  status: DeviceStatus
+}
+
+/** POST /api/agencies/{agency_id}/cameras — from CameraCreate. Both required. */
+export interface CameraCreate {
+  name: string
+  stream_url: string
+}
+
+/** PUT /api/cameras/{id} — from CameraUpdate. Both optional, exclude_unset. */
+export interface CameraUpdate {
+  name?: string
+  stream_url?: string
+}
+
+/**
+ * GET|PUT /api/ai-alerts/thresholds/weapon, from AIWeaponThresholdResponse.
+ * contracts/api.md §12, added 2026-09-12. ADMIN, MANAGER and SECURITY.
+ *
+ * One global number, not per camera or per agency: the minimum confidence a
+ * weapon detection needs before the backend turns it into an alert. Strictly
+ * greater than 0 and at most 1, enforced server-side (422). It is separate
+ * from the AI model's own `conf` cutoff - the model still reports everything
+ * above its own bar, and this decides which of those anyone hears about.
+ */
+export interface WeaponThreshold {
+  confidence: number
 }
 
 /**

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import VisitorQueue from './VisitorQueue'
 import { SessionProvider } from '@/auth/session'
 import { useSession } from '@/auth/SessionContext'
+import { resetAssignmentStore } from '@/mocks/assignmentStore'
 import { resetTicketStore } from '@/mocks/ticketStore'
 import '@/mocks'
 
@@ -35,135 +36,58 @@ function renderScreen() {
 
 const WAIT = { timeout: 4000 }
 
-/* Counters arrive from the agencies query, which is separate from the queue
-   one. Call stays disabled until they land, so clicking it the instant the
-   roster renders is a race - wait for the control to actually be usable. */
-async function firstEnabledCall() {
-  const button = screen.getAllByRole('button', { name: /^call$/i })[0]
-  await waitFor(() => expect(button).toBeEnabled(), WAIT)
-  return button
-}
-
+/* This screen is oversight only now (2026-09-05): who's assigned where, and
+   how their line is doing. Running the queue itself moved to AgentQueue. */
 describe('VisitorQueue', () => {
-  beforeEach(resetTicketStore)
-
-  it('lists who is waiting, oldest first', async () => {
-    renderScreen()
-    expect(await screen.findByText('Rachid El Fassi', {}, WAIT)).toBeInTheDocument()
-    expect(screen.getByText('Khadija Moussaoui')).toBeInTheDocument()
+  beforeEach(() => {
+    resetTicketStore()
+    resetAssignmentStore()
   })
 
-  /* service_type is nullable and one seeded ticket has none. A row that assumed
-     it was present would render an empty badge. */
-  it('renders a ticket with no service type', async () => {
+  /* Nadia is pre-assigned to Guichet 1 / VIR in the seed (assignmentStore.ts),
+     and VIR has two seeded waiting tickets (Rachid, Khadija). */
+  it('shows each agent’s assignment and how many are waiting for their service', async () => {
     renderScreen()
-    await screen.findByText('Youssef Amrani', {}, WAIT)
-    expect(screen.getByText('Youssef Amrani')).toBeInTheDocument()
+
+    expect(await screen.findByText('Nadia Cherkaoui', {}, WAIT)).toBeInTheDocument()
+    expect(screen.getByText('Virement et consultation · Guichet 1')).toBeInTheDocument()
+    expect(screen.getByText('2 waiting')).toBeInTheDocument()
   })
 
-  it('registers a visitor and issues them a ticket in one step', async () => {
+  /* Guichet 2 is deliberately absent from the dropdown's options - it has no
+     service assigned (ticketStore.ts's COUNTERS), so it can't back an agent
+     assignment either. Guichet 3 (OUV) is the only other valid target. */
+  it('reassigns an agent to a different counter and service', async () => {
     const user = userEvent.setup()
     renderScreen()
-    await screen.findByText('Rachid El Fassi', {}, WAIT)
+    await screen.findByText('Nadia Cherkaoui', {}, WAIT)
 
-    await user.click(screen.getByRole('button', { name: /register visitor/i }))
-    const dialog = screen.getByRole('dialog')
-    await user.type(within(dialog).getByLabelText(/full name/i), 'Nour Sabri')
+    const select = screen.getByLabelText(/assign nadia cherkaoui/i)
+    await waitFor(() => expect(select).toBeEnabled(), WAIT)
+    expect(within(select).queryByText(/guichet 2/i)).not.toBeInTheDocument()
 
-    /* service_id is required (contracts/api.md §8), and the picker only
-       populates once GET /api/agencies/{id}/services has resolved. */
-    const serviceSelect = within(dialog).getByLabelText(/what they need/i)
-    await waitFor(() => expect(serviceSelect).toBeEnabled(), WAIT)
-    await user.selectOptions(serviceSelect, 'Virement et consultation')
-
-    await user.click(within(dialog).getByRole('button', { name: /register and issue ticket/i }))
+    await user.selectOptions(select, within(select).getByRole('option', { name: /guichet 3/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('Nour Sabri')).toBeInTheDocument()
+      expect(screen.getByText('Ouverture de compte · Guichet 3')).toBeInTheDocument()
     }, WAIT)
+    /* Salma Bennani is OUV's one seeded waiting ticket. */
+    expect(screen.getByText('1 waiting')).toBeInTheDocument()
   })
 
-  it('will not register someone without a name', async () => {
+  it('clears an assignment back to "Not assigned"', async () => {
     const user = userEvent.setup()
     renderScreen()
-    await screen.findByText('Rachid El Fassi', {}, WAIT)
+    await screen.findByText('Nadia Cherkaoui', {}, WAIT)
 
-    await user.click(screen.getByRole('button', { name: /register visitor/i }))
-    const dialog = screen.getByRole('dialog')
-    await user.click(within(dialog).getByRole('button', { name: /register and issue ticket/i }))
+    const select = screen.getByLabelText(/assign nadia cherkaoui/i)
+    await waitFor(() => expect(select).toBeEnabled(), WAIT)
+    await user.selectOptions(select, within(select).getByRole('option', { name: /not assigned/i }))
 
-    /* Submitting empty now also flags the required service picker, so this
-       checks the full name field itself rather than counting "Required."
-       text nodes on the page. */
-    expect(within(dialog).getByLabelText(/full name/i)).toHaveAttribute('aria-invalid', 'true')
-  })
-
-  /**
-   * The endpoint returns WAITING tickets only, so calling someone removes them
-   * from the queue. The screen has to move them into its own panel or they
-   * disappear entirely - which is the whole reason that panel exists.
-   */
-  it('moves a called visitor out of the queue and into the counter panel', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByText('Rachid El Fassi', {}, WAIT)
-
-    await user.click(await firstEnabledCall())
-    await user.click(screen.getByRole('button', { name: 'Guichet 1' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('At a counter')).toBeInTheDocument()
-    }, WAIT)
-    expect(screen.getByRole('button', { name: /done/i })).toBeInTheDocument()
-  })
-
-  /* A closed counter is a 409 from the backend, so it must not be clickable. */
-  it('does not let you call anyone to a closed counter', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByText('Rachid El Fassi', {}, WAIT)
-
-    await user.click(await firstEnabledCall())
-    expect(screen.getByRole('button', { name: 'Guichet 3' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Guichet 1' })).toBeEnabled()
-  })
-
-  it('completes a visitor and clears them from the counter panel', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByText('Rachid El Fassi', {}, WAIT)
-
-    await user.click(await firstEnabledCall())
-    await user.click(screen.getByRole('button', { name: 'Guichet 1' }))
-    await waitFor(() => expect(screen.getByText('At a counter')).toBeInTheDocument(), WAIT)
-
-    await user.click(screen.getByRole('button', { name: /done/i }))
-
-    await waitFor(() => {
-      expect(screen.queryByText('At a counter')).not.toBeInTheDocument()
-    }, WAIT)
-  })
-
-  it('removes a cancelled visitor from the queue', async () => {
-    const user = userEvent.setup()
-    renderScreen()
-    await screen.findByText('Rachid El Fassi', {}, WAIT)
-
-    /* Ticket numbers now restart at 001 per service, not per agency
-       (contracts/api.md §8), so every seeded ticket's first segment can be
-       "001" - Rachid's is uniquely identified by his service code, VIR. */
-    await user.click(screen.getByRole('button', { name: /cancel \d{8}-VIR-001/i }))
-
-    await waitFor(() => {
-      expect(screen.queryByText('Rachid El Fassi')).not.toBeInTheDocument()
-    }, WAIT)
-  })
-
-  /* The limitation is a design constraint, not a detail to bury - somebody
-     reading the screen has to know the panel is tab-local. */
-  it('says on screen that called visitors are not persisted', async () => {
-    renderScreen()
-    await screen.findByText('Rachid El Fassi', {}, WAIT)
-    expect(screen.getByText(/reloading\s+clears the panel/i)).toBeInTheDocument()
+    /* "Not assigned" is also the dropdown's own placeholder option, present
+       from the first render regardless of state - waiting for the waiting
+       count to disappear is the real signal that the mutation landed. */
+    await waitFor(() => expect(screen.queryByText(/\d waiting/)).not.toBeInTheDocument(), WAIT)
+    expect(screen.getByText('Not assigned', { selector: 'p' })).toBeInTheDocument()
   })
 })

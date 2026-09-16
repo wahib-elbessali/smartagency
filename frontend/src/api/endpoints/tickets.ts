@@ -1,4 +1,5 @@
 import { fetchJson } from '../client'
+import { ApiError, describeApiError } from '../errors'
 import type { Ticket, TicketCreate } from '../types'
 
 /**
@@ -73,8 +74,14 @@ export function callTicket(id: string, counterId: string, signal?: AbortSignal):
   )
 }
 
-/** Only valid from CALLED or IN_SERVICE; anything else is a 409. */
-export function completeTicket(id: string, signal?: AbortSignal): Promise<Ticket> {
+/**
+ * Only valid from CALLED or IN_SERVICE; anything else is a 409.
+ *
+ * `notes` is PROPOSED - the real route takes no body today (contracts/api.md
+ * §8), so this only reaches the mock until the backend accepts it. Omitting
+ * it sends no body at all, unchanged from before notes existed.
+ */
+export function completeTicket(id: string, notes?: string, signal?: AbortSignal): Promise<Ticket> {
   return fetchJson<Ticket>(
     {
       key: 'POST /api/tickets/{id}/complete',
@@ -82,7 +89,7 @@ export function completeTicket(id: string, signal?: AbortSignal): Promise<Ticket
       method: 'POST',
       auth: true,
     },
-    { signal },
+    { signal, body: notes === undefined ? undefined : { notes } },
   )
 }
 
@@ -97,4 +104,29 @@ export function cancelTicket(id: string, signal?: AbortSignal): Promise<Ticket> 
     },
     { signal },
   )
+}
+
+/**
+ * Turns a call/complete/cancel failure into what a screen shows a person.
+ *
+ * Shared by VisitorQueueBoard and AgentQueue - both act on the same four
+ * routes above and hit the same refusals.
+ */
+export function actionErrorMessage(error: unknown): string | null {
+  if (error == null) return null
+  if (!(error instanceof ApiError)) return 'That did not work.'
+
+  switch (error.status) {
+    /* Every 409 here means the ticket moved under you - most likely a colleague
+       called the same person from another desk. Refetching is the fix, and the
+       queue does it automatically after every action. */
+    case 409:
+      return 'That ticket has already been handled, or the counter is closed. The queue has been refreshed.'
+    case 404:
+      return 'That ticket or counter no longer exists.'
+    case 422:
+      return 'That counter cannot take this ticket — wrong branch or wrong service. The queue has been refreshed.'
+    default:
+      return describeApiError(error)
+  }
 }
