@@ -83,7 +83,7 @@ class DoorAccessRequest(BaseModel):
 
 
 class DoorAccessResponse(BaseModel):
-    granted: bool
+    authorized: bool
     employee_name: str | None = None
     employee_role: str | None = None
     zone_id: str

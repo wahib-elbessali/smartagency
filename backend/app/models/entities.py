@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Table, Text, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -59,6 +59,14 @@ class AlertStatus(str, enum.Enum):
     OPEN = "OPEN"
     ACKNOWLEDGED = "ACKNOWLEDGED"
     RESOLVED = "RESOLVED"
+
+
+employee_zone_access = Table(
+    "employee_zone_access",
+    Base.metadata,
+    Column("employee_id", ForeignKey("employees.id", ondelete="CASCADE"), primary_key=True),
+    Column("zone_id", ForeignKey("zones.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class Role(Base):
@@ -125,6 +133,10 @@ class Zone(Base):
     is_private: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     agency: Mapped["Agency"] = relationship(back_populates="zones")
+    authorized_employees: Mapped[list["Employee"]] = relationship(
+        secondary=employee_zone_access,
+        back_populates="authorized_zones",
+    )
 
 
 class Counter(Base):
@@ -192,6 +204,14 @@ class Employee(Base):
     agency: Mapped["Agency"] = relationship(back_populates="employees")
     attendance: Mapped[list["Attendance"]] = relationship(back_populates="employee", cascade="all, delete-orphan")
     user: Mapped["User | None"] = relationship(back_populates="employee")
+    authorized_zones: Mapped[list["Zone"]] = relationship(
+        secondary=employee_zone_access,
+        back_populates="authorized_employees",
+    )
+
+    @property
+    def authorized_zone_ids(self) -> list[str]:
+        return [zone.id for zone in self.authorized_zones]
 
 
 class Visitor(Base):

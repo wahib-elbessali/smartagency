@@ -23,7 +23,7 @@ RAW_GAS_UNITS = {"raw", "adc", "counts", "count"}
 
 
 def normalize_gas_co(value: float, unit: str | None) -> tuple[float, str, bool]:
-    """Return (value, unit, comparable) for a MQ-7 gas reading.
+    """Return (value, unit, comparable) for a MQ2 gas reading.
 
     Hardware can send calibrated ppm directly or a raw ADC value. Raw values
     are only converted when explicitly enabled and calibrated in settings.
@@ -35,12 +35,12 @@ def normalize_gas_co(value: float, unit: str | None) -> tuple[float, str, bool]:
         return value, "ppm", True
     if normalized_unit not in RAW_GAS_UNITS:
         return value, unit or normalized_unit, False
-    if not settings.mq7_raw_to_ppm_enabled:
+    if not settings.mq2_raw_to_ppm_enabled:
         return value, "raw", False
     ppm = max(
         0.0,
-        (value - settings.mq7_raw_baseline) * settings.mq7_raw_ppm_scale
-        + settings.mq7_raw_ppm_offset,
+        (value - settings.mq2_raw_baseline) * settings.mq2_raw_ppm_scale
+        + settings.mq2_raw_ppm_offset,
     )
     return ppm, "ppm", True
 

@@ -234,9 +234,27 @@ agency does not exist.
 ```
 
 **Success status:** `200 OK`
-**Notes:** Returns the saved `Agency.ticket_template`, or the built-in
-default when it is unset. Image blocks are returned as processed 384-pixel-
-wide, 1-bit dithered bitmaps in base64 `data`, with `rows`.
+**Notes:** Returns the saved `Agency.ticket_template`, or the following
+built-in default when it is unset:
+
+```json
+[
+  { "type": "text", "content": "Bienvenue chez nous" },
+  { "type": "agency_name" },
+  { "type": "ticket_number" },
+  { "type": "service_name" },
+  { "type": "date" }
+]
+```
+
+Supported blocks are `text`, `agency_name`, `ticket_number`, `service_name`,
+`date`, `qrcode`, `image` and `spacing`. Blocks are rendered in array order.
+`agency_name`, `ticket_number`, `service_name` and `date` take no content and
+are resolved at print time. `image` input is converted server-side to a
+384-dot-wide, 1-bit Floyd-Steinberg dithered bitmap and returned as base64
+packed rows (`data`, 48 bytes per row, most-significant bit first, bit `1` is
+black) with `rows`. The array is a layout description, not raw ESC/POS; the
+kiosk converts each block to ESC/POS printer commands.
 
 ### PUT /api/agencies/{agency_id}/ticket-template
 
@@ -254,6 +272,7 @@ wide, 1-bit dithered bitmaps in base64 `data`, with `rows`.
     { "type": "service_name" },
     { "type": "date" },
     { "type": "qrcode", "content": "https://example.com" },
+    { "type": "image", "content": "data:image/png;base64,RAW_UPLOADED_IMAGE" },
     { "type": "spacing", "lines": 2 }
   ]
 }
@@ -267,7 +286,8 @@ endpoint.
 `spacing`. Image input uses a base64 image data URI in `content`; the backend
 resizes it to 384 pixels wide and applies 1-bit Floyd-Steinberg dithering.
 `422` is returned for an empty template, an unknown type or a missing required
-field. `404` is returned when the agency does not exist.
+field. The kiosk refreshes its copy at boot and every 60 seconds. `404` is
+returned when the agency does not exist.
 
 ### PUT /api/agencies/{agency_id}
 
@@ -451,6 +471,7 @@ service.
     "position": "Agent d'accueil",
     "rfid_uid": "RFID-001",
     "role": "AGENT",
+    "authorized_zone_ids": ["ZONE_UUID"],
     "status": "ACTIVE",
     "hire_date": "2026-08-01",
     "is_active": true
@@ -478,6 +499,7 @@ service.
   "agency_id": "AGENCY_UUID",
   "rfid_uid": "RFID-001",
   "role": "AGENT",
+  "authorized_zone_ids": ["ZONE_UUID"],
   "status": "ACTIVE",
   "hire_date": "2026-08-01"
 }
@@ -487,8 +509,10 @@ service.
 **Success status:** `201 Created`
 **Notes:** `ADMIN` must provide `agency_id`. `MANAGER` employees are always
 created in the manager's agency. `email` and `rfid_uid` must be unique. `role`
-controls zone-door authorization and accepts `ADMIN`, `MANAGER`, `AGENT`,
-`SECURITY` or `TECHNICIAN`.
+is informational/API-related; physical access is defined independently by
+`authorized_zone_ids`, which contains zone IDs assigned to this employee.
+The list can be changed during employee creation or update. `role` accepts
+`ADMIN`, `MANAGER`, `AGENT`, `SECURITY` or `TECHNICIAN`.
 
 ### GET /api/employees/{employee_id}
 
@@ -509,6 +533,7 @@ controls zone-door authorization and accepts `ADMIN`, `MANAGER`, `AGENT`,
 {
   "email": "ahmed.updated@agency.com",
   "position": "Supervisor",
+  "authorized_zone_ids": ["ZONE_UUID"],
   "status": "ACTIVE"
 }
 ```
@@ -554,7 +579,8 @@ All endpoints in this section require the `ADMIN` role.
       "last_name": "Security",
       "agency_id": "AGENCY_UUID",
       "rfid_uid": "RFID-SEC-001",
-      "role": "SECURITY"
+      "role": "SECURITY",
+      "authorized_zone_ids": ["ZONE_UUID"]
     }
   }
 ]
@@ -959,10 +985,10 @@ Always send the counter UUID, never the visible counter number.
   {
     "id": "DEVICE_UUID",
     "agency_id": "AGENCY_UUID",
-    "name": "Capteur DHT22",
-    "device_type": "DHT22",
-    "mqtt_client_id": "dht22-001",
-    "mqtt_topic": "agency/AGENCY_UUID/device/dht22-001/sensor",
+    "name": "Access sensors 1",
+    "device_type": "ACCESS_SENSORS",
+    "mqtt_client_id": "access-sensors-1",
+    "mqtt_topic": "agency/AGENCY_UUID/device/access-sensors-1/sensor",
     "status": "ONLINE",
     "last_seen_at": "2026-08-25T10:00:00Z"
   }
@@ -981,9 +1007,9 @@ Always send the counter UUID, never the visible counter number.
 
 ```json
 {
-  "name": "Capteur DHT22",
-  "device_type": "DHT22",
-  "mqtt_client_id": "dht22-001",
+  "name": "Access sensors 1",
+  "device_type": "ACCESS_SENSORS",
+  "mqtt_client_id": "access-sensors-1",
   "mqtt_topic": null
 }
 ```
@@ -994,10 +1020,10 @@ Always send the counter UUID, never the visible counter number.
 {
   "id": "DEVICE_UUID",
   "agency_id": "AGENCY_UUID",
-  "name": "Capteur DHT22",
-  "device_type": "DHT22",
-  "mqtt_client_id": "dht22-001",
-  "mqtt_topic": "agency/AGENCY_UUID/device/dht22-001/sensor",
+  "name": "Access sensors 1",
+  "device_type": "ACCESS_SENSORS",
+  "mqtt_client_id": "access-sensors-1",
+  "mqtt_topic": "agency/AGENCY_UUID/device/access-sensors-1/sensor",
   "status": "OFFLINE",
   "last_seen_at": null,
   "device_key": "DEVICE_SECRET_KEY"
@@ -1025,9 +1051,9 @@ it must never be committed to GitHub.
 
 ```json
 {
-  "name": "Capteur DHT22 principal",
-  "device_type": "DHT22",
-  "mqtt_client_id": "dht22-001",
+  "name": "Access sensors 1",
+  "device_type": "ACCESS_SENSORS",
+  "mqtt_client_id": "access-sensors-1",
   "status": "ONLINE"
 }
 ```

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.device_security import authenticate_ingestion_device
 from app.database.connection import get_db
-from app.models.entities import Agency, Employee, RoleName, Service, Ticket, TicketStatus, Visitor, Zone
+from app.models.entities import Agency, Employee, Service, Ticket, TicketStatus, Visitor, Zone
 from app.schemas.ingestion import (
     CallNextRequest,
     CallNextResponse,
@@ -216,7 +216,7 @@ def door_access(
 ) -> DoorAccessResponse:
     """Authorize an RFID employee to enter an agency zone.
 
-    Business denials intentionally return HTTP 200 with ``granted: false`` so
+    Business denials intentionally return HTTP 200 with ``authorized: false`` so
     the ESP32 does not retry a valid but refused card indefinitely.
     """
     authenticate_ingestion_device(payload.agency_id, payload.device_id, x_device_key, db)
@@ -234,35 +234,31 @@ def door_access(
         raise HTTPException(status_code=422, detail="La zone appartient a une autre agence")
 
     employee = db.scalar(
-        select(Employee).where(
+        select(Employee)
+        .options(selectinload(Employee.authorized_zones))
+        .where(
             Employee.rfid_uid == payload.employee_rfid.strip(),
             Employee.agency_id == payload.agency_id,
         )
     )
     if employee is None:
         return DoorAccessResponse(
-            granted=False,
+            authorized=False,
             zone_id=zone.id,
             message="Carte RFID ou employe introuvable",
         )
     if not employee.is_active or employee.status.value != "ACTIVE":
         return DoorAccessResponse(
-            granted=False,
+            authorized=False,
             employee_name=f"{employee.first_name} {employee.last_name}",
             employee_role=employee.role.value,
             zone_id=zone.id,
             message="Employe inactif",
         )
 
-    private_zone_roles = {
-        RoleName.ADMIN,
-        RoleName.MANAGER,
-        RoleName.SECURITY,
-        RoleName.TECHNICIAN,
-    }
-    if zone.is_private and employee.role not in private_zone_roles:
+    if zone.id not in employee.authorized_zone_ids:
         return DoorAccessResponse(
-            granted=False,
+            authorized=False,
             employee_name=f"{employee.first_name} {employee.last_name}",
             employee_role=employee.role.value,
             zone_id=zone.id,
@@ -270,7 +266,7 @@ def door_access(
         )
 
     return DoorAccessResponse(
-        granted=True,
+        authorized=True,
         employee_name=f"{employee.first_name} {employee.last_name}",
         employee_role=employee.role.value,
         zone_id=zone.id,

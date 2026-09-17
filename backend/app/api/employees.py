@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import get_current_user, require_roles
 from app.database.connection import get_db
-from app.models.entities import Agency, Employee, EmployeeStatus, RoleName, User
+from app.models.entities import Agency, Employee, EmployeeStatus, RoleName, User, Zone
 from app.schemas.employee import EmployeeCreate, EmployeeResponse, EmployeeUpdate
 
 
@@ -32,8 +32,22 @@ def normalize_role(value: str) -> RoleName:
         ) from exc
 
 
+def zones_for_employee(agency_id: str, zone_ids: list[str], db: Session) -> list[Zone]:
+    unique_zone_ids = list(dict.fromkeys(zone_ids))
+    zones = [db.get(Zone, zone_id) for zone_id in unique_zone_ids]
+    if any(zone is None for zone in zones):
+        raise HTTPException(status_code=404, detail="Zone introuvable")
+    if any(zone.agency_id != agency_id for zone in zones):
+        raise HTTPException(status_code=422, detail="Une zone doit appartenir a la meme agence")
+    return zones
+
+
 def get_accessible_employee(employee_id: str, current_user: User, db: Session) -> Employee:
-    employee = db.get(Employee, employee_id)
+    employee = db.scalar(
+        select(Employee)
+        .options(selectinload(Employee.authorized_zones))
+        .where(Employee.id == employee_id)
+    )
     if employee is None:
         raise HTTPException(status_code=404, detail="Employe introuvable")
     if current_user.role.name == RoleName.MANAGER and employee.agency_id != current_user.agency_id:
@@ -52,6 +66,7 @@ def to_response(employee: Employee) -> EmployeeResponse:
         position=employee.position,
         rfid_uid=employee.rfid_uid,
         role=employee.role.value,
+        authorized_zone_ids=employee.authorized_zone_ids,
         status=employee.status.value,
         hire_date=employee.hire_date,
         is_active=employee.is_active,
@@ -67,7 +82,11 @@ def list_employees(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[EmployeeResponse]:
-    query = select(Employee).order_by(Employee.last_name, Employee.first_name)
+    query = (
+        select(Employee)
+        .options(selectinload(Employee.authorized_zones))
+        .order_by(Employee.last_name, Employee.first_name)
+    )
     if current_user.role.name == RoleName.MANAGER:
         query = query.where(Employee.agency_id == current_user.agency_id)
     return [to_response(employee) for employee in db.scalars(query).all()]
@@ -92,6 +111,7 @@ def create_employee(
     if db.get(Agency, agency_id) is None:
         raise HTTPException(status_code=404, detail="Agence introuvable")
 
+    authorized_zones = zones_for_employee(agency_id, payload.authorized_zone_ids, db)
     employee = Employee(
         agency_id=agency_id,
         first_name=payload.first_name.strip(),
@@ -101,6 +121,7 @@ def create_employee(
         position=payload.position,
         rfid_uid=payload.rfid_uid,
         role=normalize_role(payload.role),
+        authorized_zones=authorized_zones,
         status=normalize_status(payload.status),
         hire_date=payload.hire_date,
         is_active=payload.status.upper() == EmployeeStatus.ACTIVE.value,
@@ -154,6 +175,14 @@ def update_employee(
         changes["is_active"] = changes["status"] == EmployeeStatus.ACTIVE
     if "role" in changes and changes["role"] is not None:
         changes["role"] = normalize_role(changes["role"])
+    authorized_zone_ids = changes.pop("authorized_zone_ids", None)
+    target_agency_id = changes.get("agency_id", employee.agency_id)
+    if target_agency_id is None:
+        raise HTTPException(status_code=422, detail="agency_id est obligatoire")
+    if authorized_zone_ids is not None:
+        employee.authorized_zones = zones_for_employee(target_agency_id, authorized_zone_ids, db)
+    elif "agency_id" in changes and target_agency_id != employee.agency_id:
+        employee.authorized_zones = []
     if "email" in changes and changes["email"]:
         changes["email"] = changes["email"].strip().lower()
 

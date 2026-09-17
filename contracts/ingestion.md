@@ -22,13 +22,13 @@ The checklist for Basma is included at the end of this document.
 | `POST /internal/access/door-access` | Hardware → Backend | HTTP | Zone door access |
 | `POST /internal/tickets/call-next` | Hardware → Backend | HTTP | Queue counter display (7-segment) |
 | `agency/{agency_id}/device/{device_id}/ticket-called` | Backend → Hardware | MQTT | Queue counter display (7-segment) |
-| `agency/{agency_id}/device/{device_id}/sensor` | Hardware → Backend | MQTT | DHT22, MQ-7 |
+| `agency/{agency_id}/device/{device_id}/sensor` | Hardware → Backend | MQTT | DHT11, MQ2 |
 | `agency/{agency_id}/device/{device_id}/alert` | Backend → Hardware | MQTT | Buzzer / LED |
 | `agency/{agency_id}/device/{device_id}/climate` | Backend → Hardware | MQTT | Climate actuator |
 
-The door-lock actuation subsystem using NEMA17 and A4988 ×2 is not included
-yet; `/internal/access/door-access` currently implements the authorization
-decision only.
+The SG90 door actuator is handled by the single `access-sensors-1` ESP32.
+The `/internal/access/door-access` endpoint returns the authorization decision;
+the firmware actuates the servo locally.
 
 ---
 
@@ -209,12 +209,51 @@ device_id=ticket-kiosk-01
 ```
 
 **Success status:** `200 OK`
-**Notes:** Returns the agency's saved template, or the built-in default when
-no template has been configured. The endpoint authenticates the device with
-`X-Device-Key`. `image` blocks are returned as a processed 384-pixel-wide,
-1-bit dithered bitmap in base64 `data`, with the number of rows in `rows`.
-`401` means the key is missing or invalid and `404` means the device or agency
-does not exist.
+**Notes:**
+
+- Returns the agency's saved template, or the following built-in default when
+  no template has been configured:
+
+  ```json
+  [
+    { "type": "text", "content": "Bienvenue chez nous" },
+    { "type": "agency_name" },
+    { "type": "ticket_number" },
+    { "type": "service_name" },
+    { "type": "date" }
+  ]
+  ```
+- The firmware polls this endpoint at boot and every **60 seconds**. It keeps
+  the last valid template if a later poll fails.
+- Supported blocks are `text`, `agency_name`, `ticket_number`, `service_name`,
+  `date`, `qrcode`, `image` and `spacing`. The firmware renders blocks in array
+  order.
+- A complete saved template can contain blocks such as:
+
+  ```json
+  [
+    { "type": "text", "content": "Bienvenue chez nous" },
+    { "type": "agency_name" },
+    { "type": "ticket_number" },
+    { "type": "service_name" },
+    { "type": "date" },
+    { "type": "qrcode", "content": "https://example.com/ticket" },
+    { "type": "image", "data": "BASE64_PACKED_BITMAP", "rows": 120 },
+    { "type": "spacing", "lines": 2 }
+  ]
+  ```
+- `agency_name`, `ticket_number`, `service_name` and `date` have no content;
+  their values are resolved when the ticket is printed.
+- `text` prints its `content`; `qrcode` encodes its `content` as a QR code;
+  `spacing` feeds the printer by `lines` lines.
+- `image` is already processed for the printer: 384 dots wide, 1-bit Floyd-
+  Steinberg dithered. `data` is base64 of packed rows, 48 bytes per row,
+  most-significant bit first; bit `1` represents a black dot. `rows` is the
+  number of rows.
+- The template is a layout description, not a raw ESC/POS command stream. The
+  ESP32 must translate each block to ESC/POS commands for the thermal printer.
+- `401` means the key is missing or invalid and `404` means the device or
+  agency does not exist.
 
 ### POST /internal/attendance/check-rfid
 
@@ -353,18 +392,18 @@ X-Device-Key: DEVICE_SECRET_KEY
 ```json
 {
   "agency_id": "AGENCY_UUID",
-  "device_id": "door-reader-01",
+  "device_id": "access-sensors-1",
   "employee_rfid": "RFID-001",
   "zone_id": "ZONE_UUID",
   "timestamp": "2026-09-16T08:30:00Z"
 }
 ```
 
-**Response when access is granted:**
+**Response when access is authorized:**
 
 ```json
 {
-  "granted": true,
+  "authorized": true,
   "employee_name": "Ahmed Benali",
   "employee_role": "SECURITY",
   "zone_id": "ZONE_UUID",
@@ -376,7 +415,7 @@ X-Device-Key: DEVICE_SECRET_KEY
 
 ```json
 {
-  "granted": false,
+  "authorized": false,
   "employee_name": "Ahmed Benali",
   "employee_role": "AGENT",
   "zone_id": "ZONE_UUID",
@@ -389,18 +428,20 @@ X-Device-Key: DEVICE_SECRET_KEY
 
 - The ESP32 sends only the RFID, agency, device and zone identifiers. It does
   not decide the employee role or access policy.
-- The backend returns `200` with `granted: false` for an unknown card,
-  inactive employee or denied private-zone access. These are normal business
+- The backend returns `200` with `authorized: false` for an unknown card,
+  inactive employee or a zone not assigned to the employee. These are normal
+  business
   decisions and must not be retried indefinitely.
 - The employee must be active and belong to the requested agency. The zone
   must also belong to that agency.
-- Public zones allow active employees. Private zones allow `ADMIN`, `MANAGER`,
-  `SECURITY` and `TECHNICIAN`; `AGENT` is refused by the default policy.
+- Access is defined explicitly by `authorized_zone_ids` on the employee. The
+  backend does not infer physical access from `Employee.role`; two employees
+  with the same role may have different zones.
 - `401` means the device key is missing or invalid. `404` means the device or
   zone does not exist. `422` means the zone belongs to another agency.
-- The endpoint currently returns the authorization decision only. The actual
-  NEMA17/A4988 lock actuation will be added after its hardware command
-  contract is validated.
+- The same ESP32 identified as `access-sensors-1` handles the RFID reader,
+  DHT11, MQ2, SG90, fan and buzzer. The firmware opens the SG90 only when
+  `authorized` is `true`.
 
 ---
 
@@ -606,13 +647,13 @@ gas_co
 - An unregistered device message is rejected and logged by the backend.
 - For `gas_co`, Basma may send calibrated `ppm` directly (recommended), or a
   raw ADC value with unit `raw`, `adc`, `count` or `counts`.
-- Raw MQ-7 conversion is controlled by backend environment settings:
-  `MQ7_RAW_TO_PPM_ENABLED`, `MQ7_RAW_BASELINE`, `MQ7_RAW_PPM_SCALE` and
-  `MQ7_RAW_PPM_OFFSET`. The formula is
+- Raw MQ2 conversion is controlled by backend environment settings:
+  `MQ2_RAW_TO_PPM_ENABLED`, `MQ2_RAW_BASELINE`, `MQ2_RAW_PPM_SCALE` and
+  `MQ2_RAW_PPM_OFFSET`. The formula is
   `(raw - baseline) * scale + offset`, clamped to zero.
 - Conversion is disabled by default. While disabled, raw values are stored as
   `raw` and are not compared with ppm thresholds, preventing false alerts.
-- Basma must provide the calibrated baseline and scale from the real MQ-7
+- Basma must provide the calibrated baseline and scale from the real MQ2
   circuit before enabling the conversion in the deployment environment.
 
 ---
@@ -768,27 +809,27 @@ See `POST /internal/attendance/check-rfid` above.
 7. Do not fetch or poll for the current ticket number on boot -- both
    triggers always end in a `ticket-called` push when they succeed.
 
-### Zone door reader
+### Zone door reader and shared ESP32
 
-1. Register the door reader as a backend device and store its `device_key`
+1. Register the shared ESP32 as a backend device with `mqtt_client_id` exactly
+   equal to `access-sensors-1`, and store its `device_key`
    securely on the ESP32.
 2. Send `POST /internal/access/door-access` with the reader's registered
    `device_id`, the agency UUID, the zone UUID and the scanned RFID.
 3. Add `X-Device-Key` and do not send the device database UUID as `device_id`.
-4. Unlock only when the response contains `granted: true`.
-5. Treat `granted: false` as a normal access refusal: keep the door locked,
+4. Unlock the SG90 only when the response contains `authorized: true`.
+5. Treat `authorized: false` as a normal access refusal: keep the door locked,
    show/log the returned message and do not retry indefinitely.
 6. `401`, `404` and `422` indicate device or configuration errors and should
    be logged for correction.
-7. The NEMA17/A4988 motor command is not part of this contract yet; keep the
-   lock actuator behind a local hardware function until that contract is
-   validated.
+7. The same ESP32 also publishes the DHT11 and MQ2 readings and controls the
+   fan and buzzer. Keep these functions independent in the firmware loop.
 
-### DHT22 and MQ-7
+### DHT11 and MQ2
 
-1. Publish DHT22 readings on
+1. Publish DHT11 readings on
    `agency/{agency_id}/device/{device_id}/sensor`.
-2. Publish MQ-7 readings on the same topic using `sensor_type: gas_co`.
+2. Publish MQ2 readings on the same topic using `sensor_type: gas_co`.
 3. Use exactly `temperature`, `humidity` and `gas_co` as sensor type names.
 4. Send UTC timestamps in ISO-8601 format.
 5. Subscribe to both `/alert` and `/climate` topics.
