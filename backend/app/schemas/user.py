@@ -39,6 +39,8 @@ class EmployeeLinkResponse(BaseModel):
     last_name: str
     agency_id: str
     rfid_uid: str | None
+    role: str
+    authorized_zone_ids: list[str]
 
 
 class UserResponse(BaseModel):

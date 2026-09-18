@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Table, Text, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -61,6 +61,14 @@ class AlertStatus(str, enum.Enum):
     RESOLVED = "RESOLVED"
 
 
+employee_zone_access = Table(
+    "employee_zone_access",
+    Base.metadata,
+    Column("employee_id", ForeignKey("employees.id", ondelete="CASCADE"), primary_key=True),
+    Column("zone_id", ForeignKey("zones.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class Role(Base):
     __tablename__ = "roles"
 
@@ -82,6 +90,7 @@ class Agency(Base):
     closing_time: Mapped[time | None] = mapped_column(Time)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    ticket_template: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="agency")
     employees: Mapped[list["Employee"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
@@ -124,6 +133,10 @@ class Zone(Base):
     is_private: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     agency: Mapped["Agency"] = relationship(back_populates="zones")
+    authorized_employees: Mapped[list["Employee"]] = relationship(
+        secondary=employee_zone_access,
+        back_populates="authorized_zones",
+    )
 
 
 class Counter(Base):
@@ -173,6 +186,12 @@ class Employee(Base):
     position: Mapped[str | None] = mapped_column(String(100))
     phone: Mapped[str | None] = mapped_column(String(30))
     rfid_uid: Mapped[str | None] = mapped_column(String(100), unique=True)
+    role: Mapped[RoleName] = mapped_column(
+        Enum(RoleName),
+        default=RoleName.AGENT,
+        server_default=RoleName.AGENT.value,
+        nullable=False,
+    )
     status: Mapped[EmployeeStatus] = mapped_column(
         Enum(EmployeeStatus),
         default=EmployeeStatus.ACTIVE,
@@ -185,6 +204,14 @@ class Employee(Base):
     agency: Mapped["Agency"] = relationship(back_populates="employees")
     attendance: Mapped[list["Attendance"]] = relationship(back_populates="employee", cascade="all, delete-orphan")
     user: Mapped["User | None"] = relationship(back_populates="employee")
+    authorized_zones: Mapped[list["Zone"]] = relationship(
+        secondary=employee_zone_access,
+        back_populates="authorized_employees",
+    )
+
+    @property
+    def authorized_zone_ids(self) -> list[str]:
+        return [zone.id for zone in self.authorized_zones]
 
 
 class Visitor(Base):

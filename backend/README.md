@@ -302,7 +302,7 @@ POST /internal/attendance/check-rfid
 ```json
 {
   "agency_id": "AGENCY_UUID",
-  "device_id": "rfid-gate-01",
+  "device_id": "access-sensors-1",
   "employee_rfid": "A1B2C3D4",
   "timestamp": "2026-08-25T09:15:00Z"
 }
@@ -383,7 +383,7 @@ Le type du point (`COUNTER` ou `OFFICE`) est automatiquement aligné sur le serv
 Un ticket est créé pour un visiteur, reçoit un numéro quotidien, puis est appelé
 par un guichet de la même agence.
 
-## MQTT DHT22 et MQ-7
+## MQTT DHT11 et MQ2
 
 Le backend écoute le sujet :
 
@@ -391,7 +391,7 @@ Le backend écoute le sujet :
 agency/{agency_id}/device/{device_id}/sensor
 ```
 
-Message DHT22 :
+Message DHT11 :
 
 ```json
 {
@@ -403,7 +403,7 @@ Message DHT22 :
 }
 ```
 
-Message MQ-7 :
+Message MQ2 :
 
 ```json
 {

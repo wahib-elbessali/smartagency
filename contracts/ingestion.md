@@ -17,14 +17,18 @@ The checklist for Basma is included at the end of this document.
 |---|---|---|---|
 | `POST /internal/tickets/walk-in` | Hardware → Backend | HTTP | Ticket kiosk |
 | `GET /internal/tickets/kiosk-config` | Hardware → Backend | HTTP | Ticket kiosk |
-| `GET /internal/tickets/ticket-template` | Hardware → Backend | HTTP | Ticket kiosk (print layout) |
+| `GET /internal/tickets/ticket-template` | Hardware → Backend | HTTP | Ticket kiosk |
 | `POST /internal/attendance/check-rfid` | Hardware → Backend | HTTP | RFID |
-| `POST /internal/access/door-access` | Hardware → Backend | HTTP | Zone-access door (RFID + servo) |
+| `POST /internal/access/door-access` | Hardware → Backend | HTTP | Zone door access |
 | `POST /internal/tickets/call-next` | Hardware → Backend | HTTP | Queue counter display (7-segment) |
 | `agency/{agency_id}/device/{device_id}/ticket-called` | Backend → Hardware | MQTT | Queue counter display (7-segment) |
-| `agency/{agency_id}/device/{device_id}/sensor` | Hardware → Backend | MQTT | DHT11, MQ2 (as `gas_co`) |
-| `agency/{agency_id}/device/{device_id}/alert` | Backend → Hardware | MQTT | Buzzer |
-| `agency/{agency_id}/device/{device_id}/climate` | Backend → Hardware | MQTT | Climate actuator (fan + relay) |
+| `agency/{agency_id}/device/{device_id}/sensor` | Hardware → Backend | MQTT | DHT11, MQ2 |
+| `agency/{agency_id}/device/{device_id}/alert` | Backend → Hardware | MQTT | Buzzer / LED |
+| `agency/{agency_id}/device/{device_id}/climate` | Backend → Hardware | MQTT | Climate actuator |
+
+The SG90 door actuator is handled by the single `access-sensors-1` ESP32.
+The `/internal/access/door-access` endpoint returns the authorization decision;
+the firmware actuates the servo locally.
 
 ---
 
@@ -43,7 +47,7 @@ ESP32 and must not be committed to GitHub or shared in Discord.
 The hardware `device_id` must be exactly the registered `mqtt_client_id`.
 It is not the internal database UUID of the device.
 
-Every internal REST endpoint requires:
+Internal REST ingestion endpoints require:
 
 ```http
 Content-Type: application/json
@@ -134,8 +138,18 @@ device_id=ticket-kiosk-01
 ```json
 {
   "services": [
-    { "service_id": "SERVICE_UUID_1", "code": "VIR", "name": "Virement et consultation", "counter_id": "COUNTER_UUID_1" },
-    { "service_id": "SERVICE_UUID_2", "code": "OUV", "name": "Ouverture de compte", "counter_id": "COUNTER_UUID_2" }
+    {
+      "service_id": "SERVICE_UUID_1",
+      "code": "VIR",
+      "name": "Virement et consultation",
+      "counter_id": "COUNTER_UUID_1"
+    },
+    {
+      "service_id": "SERVICE_UUID_2",
+      "code": "OUV",
+      "name": "Ouverture de compte",
+      "counter_id": "COUNTER_UUID_2"
+    }
   ],
   "messages": {
     "error_line1": "Erreur reseau",
@@ -154,13 +168,8 @@ device_id=ticket-kiosk-01
 - The Uno cycles through all entries returned, not limited to 2.
 - Send the selected entry's `service_id` (not `service_type`) to
   `POST /internal/tickets/walk-in`.
-- `counter_id` is the `Counter` currently assigned to this service (see
-  `PUT /api/counters/{counter_id}/service`) -- used as `counter_id` in
-  `POST /internal/tickets/call-next` below, so the firmware never needs a
-  counter UUID hardcoded in `secrets.h`. `null` if no counter is assigned
-  yet. Nothing in the schema guarantees exactly one counter per service; if
-  more than one is assigned, which one is returned here is a backend
-  decision, not a hardware one.
+- `counter_id` is the first open counter assigned to the service, ordered by
+  counter number. It is `null` when the service has no open assigned counter.
 - Empty `services`: show "no service available", disable confirmation.
 - `name` may exceed 16 columns; Uno truncates for display only.
 - `messages`: 4 LCD lines, free text on `Device.kiosk_messages` (JSON),
@@ -191,13 +200,10 @@ device_id=ticket-kiosk-01
 {
   "template": [
     { "type": "text", "content": "Bienvenue chez nous" },
-    { "type": "agency_name", "content": "Agence Casablanca" },
+    { "type": "agency_name" },
     { "type": "ticket_number" },
     { "type": "service_name" },
-    { "type": "date" },
-    { "type": "qrcode", "content": "https://..." },
-    { "type": "image", "data": "BASE64_MONOCHROME_BITMAP", "rows": 120 },
-    { "type": "spacing", "lines": 2 }
+    { "type": "date" }
   ]
 }
 ```
@@ -205,33 +211,49 @@ device_id=ticket-kiosk-01
 **Success status:** `200 OK`
 **Notes:**
 
-- Ordered list of print blocks the ESP32 renders top to bottom on the
-  Bluetooth thermal printer, one entry per `println`/ESC-POS command --
-  `Agency.ticket_template` (JSON), one template **per agency**, not per
-  device or per kiosk.
-- Block types, by **who resolves the value**:
-  - `text`: static line, `content` printed as-is.
-  - `agency_name`: backend-resolved -- `content` is `Agency.name` at the
-    time this endpoint is called.
-  - `ticket_number` / `service_name` / `date`: firmware-resolved, no
-    `content` sent by the backend (`date` is the print timestamp, not the
-    template-fetch timestamp).
-  - `qrcode`: `content` is the literal text/URL to encode, rendered via the
-    printer's own ESC/POS QR command (`GS ( k`) -- not sent as an image.
-  - `image`: `data` is a monochrome bitmap already converted server-side
-    (384px wide / 48 bytes per row, 1-bit, dithered), base64-encoded, sent
-    via the ESC/POS raster command (`GS v 0`). `rows` is the bitmap height
-    in pixels/dots. The ESP32 does no image decoding or resizing -- the
-    backend owns the upload/resize/dither step.
-  - `spacing`: `lines` blank lines.
-- Default when `Agency.ticket_template` is unset: a single `text` block
-  ("SmartAgency") + `ticket_number` + `service_name` + 3 `spacing` lines --
-  matches today's hardcoded firmware output.
-- Separate endpoint from `kiosk-config`: a template can carry an image
-  (heavier, rarely changes) while `kiosk-config` is polled often for the
-  live service list. Poll this one rarely -- at boot plus e.g. every
-  10-15 min -- never on every ticket printed.
-- `401` invalid/missing key. `404` unknown device.
+- Returns the agency's saved template, or the following built-in default when
+  no template has been configured:
+
+  ```json
+  [
+    { "type": "text", "content": "Bienvenue chez nous" },
+    { "type": "agency_name" },
+    { "type": "ticket_number" },
+    { "type": "service_name" },
+    { "type": "date" }
+  ]
+  ```
+- The firmware polls this endpoint at boot and every **60 seconds**. It keeps
+  the last valid template if a later poll fails.
+- Supported blocks are `text`, `agency_name`, `ticket_number`, `service_name`,
+  `date`, `qrcode`, `image` and `spacing`. The firmware renders blocks in array
+  order.
+- A complete saved template can contain blocks such as:
+
+  ```json
+  [
+    { "type": "text", "content": "Bienvenue chez nous" },
+    { "type": "agency_name" },
+    { "type": "ticket_number" },
+    { "type": "service_name" },
+    { "type": "date" },
+    { "type": "qrcode", "content": "https://example.com/ticket" },
+    { "type": "image", "data": "BASE64_PACKED_BITMAP", "rows": 120 },
+    { "type": "spacing", "lines": 2 }
+  ]
+  ```
+- `agency_name`, `ticket_number`, `service_name` and `date` have no content;
+  their values are resolved when the ticket is printed.
+- `text` prints its `content`; `qrcode` encodes its `content` as a QR code;
+  `spacing` feeds the printer by `lines` lines.
+- `image` is already processed for the printer: 384 dots wide, 1-bit Floyd-
+  Steinberg dithered. `data` is base64 of packed rows, 48 bytes per row,
+  most-significant bit first; bit `1` represents a black dot. `rows` is the
+  number of rows.
+- The template is a layout description, not a raw ESC/POS command stream. The
+  ESP32 must translate each block to ESC/POS commands for the thermal printer.
+- `401` means the key is missing or invalid and `404` means the device or
+  agency does not exist.
 
 ### POST /internal/attendance/check-rfid
 
@@ -310,49 +332,55 @@ X-Device-Key: DEVICE_SECRET_KEY
 {
   "agency_id": "AGENCY_UUID",
   "device_id": "access-sensors-1",
-  "employee_rfid": "A1B2C3D4",
-  "timestamp": "2026-09-10T09:15:00Z"
+  "employee_rfid": "RFID-001",
+  "zone_id": "ZONE_UUID",
+  "timestamp": "2026-09-16T08:30:00Z"
 }
 ```
 
-**Response when the badge is authorized:**
+**Response when access is authorized:**
 
 ```json
 {
   "authorized": true,
   "employee_name": "Ahmed Benali",
-  "message": null
+  "employee_role": "SECURITY",
+  "zone_id": "ZONE_UUID",
+  "message": "Acces autorise"
 }
 ```
 
-**Response when the badge is unknown or not authorized for this door:**
+**Response when access is refused:**
 
 ```json
 {
   "authorized": false,
-  "employee_name": null,
-  "message": "Carte RFID inconnue ou acces refuse"
+  "employee_name": "Ahmed Benali",
+  "employee_role": "AGENT",
+  "zone_id": "ZONE_UUID",
+  "message": "Acces refuse pour cette zone"
 }
 ```
 
 **Success status:** `200 OK`
 **Notes:**
 
-- Guards the counter/guichet zone-access door, distinct from the main
-  entrance attendance gate (`rfid-gate-01` / `check-rfid`). The **same
-  physical RFID badge** is used for both readers -- "carte" vs "tag" is
-  purely a visual/physical distinction, both are read by the identical
-  MFRC522 flow.
-- No `event` field, unlike `check-rfid` -- this endpoint never creates an
-  attendance record, it only authorizes (or refuses) opening the door.
-- An unknown card, or a known employee without door access, both return
-  `200` with `authorized: false`; this is a normal business response, not a
-  network error (same convention as `check-rfid`'s `valid: false`).
-- Authorization is based on a new `role` field on `Employee`: `STANDARD`
-  (default, no door access) or `AUTHORIZED` (door access granted). The
-  hardware never evaluates this itself -- it only reads the response.
-- A missing or invalid device key returns `401`.
-- An unknown device returns `404`.
+- The ESP32 sends only the RFID, agency, device and zone identifiers. It does
+  not decide the employee role or access policy.
+- The backend returns `200` with `authorized: false` for an unknown card,
+  inactive employee or a zone not assigned to the employee. These are normal
+  business
+  decisions and must not be retried indefinitely.
+- The employee must be active and belong to the requested agency. The zone
+  must also belong to that agency.
+- Access is defined explicitly by `authorized_zone_ids` on the employee. The
+  backend does not infer physical access from `Employee.role`; two employees
+  with the same role may have different zones.
+- `401` means the device key is missing or invalid. `404` means the device or
+  zone does not exist. `422` means the zone belongs to another agency.
+- The same ESP32 identified as `access-sensors-1` handles the RFID reader,
+  DHT11, MQ2, SG90, fan and buzzer. The firmware opens the SG90 only when
+  `authorized` is `true`.
 
 ---
 
@@ -556,6 +584,16 @@ gas_co
 - `timestamp` must be an ISO-8601 UTC date-time.
 - The backend stores each reading in `sensor_readings`.
 - An unregistered device message is rejected and logged by the backend.
+- For `gas_co`, Basma may send calibrated `ppm` directly (recommended), or a
+  raw ADC value with unit `raw`, `adc`, `count` or `counts`.
+- Raw MQ2 conversion is controlled by backend environment settings:
+  `MQ2_RAW_TO_PPM_ENABLED`, `MQ2_RAW_BASELINE`, `MQ2_RAW_PPM_SCALE` and
+  `MQ2_RAW_PPM_OFFSET`. The formula is
+  `(raw - baseline) * scale + offset`, clamped to zero.
+- Conversion is disabled by default. While disabled, raw values are stored as
+  `raw` and are not compared with ppm thresholds, preventing false alerts.
+- Basma must provide the calibrated baseline and scale from the real MQ2
+  circuit before enabling the conversion in the deployment environment.
 
 ---
 
@@ -690,38 +728,51 @@ See `POST /internal/attendance/check-rfid` above.
 
 ### Queue counter display (7-segment)
 
-See `POST /internal/tickets/call-next` and the `ticket-called` MQTT topic
-above for the full behavior (button press vs. display update are
-deliberately decoupled).
+1. Register the device with `device_type: "QUEUE_DISPLAY"` exactly (the
+   backend's `publish_ticket_called()` matches on this, case-insensitively)
+   -- a device registered with any other `device_type` will never receive
+   `ticket-called` messages.
+2. Configure a fixed `counter_id` per physical button/service in the ESP32's
+   own secrets -- there is no endpoint to discover it dynamically.
+3. On a button press, send `POST /internal/tickets/call-next` and wait for
+   the response, only to know success/failure -- never read `ticket_number`
+   from it to update the display.
+4. On failure (`called: false`, `401`/`404`/`409`/`422`/timeout/network
+   drop), leave the digit unchanged and log the outcome; only auto-retry a
+   connection-refused failure, same rule as `walk-in`/`check-rfid`.
+5. Subscribe to `agency/{agency_id}/device/{device_id}/ticket-called` --
+   this is the *only* place the display digit is ever set, for both this
+   device's own button presses and every frontend-triggered call.
+6. On each message, extract the trailing digit of `ticket_number` and set
+   the matching service's digit to it.
+7. Do not fetch or poll for the current ticket number on boot -- both
+   triggers always end in a `ticket-called` push when they succeed.
 
-1. Register with `device_type: "QUEUE_DISPLAY"` exactly.
-2. Read `counter_id` per service from `kiosk-config` -- never hardcode it.
-3. On a button press, send `call-next` only to know success/failure; never
-   update the display from its response.
-4. The digit only ever changes on a `ticket-called` MQTT message; never
-   poll for the current ticket number on boot.
+### Zone door reader and shared ESP32
 
-### DHT11 and MQ2 (device `access-sensors-1`)
+1. Register the shared ESP32 as a backend device with `mqtt_client_id` exactly
+   equal to `access-sensors-1`, and store its `device_key`
+   securely on the ESP32.
+2. Send `POST /internal/access/door-access` with the reader's registered
+   `device_id`, the agency UUID, the zone UUID and the scanned RFID.
+3. Add `X-Device-Key` and do not send the device database UUID as `device_id`.
+4. Unlock the SG90 only when the response contains `authorized: true`.
+5. Treat `authorized: false` as a normal access refusal: keep the door locked,
+   show/log the returned message and do not retry indefinitely.
+6. `401`, `404` and `422` indicate device or configuration errors and should
+   be logged for correction.
+7. The same ESP32 also publishes the DHT11 and MQ2 readings and controls the
+   fan and buzzer. Keep these functions independent in the firmware loop.
 
-See the `sensor`/`alert`/`climate` MQTT topics above. One physical device
-handles both sensor types and both command topics.
+### DHT11 and MQ2
 
-1. Publish temperature + humidity every 10s, `gas_co` every 5s -- exact
-   sensor type names, ISO-8601 UTC timestamps.
-2. Subscribe to `/alert` and `/climate`; apply `active` immediately.
-3. Firmware-local safety timeout (not part of the contract): stop the
-   buzzer/fan if no message arrives on its topic for 5 minutes.
-
-### Zone-access door (device `access-sensors-1`, same physical ESP32)
-
-See `POST /internal/access/door-access` above.
-
-1. On every badge scan, send `door-access` with `employee_rfid`, no
-   `event` field.
-2. `authorized: true` -> open the servo (90°), hold ~3s, close;
-   `false` -> leave it closed.
-3. Never call `check-rfid` for this door, and never call `door-access` for
-   the main entrance gate -- they must stay separate.
+1. Publish DHT11 readings on
+   `agency/{agency_id}/device/{device_id}/sensor`.
+2. Publish MQ2 readings on the same topic using `sensor_type: gas_co`.
+3. Use exactly `temperature`, `humidity` and `gas_co` as sensor type names.
+4. Send UTC timestamps in ISO-8601 format.
+5. Subscribe to both `/alert` and `/climate` topics.
+6. Parse every command as JSON and apply the `active` state immediately.
 
 ### Threshold calibration
 
