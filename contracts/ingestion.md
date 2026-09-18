@@ -332,67 +332,6 @@ X-Device-Key: DEVICE_SECRET_KEY
 {
   "agency_id": "AGENCY_UUID",
   "device_id": "access-sensors-1",
-  "employee_rfid": "A1B2C3D4",
-  "timestamp": "2026-09-10T09:15:00Z"
-}
-```
-
-**Response when the badge is authorized:**
-
-```json
-{
-  "authorized": true,
-  "employee_name": "Ahmed Benali",
-  "message": null
-}
-```
-
-**Response when the badge is unknown or not authorized for this door:**
-
-```json
-{
-  "authorized": false,
-  "employee_name": null,
-  "message": "Carte RFID inconnue ou acces refuse"
-}
-```
-
-**Success status:** `200 OK`
-**Notes:**
-
-- Guards the counter/guichet zone-access door, distinct from the main
-  entrance attendance gate (`rfid-gate-01` / `check-rfid`). The **same
-  physical RFID badge** is used for both readers -- "carte" vs "tag" is
-  purely a visual/physical distinction, both are read by the identical
-  MFRC522 flow.
-- No `event` field, unlike `check-rfid` -- this endpoint never creates an
-  attendance record, it only authorizes (or refuses) opening the door.
-- An unknown card, or a known employee without door access, both return
-  `200` with `authorized: false`; this is a normal business response, not a
-  network error (same convention as `check-rfid`'s `valid: false`).
-- Authorization is based on a new `role` field on `Employee`: `STANDARD`
-  (default, no door access) or `AUTHORIZED` (door access granted). The
-  hardware never evaluates this itself -- it only reads the response.
-- A missing or invalid device key returns `401`.
-- An unknown device returns `404`.
-
-### POST /internal/access/door-access
-
-**Owner:** Basma (hardware)
-**Type:** REST internal ingestion
-**Headers:**
-
-```http
-Content-Type: application/json
-X-Device-Key: DEVICE_SECRET_KEY
-```
-
-**Request body:**
-
-```json
-{
-  "agency_id": "AGENCY_UUID",
-  "device_id": "access-sensors-1",
   "employee_rfid": "RFID-001",
   "zone_id": "ZONE_UUID",
   "timestamp": "2026-09-16T08:30:00Z"
