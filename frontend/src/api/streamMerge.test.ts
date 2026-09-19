@@ -3,11 +3,14 @@ import {
   activeCameras,
   applyAlertFrame,
   applyOccupancyFrame,
+  applyWorkstationFrame,
   totalAcrossZones,
+  unstaffed,
   type AlertsByCamera,
+  type WorkstationsByName,
   type ZonesByName,
 } from './streamMerge'
-import { parseAlertFrame, parseOccupancyFrame } from './endpoints/streams'
+import { parseAlertFrame, parseOccupancyFrame, parseWorkstationFrame } from './endpoints/streams'
 
 describe('applyAlertFrame', () => {
   it('takes a snapshot as the whole truth', () => {
@@ -145,5 +148,61 @@ describe('frame parsers', () => {
       JSON.stringify({ type: 'update', zone: 'lobby', count: 0, points: [] }),
     )
     expect(frame).not.toBeNull()
+  })
+})
+
+describe('applyWorkstationFrame', () => {
+  const desk = {
+    name: 'guichet-3',
+    zone: 'counters',
+    status: 'present' as const,
+    since: 1_787_600_000,
+    zone_known: true,
+  }
+
+  it('replaces everything on a snapshot, including rows that have gone', () => {
+    const current: WorkstationsByName = { 'guichet-9': { ...desk, name: 'guichet-9' } }
+    const next = applyWorkstationFrame(current, { type: 'snapshot', workstations: [desk] })
+
+    expect(Object.keys(next)).toEqual(['guichet-3'])
+  })
+
+  /* An update frame IS a row, not a row inside a payload. Leaving `type` on
+     the stored object would put a field in state that no row ever carries. */
+  it('folds an update in without keeping the discriminant', () => {
+    const next = applyWorkstationFrame(
+      { 'guichet-3': desk },
+      { type: 'update', ...desk, status: 'away', since: 1_787_600_600 },
+    )
+
+    expect(next['guichet-3']).toEqual({ ...desk, status: 'away', since: 1_787_600_600 })
+    expect('type' in next['guichet-3']).toBe(false)
+  })
+
+  /* `unknown` is not a quiet counter - it is an unclassified one, and
+     counting it as empty would pad the number a manager acts on. */
+  it('counts only the away ones as unstaffed', () => {
+    const state: WorkstationsByName = {
+      a: { ...desk, name: 'a', status: 'away' },
+      b: { ...desk, name: 'b', status: 'present' },
+      c: { ...desk, name: 'c', status: 'unknown', zone_known: false },
+    }
+
+    expect(unstaffed(state).map((station) => station.name)).toEqual(['a'])
+  })
+
+  it('parses the contract-shaped workstation frames', () => {
+    const snapshot = parseWorkstationFrame(
+      JSON.stringify({ type: 'snapshot', workstations: [desk] }),
+    )
+    expect(snapshot?.type).toBe('snapshot')
+
+    const update = parseWorkstationFrame(JSON.stringify({ type: 'update', ...desk }))
+    expect(update && 'name' in update && update.name).toBe('guichet-3')
+
+    /* A snapshot with no workstations is a real state: nothing bound yet. */
+    expect(
+      parseWorkstationFrame(JSON.stringify({ type: 'snapshot', workstations: [] })),
+    ).not.toBeNull()
   })
 })

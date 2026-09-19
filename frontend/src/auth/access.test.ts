@@ -79,6 +79,16 @@ describe('canReach', () => {
     }
   })
 
+  /* Counter staffing reads the zones' statuses, so it cannot be wider than
+     the zones themselves. */
+  it('keeps counter staffing to admins and managers', () => {
+    expect(canReach('ADMIN', '/staffing')).toBe(true)
+    expect(canReach('MANAGER', '/staffing')).toBe(true)
+    for (const role of ['SECURITY', 'AGENT', 'TECHNICIAN'] as const) {
+      expect(canReach(role, '/staffing')).toBe(false)
+    }
+  })
+
   it('refuses everything to a session with no role', () => {
     expect(canReach(null, '/users')).toBe(false)
     expect(canReach(undefined, '/presence')).toBe(false)

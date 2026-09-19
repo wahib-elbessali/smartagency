@@ -94,6 +94,12 @@ export function rolesFor(key: string): Role[] | null {
      depends on which camera the zone hangs off. */
   if (path.startsWith('/api/zones')) return ['ADMIN', 'MANAGER']
 
+  /* PROPOSED too - api/endpoints/workstations.ts. Same roles as the zones a
+     workstation is bound to, for the same reason: this is configuration of
+     what the site measures, not a monitoring view. The per-branch half is in
+     fixtures/workstations.ts, which walks workstation -> zone -> camera. */
+  if (path.startsWith('/api/workstations')) return ['ADMIN', 'MANAGER']
+
   if (path.startsWith('/api/agencies')) {
     /* The one split router. Reading is ADMIN and MANAGER, and a MANAGER's list
        comes back scoped (fixtures/agencies.ts). Creating and deleting are ADMIN

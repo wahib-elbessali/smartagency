@@ -5,8 +5,12 @@ import {
   type SocketStream,
   type SocketStreamDeps,
 } from '../socketStream'
-import { createMockAlertStream, createMockOccupancyStream } from '@/mocks/aiStreams'
-import type { AlertFeature, AlertFrame, OccupancyFrame } from '../types'
+import {
+  createMockAlertStream,
+  createMockOccupancyStream,
+  createMockWorkstationStream,
+} from '@/mocks/aiStreams'
+import type { AlertFeature, AlertFrame, OccupancyFrame, WorkstationFrame } from '../types'
 
 /**
  * The alerts and occupancy feeds, both proxied by the backend.
@@ -41,6 +45,11 @@ export const ALERT_STREAM_PATHS: Record<AlertFeature, string> = {
 }
 
 export const OCCUPANCY_STREAM_PATH = '/ws/occupancy'
+
+/* Provisional in exactly the same way as the paths above - the proxy is
+   PROPOSED (BACKEND-ASKS.md §9), so this name is the one place to change
+   when Ahmed settles it. */
+export const WORKSTATION_STREAM_PATH = '/ws/workstations'
 
 /**
  * Parses an alerts frame.
@@ -81,6 +90,29 @@ export function parseOccupancyFrame(data: unknown): OccupancyFrame | null {
   return null
 }
 
+/**
+ * A workstation frame.
+ *
+ * The update case carries a whole row rather than a nested payload, so the
+ * discriminant and `name` are what get checked: a frame we cannot attribute
+ * to a workstation is useless, while one carrying an unexpected extra field
+ * is still real data.
+ */
+export function parseWorkstationFrame(data: unknown): WorkstationFrame | null {
+  const frame = parseJsonFrame(data)
+  if (!frame) return null
+
+  if (frame.type === 'snapshot') {
+    if (!Array.isArray(frame.workstations)) return null
+    return frame as unknown as WorkstationFrame
+  }
+  if (frame.type === 'update') {
+    if (typeof frame.name !== 'string') return null
+    return frame as unknown as WorkstationFrame
+  }
+  return null
+}
+
 export function createAlertStream(
   feature: AlertFeature,
   deps: SocketStreamDeps = {},
@@ -92,4 +124,11 @@ export function createAlertStream(
 export function createOccupancyStream(deps: SocketStreamDeps = {}): SocketStream<OccupancyFrame> {
   if (USE_MOCKS) return createMockOccupancyStream()
   return createSocketStream(OCCUPANCY_STREAM_PATH, parseOccupancyFrame, deps)
+}
+
+export function createWorkstationStream(
+  deps: SocketStreamDeps = {},
+): SocketStream<WorkstationFrame> {
+  if (USE_MOCKS) return createMockWorkstationStream()
+  return createSocketStream(WORKSTATION_STREAM_PATH, parseWorkstationFrame, deps)
 }
