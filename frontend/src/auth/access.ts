@@ -73,6 +73,13 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/users': ['ADMIN'],
   '/visitors': ['ADMIN', 'MANAGER', 'AGENT'],
   '/occupancy': ['ADMIN', 'MANAGER'],
+  /* PROPOSED routes, not transcribed from backend source: the zone-drawing
+     screen writes to the AI service's /zoning through proxies that do not
+     exist yet (api/endpoints/zones.ts, BACKEND-ASKS.md §8). Narrower than
+     /cameras on purpose - a guard registers the cameras they watch, but the
+     floor geometry every count is computed from is administration, not
+     monitoring. Confirm with backend before it ships. */
+  '/zones': ['ADMIN', 'MANAGER'],
   /* Transcribed from CAMERA_ROLES / AI_ALERT_ROLES (cameras.py, ai_alerts.py),
      added 2026-09-12. The one screen a guard can write to: they register the
      cameras they watch and set how sure the detector has to be before an
