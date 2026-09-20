@@ -158,16 +158,15 @@ export function alignCameras(points: SharedPoint[]): AlignResult {
   return {
     reference,
     results,
-    /* Distances shrink to nothing here because nothing was really solved.
-       The shape is what the screen renders; the numbers are fixture. */
-    residual_checks: points
-      .filter((point) => Object.keys(point).length >= 2)
-      .map((point) => {
-        const cams = Object.keys(point)
-        return {
-          pairs: [{ cam_a: cams[0], cam_b: cams[1], distance_cm: 0 }],
-        }
-      }),
+    /* EMPTY, on purpose.
+       
+       This used to return distance_cm: 0 for every recorded spot, which read
+       on screen as "the cameras agree perfectly" - the most flattering
+       possible claim, made by a fixture that solved no geometry at all and
+       printed next to a camera that had just failed to align. The real
+       service computes these from the corrected homographies. Nothing here
+       can, so it says nothing and the screen omits the line. */
+    residual_checks: [],
     weak_fits:
       weak.length > 0
         ? `camera(s) ${weak.join(', ')} were aligned with <4 shared points, so their own rectangle still determines their world frame. If any of them shows a bad aspect, click more shared points (>=4) to replace it outright.`

@@ -474,6 +474,39 @@ function AlignMode({
 
   const pendingCount = Object.keys(pending).length
 
+  /**
+   * How many recorded spots each pair of cameras has in common.
+   *
+   * This is the number the solve actually turns on, and it used to be
+   * invisible until after the attempt: record one spot, press align, and
+   * read "no chain of >=2-point camera pairs connects this camera back to
+   * the reference" - which is accurate, arrives too late, and sounds like a
+   * fault rather than "click one more spot".
+   *
+   * Two is the threshold because one matched point fixes position and
+   * nothing else: rotation and scale are still free, so there are infinitely
+   * many ways to place the other camera's floor that satisfy it. The service
+   * refuses instead of guessing.
+   */
+  const pairCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const point of recorded) {
+      const ids = Object.keys(point).sort()
+      for (let i = 0; i < ids.length; i += 1) {
+        for (let j = i + 1; j < ids.length; j += 1) {
+          const key = `${ids[i]}|${ids[j]}`
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
+      }
+    }
+    return counts
+  }, [recorded])
+
+  const readyPairs = useMemo(
+    () => [...pairCounts.values()].filter((n) => n >= 2).length,
+    [pairCounts],
+  )
+
   if (calibrated.length < 2) {
     return (
       <Panel as="section">
@@ -520,15 +553,22 @@ function AlignMode({
             <Button
               size="sm"
               variant="primary"
-              disabled={recorded.length === 0 || run.isPending}
+              /* Not "at least one spot": a single spot cannot tie any pair
+                 together, so offering the solve there only produces the
+                 refusal above. */
+              disabled={readyPairs === 0 || run.isPending}
               onClick={() => run.mutate()}
             >
               {run.isPending ? 'Aligning…' : 'Align the cameras'}
             </Button>
             <p role="status" aria-live="polite" className="text-ink-3 text-xs">
-              {pendingCount === 0
-                ? `${recorded.length} spot${recorded.length === 1 ? '' : 's'} recorded.`
-                : `This spot is marked in ${pendingCount} camera${pendingCount === 1 ? '' : 's'} — 2 needed to record it.`}
+              {pendingCount > 0
+                ? `This spot is marked in ${pendingCount} camera${pendingCount === 1 ? '' : 's'} — 2 needed to record it.`
+                : recorded.length === 0
+                  ? 'No spots recorded yet.'
+                  : readyPairs === 0
+                    ? `${recorded.length} spot${recorded.length === 1 ? '' : 's'} recorded — no two cameras share 2 yet, which is the minimum to tie a pair together.`
+                    : `${recorded.length} spot${recorded.length === 1 ? '' : 's'} recorded.`}
             </p>
             {recorded.length > 0 && (
               <Button size="sm" variant="ghost" onClick={() => setRecorded([])}>
@@ -538,6 +578,32 @@ function AlignMode({
           </div>
         </PanelBody>
       </Panel>
+
+      {recorded.length > 0 && (
+        <Panel as="section" className="mb-3">
+          <PanelBody>
+            <h3 className="text-ink-2 text-xs font-medium">Spots shared, camera by camera</h3>
+            <ul className="mt-2 space-y-1">
+              {calibrated.flatMap((a, i) =>
+                calibrated.slice(i + 1).map((b) => {
+                  const key = [a.id, b.id].sort().join('|')
+                  const count = pairCounts.get(key) ?? 0
+                  return (
+                    <li key={key} className="flex items-center gap-2 text-sm">
+                      <span className="text-ink-2 min-w-0 flex-1 truncate">
+                        {a.name} ↔ {b.name}
+                      </span>
+                      <Badge tone={count >= 2 ? 'ok' : 'neutral'}>
+                        {count >= 2 ? `${count} spots` : `${count} of 2`}
+                      </Badge>
+                    </li>
+                  )
+                }),
+              )}
+            </ul>
+          </PanelBody>
+        </Panel>
+      )}
 
       <div className="grid gap-3 lg:grid-cols-2">
         {calibrated.map((camera) => (
