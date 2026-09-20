@@ -48,14 +48,17 @@ import { Screen } from './Screen'
  * whose only outcome is a refusal. A `world` zone made elsewhere still shows
  * in the list, read as what it is.
  *
- * THE PICTURE IS A STILL, AND IT IS HELD STILL
+ * THE PICTURE PLAYS UNTIL YOU CLICK, THEN HOLDS STILL
  *
- * CameraView refetches its frame every two seconds because it is showing
- * what is happening. Here the frame is the paper being drawn on: if it
- * refreshed under a half-finished polygon, the points would still be in the
- * right pixels but the room beneath them would have moved. So it is fetched
- * once and re-fetched only when asked, and asking is disabled while a
- * polygon is open.
+ * The frame is the paper being drawn on: if it kept refreshing under a
+ * half-finished polygon, the points would still be in the right pixels but
+ * the room beneath them would have walked away. So the first click freezes
+ * it, and clearing the points lets it play again.
+ *
+ * Freezing it BEFORE the first click, which is what this did originally,
+ * buys nothing and costs the only thing that makes a camera legible - being
+ * able to see it move. Someone drawing a queue area wants to watch the
+ * queue for a few seconds first.
  *
  * KEYBOARD
  *
@@ -69,6 +72,9 @@ import { Screen } from './Screen'
  */
 
 type Point = [number, number]
+
+/* The live view's cadence, which matches the detectors' update_interval. */
+const FRAME_MS = 2_000
 
 export default function Zones() {
   const { user } = useSession()
@@ -398,10 +404,16 @@ function Drawing({
   onClear: () => void
   onClose: () => void
 }) {
+  /* Plays until the first point of a polygon lands, then holds still: the
+     points are in frame pixels, so a picture that kept moving would leave a
+     half-drawn zone tracing a room that has walked away. Clearing the points
+     lets it play again. Same rule as the calibration canvases. */
   const frame = useQuery({
     queryKey: ['cameraFrame', camera.id],
     queryFn: ({ signal }) => fetchCameraFrame(camera.id, signal),
     retry: false,
+    refetchInterval: drawing ? false : FRAME_MS,
+    placeholderData: (previous) => previous,
     gcTime: 0,
   })
 
@@ -453,6 +465,11 @@ function Drawing({
         </div>
         <p className="text-ink-3 mt-1 text-xs leading-relaxed">
           Click three or more points to trace an area. The dashed edge is the side that closes it.
+        </p>
+        <p className="text-ink-3 mt-1 text-xs">
+          {drawing
+            ? 'Held still while you draw — clear the points to let it play again.'
+            : 'Playing. It freezes as soon as you place a point.'}
         </p>
       </PanelHeader>
 

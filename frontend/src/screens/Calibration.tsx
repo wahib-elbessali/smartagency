@@ -66,6 +66,11 @@ import { Screen } from './Screen'
 type Point = [number, number]
 type Mode = 'calibrate' | 'align'
 
+/* Matches the live view's cadence, which matches the detectors' own
+   update_interval (ai-service.md GET /config) - polling faster would fetch
+   the same frame twice. */
+const FRAME_MS = 2_000
+
 export default function Calibration() {
   const { user } = useSession()
   const scope = useScope()
@@ -743,11 +748,25 @@ function FrameCanvas({
   hint: string
   footer?: React.ReactNode
 }) {
+  /**
+   * LIVE UNTIL YOU CLICK, FROZEN AFTER.
+   *
+   * The picture has to hold still while you measure: points are stored in
+   * frame pixels, so a picture that kept moving would leave your corners
+   * pinned to a room that has walked away. But holding still BEFORE the
+   * first click buys nothing and costs the only thing that makes a camera
+   * legible - seeing it move. So it plays until a point lands, and clearing
+   * the points starts it again.
+   */
+  const frozen = points.length > 0
   const frame = useQuery({
     queryKey: ['nativeFrame', camera.id],
     queryFn: ({ signal }) => fetchNativeFrame(camera.id, signal),
     retry: false,
-    staleTime: Infinity,
+    refetchInterval: frozen ? false : FRAME_MS,
+    /* Keeps the last picture up while the next arrives, so the preview does
+       not blink through a skeleton twice a second. */
+    placeholderData: (previous) => previous,
     gcTime: 0,
   })
 
@@ -785,6 +804,15 @@ function FrameCanvas({
           <h2 className="text-ink truncate text-sm font-semibold">{camera.name}</h2>
         </div>
         <p className="text-ink-3 mt-1 text-xs leading-relaxed">{hint}</p>
+        <p className="text-ink-3 mt-1 text-xs">
+          {frozen ? (
+            <span className="text-ink-2">
+              Held still while you measure — clear the points to let it play again.
+            </span>
+          ) : (
+            'Playing. It freezes as soon as you place a point.'
+          )}
+        </p>
       </PanelHeader>
 
       <PanelBody className="p-0">
