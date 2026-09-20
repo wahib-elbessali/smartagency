@@ -11,10 +11,10 @@ describe('mock registry', () => {
     })
   })
 
-  it('serves the requested scenario', () => {
-    expect(resolveMock<{ rows: number[] }>('/test/key', 'normal').rows).toHaveLength(3)
-    expect(resolveMock<{ rows: number[] }>('/test/key', 'empty').rows).toHaveLength(0)
-    expect(resolveMock<{ rows: number[] }>('/test/key', 'large').rows).toHaveLength(200)
+  it('serves the requested scenario', async () => {
+    expect((await resolveMock<{ rows: number[] }>('/test/key', 'normal')).rows).toHaveLength(3)
+    expect((await resolveMock<{ rows: number[] }>('/test/key', 'empty')).rows).toHaveLength(0)
+    expect((await resolveMock<{ rows: number[] }>('/test/key', 'large')).rows).toHaveLength(200)
   })
 
   it('falls back to a simulated 500 when an endpoint has no error fixture', () => {

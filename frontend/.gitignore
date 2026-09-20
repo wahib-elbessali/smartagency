@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Camera footage dropped in for fixture mode - see public/fixtures/README.md.
+# The clips are somebody's local test material, often large and sometimes of a
+# real place; the README that explains the folder is committed, they are not.
+public/fixtures/*
+!public/fixtures/README.md

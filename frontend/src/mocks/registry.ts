@@ -24,10 +24,19 @@ import type { MockScenario } from './scenario'
  * answer correctly without it: a detail read scoped by the id in the path, or a
  * list filtered by a query parameter.
  */
+/**
+ * A variant may return a promise.
+ *
+ * Nearly all of them are pure and synchronous, which is the point of the
+ * shape. The exception is the camera frame: with a video dropped into
+ * public/fixtures it has to decode a frame out of a playing <video>, and
+ * that cannot be done synchronously. client.ts awaits the result either
+ * way, so a sync fixture is unaffected.
+ */
 export type MockVariants<T> = {
-  normal: (path: string) => T
-  empty: (path: string) => T
-  large: (path: string) => T
+  normal: (path: string) => T | Promise<T>
+  empty: (path: string) => T | Promise<T>
+  large: (path: string) => T | Promise<T>
   error?: () => never
 }
 
@@ -73,7 +82,7 @@ export function resolveMockWrite<T>(key: string, body: unknown, path: string): T
   return writer(body, path) as T
 }
 
-export function resolveMock<T>(key: string, scenario: MockScenario, path = ''): T {
+export function resolveMock<T>(key: string, scenario: MockScenario, path = ''): T | Promise<T> {
   /* Ahead of the lookup, because the real API refuses a caller before it asks
      whether the resource exists - a 403 for a role that may not read this
      endpoint, whatever the fixture would have returned. */

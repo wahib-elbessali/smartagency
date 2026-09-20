@@ -24,7 +24,10 @@ function signInAs(user: User) {
   setSession({ accessToken: 'T', refreshToken: 'R', user })
 }
 
-const list = () => resolveMock<Agency[]>('GET /api/agencies', 'normal')
+/* Awaited because a fixture is allowed to be async now - the camera frame
+   decodes a video when one is present (mocks/videoFrames.ts). This one is
+   synchronous and awaiting a plain value costs nothing. */
+const list = async () => await resolveMock<Agency[]>('GET /api/agencies', 'normal')
 
 describe('GET /api/agencies fixture', () => {
   afterEach(() => {
@@ -32,26 +35,26 @@ describe('GET /api/agencies fixture', () => {
     resetAgencyStore()
   })
 
-  it('gives an admin every branch', () => {
+  it('gives an admin every branch', async () => {
     signInAs(mockAdmin())
-    expect(list().map((a) => a.name)).toEqual(['Agence Casablanca', 'Agence Rabat'])
+    expect((await list()).map((a: Agency) => a.name)).toEqual(['Agence Casablanca', 'Agence Rabat'])
   })
 
-  it('gives a manager only their own', () => {
+  it('gives a manager only their own', async () => {
     signInAs(mockManager())
-    expect(list().map((a) => a.name)).toEqual(['Agence Casablanca'])
+    expect((await list()).map((a: Agency) => a.name)).toEqual(['Agence Casablanca'])
   })
 
-  it('scopes to the agency on the account, not to a fixed one', () => {
+  it('scopes to the agency on the account, not to a fixed one', async () => {
     signInAs({ ...mockManager(), agency_id: AGENCY_ID_RABAT })
     /* A manager moved to another branch follows their account - the filter
        reads agency_id and nothing else. */
-    expect(list().map((a) => a.name)).toEqual(['Agence Rabat'])
+    expect((await list()).map((a: Agency) => a.name)).toEqual(['Agence Rabat'])
   })
 
   /* Unscoped rather than empty: a request with no session is a 401 against the
      real API, not a filtered list, so there is nothing truthful to scope to. */
-  it('does not scope when nobody is signed in', () => {
-    expect(list()).toHaveLength(2)
+  it('does not scope when nobody is signed in', async () => {
+    expect(await list()).toHaveLength(2)
   })
 })

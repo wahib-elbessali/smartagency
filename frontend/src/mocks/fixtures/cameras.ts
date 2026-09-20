@@ -3,6 +3,7 @@ import type { Camera, CameraCreate, CameraUpdate, WeaponThreshold } from '@/api/
 import { ApiError } from '@/api/errors'
 import * as store from '../cameraStore'
 import { requestUser } from '../currentUser'
+import { videoFrame } from '../videoFrames'
 
 /**
  * Field names from CameraResponse / AIWeaponThresholdResponse in
@@ -102,11 +103,32 @@ function placard(name: string): Blob {
   return new Blob([svg], { type: 'image/svg+xml' })
 }
 
-function frameFor(path: string): Blob {
+/**
+ * A real frame when there is footage for this camera, the placard when
+ * there is not.
+ *
+ * DROP AN .MP4 INTO frontend/public/fixtures AND THIS BECOMES USEFUL: see
+ * mocks/videoFrames.ts. It matters most for the two screens built to be
+ * clicked on a picture of a room - you cannot pick a floor tile out of a
+ * grey placard, and you cannot find the same real spot in two of them.
+ *
+ * A camera with footage answers even when its `status` is not ONLINE. The
+ * status means "the backend has heard from it", and in fixture mode the
+ * file on disk is the better evidence - otherwise the one camera in the
+ * other branch could never show anything. Delete its file to get the 404
+ * back and see how the screens handle a dead stream.
+ */
+async function frameFor(path: string): Promise<Blob> {
   const parts = path.split('?')[0].split('/').filter(Boolean)
+  /* `native=true` may be on the query string (calibration wants the
+     unscaled frame); the id is still the segment before 'frame'. */
   const id = parts[parts.length - 2] ?? ''
   const camera = store.getCamera(id)
   ensureAgencyScope(camera.agency_id)
+
+  const fromVideo = await videoFrame(camera.name)
+  if (fromVideo) return fromVideo
+
   if (camera.status !== 'ONLINE') {
     throw new ApiError('http', 'Flux camera indisponible', 404)
   }
