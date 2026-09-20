@@ -964,6 +964,19 @@ created in the caller's agency.
 
 ## 8. Tickets
 
+All ticket response objects include the following completion-note field:
+
+```json
+{
+  "notes": "Dossier vérifié, visite terminée."
+}
+```
+
+`notes` is `null` until the ticket is finalized. It is populated only by
+`POST /api/tickets/{ticket_id}/complete` and is returned unchanged by the
+other ticket endpoints. It is limited to 2,000 characters; leading and
+trailing whitespace is removed and a blank value is stored as `null`.
+
 ### POST /api/tickets
 
 **Owner:** Backend
@@ -1056,7 +1069,8 @@ whitespace is removed; a blank value is stored as `null`.
 and the persisted `notes`.
 **Success status:** `200 OK`
 **Notes:** Only `CALLED` and `IN_SERVICE` tickets can be completed. The body
-may be omitted for clients that do not record a note.
+may be omitted for clients that do not record a note. Sending `{ "notes": null
+}` explicitly clears the note before the ticket is saved as completed.
 
 ### POST /api/tickets/{ticket_id}/cancel
 
