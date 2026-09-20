@@ -19,6 +19,7 @@ from app.mqtt.attendance_consumer import attendance_consumer
 from app.mqtt.sensor_consumer import sensor_consumer
 from app.ai_alerts.consumer import weapon_alert_consumer
 from app.websocket.attendance import router as attendance_websocket_router
+from app.websocket.ai_proxy import router as ai_websocket_router
 
 
 app = FastAPI(
@@ -43,6 +44,7 @@ app.include_router(internal_router)
 app.include_router(ticket_templates_router, prefix="/api")
 app.include_router(thresholds_router, prefix="/api")
 app.include_router(attendance_websocket_router)
+app.include_router(ai_websocket_router)
 
 
 @app.on_event("startup")

@@ -1347,7 +1347,177 @@ camera and agency.
 
 ---
 
-## 13. System
+## 13. Live AI streams
+
+The frontend connects to these streams through the backend. It must use the
+access token as the `token` query parameter:
+
+```text
+wss://backend.example/ws/alerts/weapon?token=JWT_ACCESS_TOKEN
+```
+
+The backend validates the token and role, then relays frames from the AI
+service. The JWT is never forwarded to the AI service. Missing/invalid tokens
+or unauthorized roles close the socket with WebSocket code `1008`. If the AI
+service is unavailable, the backend closes the socket with code `1013`.
+
+### WS /ws/alerts/weapon
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**AI upstream:** `/weapon/alerts/stream`
+**Frames:**
+
+```json
+{
+  "type": "snapshot",
+  "cameras": {
+    "cam1": [
+      {
+        "class": "pistol",
+        "confidence": 0.92,
+        "bbox": [120, 80, 260, 310]
+      }
+    ]
+  }
+}
+```
+
+or an update:
+
+```json
+{
+  "type": "update",
+  "camera": "cam1",
+  "detections": []
+}
+```
+
+**Notes:** Relays the AI weapon-detection stream. `detections: []` means that
+the camera is currently clear.
+
+### WS /ws/alerts/fire
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**AI upstream:** `/fire/alerts/stream`
+**Frames:** Same `snapshot` and `update` structure as the weapon stream.
+
+```json
+{
+  "type": "update",
+  "camera": "cam1",
+  "detections": [
+    {
+      "class": "fire",
+      "confidence": 0.88,
+      "bbox": [120, 80, 260, 310]
+    }
+  ]
+}
+```
+
+**Notes:** Relays fire-detection events from the AI service.
+
+### WS /ws/alerts/emotion
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**AI upstream:** `/emotion/alerts/stream`
+**Frames:** Same `snapshot` and `update` structure as the weapon stream.
+
+```json
+{
+  "type": "update",
+  "camera": "cam1",
+  "detections": [
+    {
+      "class": "angry",
+      "confidence": 0.81,
+      "bbox": [120, 80, 260, 310]
+    }
+  ]
+}
+```
+
+**Notes:** Relays emotion-detection events from the AI service.
+
+### WS /ws/alerts/wanted
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**AI upstream:** `/wanted/alerts/stream`
+**Frames:** Same `snapshot` and `update` structure as the weapon stream.
+
+```json
+{
+  "type": "update",
+  "camera": "cam1",
+  "detections": [
+    {
+      "class": "PERSON-001",
+      "confidence": 0.91,
+      "bbox": [120, 80, 260, 310],
+      "det_score": 0.97,
+      "face_px": 120,
+      "snapshot": "BASE64_JPEG"
+    }
+  ]
+}
+```
+
+**Notes:** The `snapshot` field may contain a base64 JPEG for the highest-
+confidence match. This stream is protected by the backend because it can carry
+biometric information.
+
+### WS /ws/occupancy
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`
+**AI upstream:** `/zoning/occupancy/stream`
+**Optional query parameter:** `threshold` (default `0`)
+
+**Frames:**
+
+```json
+{
+  "type": "snapshot",
+  "zones": {
+    "public-hall": {
+      "count": 3,
+      "points": [[120, 80], [260, 310]],
+      "people_tracking_ready": true
+    }
+  }
+}
+```
+
+or an update:
+
+```json
+{
+  "type": "update",
+  "zone": "public-hall",
+  "count": 4,
+  "points": [[120, 80], [260, 310]],
+  "people_tracking_ready": true
+}
+```
+
+**Notes:** The backend forwards `threshold` to the AI service but removes the
+JWT query parameter. The stream is change-triggered, not a fixed heartbeat.
+For a world zone, `people_tracking_ready: false` means that person tracking is
+not ready yet; a `count` of `0` must not be interpreted as a confirmed empty
+zone in that state.
+
+---
+
+## 14. System
 
 ### GET /health
 
