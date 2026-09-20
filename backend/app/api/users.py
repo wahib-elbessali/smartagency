@@ -163,6 +163,8 @@ def update_user_role(user_id: str, payload: RoleUpdate, db: Session = Depends(ge
     user.role = role
     if user.employee is not None:
         user.employee.role = new_role
+    if new_role != RoleName.AGENT:
+        user.counter_id = None
     if new_role == RoleName.ADMIN:
         user.agency_id = None
     db.commit()
@@ -185,8 +187,11 @@ def update_user_access(user_id: str, payload: AccessUpdate, db: Session = Depend
         db.add(role)
         db.flush()
 
+    previous_agency_id = user.agency_id
     user.role = role
     user.agency_id = target_agency_id
+    if target_role != RoleName.AGENT or target_agency_id != previous_agency_id:
+        user.counter_id = None
     if user.employee is not None:
         user.employee.role = target_role
 
@@ -208,6 +213,8 @@ def update_user_agency(user_id: str, payload: AgencyAssignment, db: Session = De
     user = get_user_or_404(user_id, db)
     role_name = user.role.name
     validate_agency_for_role(role_name, payload.agency_id, db)
+    if payload.agency_id != user.agency_id:
+        user.counter_id = None
     user.agency_id = payload.agency_id
     if user.employee is not None:
         user.employee.agency_id = payload.agency_id

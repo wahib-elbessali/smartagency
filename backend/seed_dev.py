@@ -458,6 +458,7 @@ def seed() -> dict[str, str]:
                 users[email] = user
                 if spec["employee"] is not None:
                     employees[email] = get_or_create_employee(db, email, user, spec, agency, zones)
+            users["agent@smartagency.local"].counter_id = counters[1].id
 
             device, device_key = get_or_create_device(db, agency)
             get_or_create_threshold(db, device, "temperature", "C", 28.0, 35.0)

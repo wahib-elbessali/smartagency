@@ -719,6 +719,95 @@ agency. A linked employee follows the new agency when one is provided.
 **Notes:** An `ADMIN` cannot delete their own account. Returns `400` for that
 case and `404` if the user does not exist.
 
+### GET /api/agents/me/assignment
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `AGENT`
+**Response body when assigned:**
+
+```json
+{
+  "counter_id": "COUNTER_UUID",
+  "counter_name": "Guichet virement",
+  "service_id": "SERVICE_UUID",
+  "service_name": "Virement et consultation"
+}
+```
+
+**Response body when not assigned:**
+
+```json
+null
+```
+
+**Success status:** `200 OK`
+**Notes:** Returns the current guichet or bureau assigned to the authenticated
+AGENT. The assigned point must belong to the agent's agency and have an active
+service.
+
+### GET /api/agencies/{agency_id}/agents
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER` for their own agency
+**Response body:**
+
+```json
+[
+  {
+    "user_id": "USER_UUID",
+    "full_name": "Agent Accueil",
+    "assignment": {
+      "counter_id": "COUNTER_UUID",
+      "counter_name": "Guichet virement",
+      "service_id": "SERVICE_UUID",
+      "service_name": "Virement et consultation"
+    }
+  },
+  {
+    "user_id": "ANOTHER_USER_UUID",
+    "full_name": "Agent Sans Affectation",
+    "assignment": null
+  }
+]
+```
+
+**Success status:** `200 OK`
+**Notes:** Returns every AGENT account in the agency. `MANAGER` can only read
+agents from their own agency; `ADMIN` can read any agency. The route is
+separate from `GET /api/users`, which remains restricted to `ADMIN`.
+
+### PATCH /api/agents/{user_id}/assignment
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER` for agents in their own agency
+**Request body to assign a point:**
+
+```json
+{
+  "counter_id": "COUNTER_UUID"
+}
+```
+
+**Request body to clear the assignment:**
+
+```json
+{
+  "counter_id": null
+}
+```
+
+**Response body:** Agent assignment object, or `null` when the assignment is
+cleared.
+**Success status:** `200 OK`
+**Notes:** The target user must have role `AGENT`. The counter must belong to
+the same agency and must already be linked to an active service. A counter
+without a service returns `409`; an agency mismatch returns `422`; an unknown
+user or counter returns `404`. Changing an agent's role or agency clears its
+counter assignment.
+
 ---
 
 ## 6. RFID attendance

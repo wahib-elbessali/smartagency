@@ -11,6 +11,7 @@ from app.api.services import router as services_router
 from app.api.devices import router as devices_router
 from app.api.cameras import router as cameras_router
 from app.api.ai_alerts import router as ai_alerts_router
+from app.api.assignments import router as assignments_router
 from app.api.internal import router as internal_router
 from app.api.ticket_templates import router as ticket_templates_router
 from app.api.thresholds import router as thresholds_router
@@ -37,6 +38,7 @@ app.include_router(services_router, prefix="/api")
 app.include_router(devices_router, prefix="/api")
 app.include_router(cameras_router, prefix="/api")
 app.include_router(ai_alerts_router, prefix="/api")
+app.include_router(assignments_router, prefix="/api")
 app.include_router(internal_router)
 app.include_router(ticket_templates_router, prefix="/api")
 app.include_router(thresholds_router, prefix="/api")

@@ -219,6 +219,10 @@ PATCH  /api/users/{user_id}/role
 PATCH  /api/users/{user_id}/agency
 PATCH  /api/users/{user_id}/access
 DELETE /api/users/{user_id}
+
+GET    /api/agents/me/assignment
+GET    /api/agencies/{agency_id}/agents
+PATCH  /api/agents/{user_id}/assignment
 ```
 
 Rôles disponibles :
@@ -260,6 +264,19 @@ PATCH /api/users/{user_id}/access
 ```
 
 Le serveur valide l'état final du couple rôle/agence dans une seule transaction.
+
+Un `MANAGER` peut affecter les comptes `AGENT` de son agence à un guichet ou
+un bureau déjà relié à un service :
+
+```json
+{
+  "counter_id": "COUNTER_UUID"
+}
+```
+
+Pour retirer l'affectation, envoyer `{"counter_id": null}`. Un agent consulte
+sa propre affectation avec `GET /api/agents/me/assignment`. Une affectation est
+supprimée automatiquement lorsque l'agent change d'agence ou de rôle.
 
 ## Visiteurs et tickets
 
