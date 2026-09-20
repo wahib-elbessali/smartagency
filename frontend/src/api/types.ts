@@ -914,6 +914,138 @@ export interface WorkstationCreate {
 export type WorkstationFrame =
   { type: 'snapshot'; workstations: Workstation[] } | ({ type: 'update' } & Workstation)
 
+/**
+ * Camera calibration — PROPOSED, not in contracts/api.md (2026-09-20).
+ *
+ * The one-time per-site geometry every multi-camera feature sits on:
+ * world-mode zones, person tracking, anything that needs a real floor
+ * position rather than one camera's pixels. contracts/ai-service.md
+ * §/calibration, proxied by the backend (BACKEND-ASKS.md §8b).
+ *
+ * TWO FIELD NAMES BELOW COME FROM THE AI SOURCE, NOT THE CONTRACT, because
+ * the contract's example for /calibration/align disagrees with what
+ * ai/features/calibration/engine.py actually emits. Both are flagged for
+ * the contract's owner; neither is invented here:
+ *
+ *   - The warning key is `reference_warning` (engine.py:581), not
+ *     `results_warning` as the contract's example shows. Both are accepted
+ *     below, because dropping a warning silently is the failure that costs
+ *     something.
+ *   - `fit` ("homography" | "affine" | "similarity") is written into the
+ *     camera's stored diagnostics (engine.py:547), NOT into the per-camera
+ *     entry of the align response the contract shows it in. So it is read
+ *     from the diagnostics, where it exists.
+ */
+
+/**
+ * What a calibrated camera knows about itself.
+ *
+ * Every field is one the AI service writes into `diag`
+ * (ai/features/calibration/engine.py), surfaced through GET /calibration.
+ * All optional: a camera calibrated before alignment carries only the
+ * rectangle's own numbers, and gains the rest when it is aligned.
+ */
+export interface CalibrationDiagnostics {
+  n_points?: number
+  /**
+   * DO NOT PRESENT AS ACCURACY. A 4-point fit is exact by construction, so
+   * this is ~0 whether or not the clicked shape was really a right angle.
+   * The contract says so in as many words. It says the maths ran, nothing
+   * more, and a screen that shows it as a score teaches people to trust a
+   * calibration that may be badly wrong.
+   */
+  px_err_mean?: number
+  px_err_max?: number
+  /** Free text; starts with "fallback" when the geometry was too degenerate. */
+  aspect_source?: string
+  inferred_aspect?: number
+  aspect_stability_std?: number
+  /** False means the rectangle's true shape was GUESSED as square. */
+  aspect_confident?: boolean
+  /** [w, h] the homography's pixel side is expressed in. */
+  calib_res?: [number, number]
+  aligned?: boolean
+  aligned_to?: string
+  aligned_with_n_points?: number
+  /** Which transform the shared-point count supported. */
+  fit?: string
+  /** True when a >=4-point align replaced this camera's own rectangle. */
+  aspect_superseded?: boolean
+  note?: string
+}
+
+/**
+ * One entry of GET /api/calibration.
+ *
+ * `Hinv` is deliberately absent: the AI service returns it, and the only
+ * thing a browser could do with it is draw the bird's-eye overlay, which
+ * this screen does not. The proxy can drop it rather than shipping a 3x3
+ * matrix to every caller - noted in BACKEND-ASKS.md §8b so that stays a
+ * decision rather than an omission.
+ */
+export interface CameraCalibration {
+  camera_id: string
+  aligned: boolean
+  diagnostics: CalibrationDiagnostics
+}
+
+/**
+ * POST /api/calibration/rect — exactly 4 points, in order around a shape
+ * that is a right angle in real life.
+ *
+ * `img_w` / `img_h` are REQUIRED by the service: the orthogonality solve
+ * needs the image centre as an assumed principal point, and recording them
+ * is what lets the calibration be rescaled if the frame size ever changes.
+ * They must describe the frame the points were clicked on, which is why
+ * this screen asks the proxy for a native-resolution frame rather than the
+ * detector-scaled one the live view uses.
+ */
+export interface CalibrationRectRequest {
+  camera_id: string
+  points: Array<[number, number]>
+  img_w: number
+  img_h: number
+}
+
+/** The rect response is the diagnostics, plus whether it is aligned yet. */
+export interface CalibrationRectResult extends CalibrationDiagnostics {
+  aligned: boolean
+}
+
+/**
+ * POST /api/calibration/align — the FULL accumulated list of shared-point
+ * observations, not a delta. One entry per real point, naming the cameras
+ * it was clicked in: `{ "CAMERA_UUID": [x, y], "OTHER_UUID": [x, y] }`.
+ */
+export type SharedPoint = Record<string, [number, number]>
+
+export interface AlignCameraResult {
+  aligned: boolean
+  reference: boolean
+  n_points: number | null
+  /** Which camera it was chained through, null for the reference. */
+  via: string | null
+  /** Present when the point order fit better reversed - worth surfacing. */
+  order_reversed?: boolean
+  /** Present, and the whole story, when `aligned` is false. */
+  error?: string
+}
+
+export interface AlignResult {
+  /** The camera every other one was aligned to. */
+  reference: string
+  results: Record<string, AlignCameraResult>
+  /** See the note at the top: the service emits `reference_warning`. */
+  reference_warning?: string | null
+  results_warning?: string | null
+  /** Cameras aligned on fewer than 4 shared points keep their own aspect. */
+  weak_fits?: string | null
+  /** How far apart the cameras now place each recorded point. */
+  residual_checks: Array<{
+    pairs: Array<{ cam_a: string; cam_b: string; distance_cm: number }>
+  }>
+}
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string

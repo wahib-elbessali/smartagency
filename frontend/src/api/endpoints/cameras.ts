@@ -84,6 +84,32 @@ export function deleteCamera(id: string, signal?: AbortSignal): Promise<void> {
  * the screen shows "no picture" and keeps the detections - the boxes are
  * still true, they just have nothing to sit on.
  */
+/**
+ * The same picture at the camera's NATIVE resolution, for calibration.
+ *
+ * Kept as its own function rather than a flag, because the two callers want
+ * opposite things and silently getting the other one is not visible on
+ * screen. `fetchCameraFrame` above returns the detector-scaled frame, so
+ * alert boxes land in the right place. This one must not be scaled: the 4
+ * clicked points are sent with `img_w`/`img_h`, the service uses the image
+ * centre as an assumed principal point, and points measured on a resized
+ * frame describe a camera that does not exist.
+ *
+ * PROPOSED alongside the frame proxy itself - BACKEND-ASKS.md §8c asks for
+ * the two cases to stay distinguishable, whatever the parameter ends up
+ * being called.
+ */
+export function fetchNativeFrame(id: string, signal?: AbortSignal): Promise<Blob> {
+  return fetchJson<Blob>(
+    {
+      key: 'GET /api/cameras/{id}/frame',
+      path: `/api/cameras/${id}/frame?native=true`,
+      auth: true,
+    },
+    { signal, responseType: 'blob' },
+  )
+}
+
 export function fetchCameraFrame(id: string, signal?: AbortSignal): Promise<Blob> {
   return fetchJson<Blob>(
     {

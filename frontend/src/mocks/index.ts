@@ -15,6 +15,7 @@ import './fixtures/thresholds'
 import './fixtures/cameras'
 import './fixtures/zones'
 import './fixtures/workstations'
+import './fixtures/calibration'
 import './fixtures/attendance'
 import './fixtures/auth'
 

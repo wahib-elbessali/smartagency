@@ -100,6 +100,11 @@ export function rolesFor(key: string): Role[] | null {
      fixtures/workstations.ts, which walks workstation -> zone -> camera. */
   if (path.startsWith('/api/workstations')) return ['ADMIN', 'MANAGER']
 
+  /* PROPOSED - api/endpoints/calibration.ts. The floor geometry every
+     world-mode zone and the person tracker are computed against, so it sits
+     with the other two rather than with the monitoring screens. */
+  if (path.startsWith('/api/calibration')) return ['ADMIN', 'MANAGER']
+
   if (path.startsWith('/api/agencies')) {
     /* The one split router. Reading is ADMIN and MANAGER, and a MANAGER's list
        comes back scoped (fixtures/agencies.ts). Creating and deleting are ADMIN
