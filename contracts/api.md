@@ -996,7 +996,8 @@ created in the caller's agency.
   "status": "WAITING",
   "created_at": "2026-08-25T14:32:00Z",
   "called_at": null,
-  "completed_at": null
+  "completed_at": null,
+  "notes": null
 }
 ```
 
@@ -1040,10 +1041,22 @@ Always send the counter UUID, never the visible counter number.
 **Owner:** Backend
 **Type:** REST
 **Roles:** `ADMIN`, `MANAGER`, `AGENT`
-**Response body:** Ticket object with `status: "COMPLETED"` and
-`completed_at`.
+**Request body (optional):**
+
+```json
+{
+  "notes": "Dossier vérifié, visite terminée."
+}
+```
+
+`notes` may be `null` and is limited to 2,000 characters. Leading and trailing
+whitespace is removed; a blank value is stored as `null`.
+
+**Response body:** Ticket object with `status: "COMPLETED"`, `completed_at`
+and the persisted `notes`.
 **Success status:** `200 OK`
-**Notes:** Only `CALLED` and `IN_SERVICE` tickets can be completed.
+**Notes:** Only `CALLED` and `IN_SERVICE` tickets can be completed. The body
+may be omitted for clients that do not record a note.
 
 ### POST /api/tickets/{ticket_id}/cancel
 

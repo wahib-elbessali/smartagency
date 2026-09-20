@@ -516,13 +516,6 @@ export interface Ticket {
   created_at: string
   called_at: string | null
   completed_at: string | null
-  /**
-   * PROPOSED - not in contracts/api.md yet. POST /api/tickets/{id}/complete
-   * has no request body on the real backend today; this is built ahead of it
-   * (2026-09-05, at the user's direction) so an agent can note how a visit
-   * went. Mocked only until the backend accepts `{ notes }` on complete - see
-   * api/endpoints/tickets.ts.
-   */
   notes: string | null
 }
 

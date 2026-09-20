@@ -77,9 +77,8 @@ export function callTicket(id: string, counterId: string, signal?: AbortSignal):
 /**
  * Only valid from CALLED or IN_SERVICE; anything else is a 409.
  *
- * `notes` is PROPOSED - the real route takes no body today (contracts/api.md
- * §8), so this only reaches the mock until the backend accepts it. Omitting
- * it sends no body at all, unchanged from before notes existed.
+ * `notes` is optional. Omitting it sends no body, which remains supported for
+ * clients that do not record a completion note.
  */
 export function completeTicket(id: string, notes?: string, signal?: AbortSignal): Promise<Ticket> {
   return fetchJson<Ticket>(

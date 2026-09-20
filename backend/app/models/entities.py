@@ -247,6 +247,7 @@ class Ticket(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     visitor: Mapped["Visitor"] = relationship(back_populates="tickets")
     service: Mapped["Service | None"] = relationship(back_populates="tickets")
