@@ -108,6 +108,12 @@ def assign_counter_to_service(
     ensure_agency_scope(counter.agency_id, current_user)
 
     if payload.service_id is None:
+        assigned_agent_id = db.scalar(select(User.id).where(User.counter_id == counter.id))
+        if assigned_agent_id is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Ce guichet est affecte a un agent. Desaffectez l agent avant de retirer le service",
+            )
         counter.service_id = None
         counter.point_type = "COUNTER"
     else:

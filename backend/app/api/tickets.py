@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.security import get_current_user, require_roles
 from app.database.connection import get_db
 from app.models.entities import RoleName, Service, Ticket, TicketStatus, User, Visitor
-from app.schemas.ticket import TicketCallRequest, TicketCreate, TicketResponse
+from app.schemas.ticket import (
+    TicketCallRequest,
+    TicketCompleteRequest,
+    TicketCreate,
+    TicketResponse,
+)
 from app.services.ticket_service import call_ticket_by_id, next_ticket_number
 
 
@@ -44,6 +49,7 @@ def ticket_to_response(ticket: Ticket) -> TicketResponse:
         created_at=ticket.created_at,
         called_at=ticket.called_at,
         completed_at=ticket.completed_at,
+        notes=ticket.notes,
     )
 
 
@@ -120,6 +126,7 @@ def call_ticket(
 @router.post("/{ticket_id}/complete", response_model=TicketResponse, dependencies=TICKET_ROLES)
 def complete_ticket(
     ticket_id: str,
+    payload: TicketCompleteRequest | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TicketResponse:
@@ -131,6 +138,11 @@ def complete_ticket(
         raise HTTPException(status_code=409, detail="Ce ticket ne peut pas etre termine")
     ticket.status = TicketStatus.COMPLETED
     ticket.completed_at = datetime.now(timezone.utc)
+    ticket.notes = (
+        payload.notes.strip()
+        if payload is not None and payload.notes is not None and payload.notes.strip()
+        else None
+    )
     db.commit()
     return ticket_to_response(ticket)
 

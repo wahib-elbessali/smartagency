@@ -719,6 +719,95 @@ agency. A linked employee follows the new agency when one is provided.
 **Notes:** An `ADMIN` cannot delete their own account. Returns `400` for that
 case and `404` if the user does not exist.
 
+### GET /api/agents/me/assignment
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `AGENT`
+**Response body when assigned:**
+
+```json
+{
+  "counter_id": "COUNTER_UUID",
+  "counter_name": "Guichet virement",
+  "service_id": "SERVICE_UUID",
+  "service_name": "Virement et consultation"
+}
+```
+
+**Response body when not assigned:**
+
+```json
+null
+```
+
+**Success status:** `200 OK`
+**Notes:** Returns the current guichet or bureau assigned to the authenticated
+AGENT. The assigned point must belong to the agent's agency and have an active
+service.
+
+### GET /api/agencies/{agency_id}/agents
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER` for their own agency
+**Response body:**
+
+```json
+[
+  {
+    "user_id": "USER_UUID",
+    "full_name": "Agent Accueil",
+    "assignment": {
+      "counter_id": "COUNTER_UUID",
+      "counter_name": "Guichet virement",
+      "service_id": "SERVICE_UUID",
+      "service_name": "Virement et consultation"
+    }
+  },
+  {
+    "user_id": "ANOTHER_USER_UUID",
+    "full_name": "Agent Sans Affectation",
+    "assignment": null
+  }
+]
+```
+
+**Success status:** `200 OK`
+**Notes:** Returns every AGENT account in the agency. `MANAGER` can only read
+agents from their own agency; `ADMIN` can read any agency. The route is
+separate from `GET /api/users`, which remains restricted to `ADMIN`.
+
+### PATCH /api/agents/{user_id}/assignment
+
+**Owner:** Backend
+**Type:** REST
+**Roles:** `ADMIN`, `MANAGER` for agents in their own agency
+**Request body to assign a point:**
+
+```json
+{
+  "counter_id": "COUNTER_UUID"
+}
+```
+
+**Request body to clear the assignment:**
+
+```json
+{
+  "counter_id": null
+}
+```
+
+**Response body:** Agent assignment object, or `null` when the assignment is
+cleared.
+**Success status:** `200 OK`
+**Notes:** The target user must have role `AGENT`. The counter must belong to
+the same agency and must already be linked to an active service. A counter
+without a service returns `409`; an agency mismatch returns `422`; an unknown
+user or counter returns `404`. Changing an agent's role or agency clears its
+counter assignment.
+
 ---
 
 ## 6. RFID attendance
@@ -875,6 +964,19 @@ created in the caller's agency.
 
 ## 8. Tickets
 
+All ticket response objects include the following completion-note field:
+
+```json
+{
+  "notes": "Dossier vérifié, visite terminée."
+}
+```
+
+`notes` is `null` until the ticket is finalized. It is populated only by
+`POST /api/tickets/{ticket_id}/complete` and is returned unchanged by the
+other ticket endpoints. It is limited to 2,000 characters; leading and
+trailing whitespace is removed and a blank value is stored as `null`.
+
 ### POST /api/tickets
 
 **Owner:** Backend
@@ -907,7 +1009,8 @@ created in the caller's agency.
   "status": "WAITING",
   "created_at": "2026-08-25T14:32:00Z",
   "called_at": null,
-  "completed_at": null
+  "completed_at": null,
+  "notes": null
 }
 ```
 
@@ -951,10 +1054,23 @@ Always send the counter UUID, never the visible counter number.
 **Owner:** Backend
 **Type:** REST
 **Roles:** `ADMIN`, `MANAGER`, `AGENT`
-**Response body:** Ticket object with `status: "COMPLETED"` and
-`completed_at`.
+**Request body (optional):**
+
+```json
+{
+  "notes": "Dossier vérifié, visite terminée."
+}
+```
+
+`notes` may be `null` and is limited to 2,000 characters. Leading and trailing
+whitespace is removed; a blank value is stored as `null`.
+
+**Response body:** Ticket object with `status: "COMPLETED"`, `completed_at`
+and the persisted `notes`.
 **Success status:** `200 OK`
-**Notes:** Only `CALLED` and `IN_SERVICE` tickets can be completed.
+**Notes:** Only `CALLED` and `IN_SERVICE` tickets can be completed. The body
+may be omitted for clients that do not record a note. Sending `{ "notes": null
+}` explicitly clears the note before the ticket is saved as completed.
 
 ### POST /api/tickets/{ticket_id}/cancel
 
@@ -1258,7 +1374,177 @@ camera and agency.
 
 ---
 
-## 13. System
+## 13. Live AI streams
+
+The frontend connects to these streams through the backend. It must use the
+access token as the `token` query parameter:
+
+```text
+wss://backend.example/ws/alerts/weapon?token=JWT_ACCESS_TOKEN
+```
+
+The backend validates the token and role, then relays frames from the AI
+service. The JWT is never forwarded to the AI service. Missing/invalid tokens
+or unauthorized roles close the socket with WebSocket code `1008`. If the AI
+service is unavailable, the backend closes the socket with code `1013`.
+
+### WS /ws/alerts/weapon
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**AI upstream:** `/weapon/alerts/stream`
+**Frames:**
+
+```json
+{
+  "type": "snapshot",
+  "cameras": {
+    "cam1": [
+      {
+        "class": "pistol",
+        "confidence": 0.92,
+        "bbox": [120, 80, 260, 310]
+      }
+    ]
+  }
+}
+```
+
+or an update:
+
+```json
+{
+  "type": "update",
+  "camera": "cam1",
+  "detections": []
+}
+```
+
+**Notes:** Relays the AI weapon-detection stream. `detections: []` means that
+the camera is currently clear.
+
+### WS /ws/alerts/fire
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**AI upstream:** `/fire/alerts/stream`
+**Frames:** Same `snapshot` and `update` structure as the weapon stream.
+
+```json
+{
+  "type": "update",
+  "camera": "cam1",
+  "detections": [
+    {
+      "class": "fire",
+      "confidence": 0.88,
+      "bbox": [120, 80, 260, 310]
+    }
+  ]
+}
+```
+
+**Notes:** Relays fire-detection events from the AI service.
+
+### WS /ws/alerts/emotion
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**AI upstream:** `/emotion/alerts/stream`
+**Frames:** Same `snapshot` and `update` structure as the weapon stream.
+
+```json
+{
+  "type": "update",
+  "camera": "cam1",
+  "detections": [
+    {
+      "class": "angry",
+      "confidence": 0.81,
+      "bbox": [120, 80, 260, 310]
+    }
+  ]
+}
+```
+
+**Notes:** Relays emotion-detection events from the AI service.
+
+### WS /ws/alerts/wanted
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`
+**AI upstream:** `/wanted/alerts/stream`
+**Frames:** Same `snapshot` and `update` structure as the weapon stream.
+
+```json
+{
+  "type": "update",
+  "camera": "cam1",
+  "detections": [
+    {
+      "class": "PERSON-001",
+      "confidence": 0.91,
+      "bbox": [120, 80, 260, 310],
+      "det_score": 0.97,
+      "face_px": 120,
+      "snapshot": "BASE64_JPEG"
+    }
+  ]
+}
+```
+
+**Notes:** The `snapshot` field may contain a base64 JPEG for the highest-
+confidence match. This stream is protected by the backend because it can carry
+biometric information.
+
+### WS /ws/occupancy
+
+**Owner:** Backend
+**Type:** WebSocket
+**Roles:** `ADMIN`, `MANAGER`
+**AI upstream:** `/zoning/occupancy/stream`
+**Optional query parameter:** `threshold` (default `0`)
+
+**Frames:**
+
+```json
+{
+  "type": "snapshot",
+  "zones": {
+    "public-hall": {
+      "count": 3,
+      "points": [[120, 80], [260, 310]],
+      "people_tracking_ready": true
+    }
+  }
+}
+```
+
+or an update:
+
+```json
+{
+  "type": "update",
+  "zone": "public-hall",
+  "count": 4,
+  "points": [[120, 80], [260, 310]],
+  "people_tracking_ready": true
+}
+```
+
+**Notes:** The backend forwards `threshold` to the AI service but removes the
+JWT query parameter. The stream is change-triggered, not a fixed heartbeat.
+For a world zone, `people_tracking_ready: false` means that person tracking is
+not ready yet; a `count` of `0` must not be interpreted as a confirmed empty
+zone in that state.
+
+---
+
+## 14. System
 
 ### GET /health
 

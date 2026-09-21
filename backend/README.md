@@ -25,6 +25,42 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
+## Jeu de données de développement
+
+Après les migrations, créer les comptes et les données de démonstration :
+
+```powershell
+python seed_dev.py
+```
+
+Le script est relançable sans doublons. Il crée une agence de développement,
+les cinq rôles, des comptes de test, des employés avec leurs zones RFID, les
+services et guichets, des visiteurs et tickets, les deux caméras ainsi que
+l'appareil IoT `access-sensors-1` et ses seuils DHT11/MQ2.
+
+Compte ADMIN de développement :
+
+```text
+Email    : admin@smartagency.local
+Mot de passe : Admin12345
+```
+
+Les autres comptes utilisent le même mot de passe :
+`manager@smartagency.local`, `agent@smartagency.local`,
+`security@smartagency.local` et `technician@smartagency.local`.
+
+Pour modifier le mot de passe utilisé lors de la création :
+
+```powershell
+$env:SEED_PASSWORD="VotreMotDePasseDev123"
+python seed_dev.py
+```
+
+Le mot de passe d'un compte déjà existant n'est pas remplacé par défaut.
+Utiliser `SEED_RESET_PASSWORD=true` uniquement en développement pour le
+réinitialiser. La clé de test du device `access-sensors-1` est
+`access-sensors-1-dev-key` ; elle est réservée au développement local.
+
 API et documentation :
 
 ```text
@@ -183,6 +219,10 @@ PATCH  /api/users/{user_id}/role
 PATCH  /api/users/{user_id}/agency
 PATCH  /api/users/{user_id}/access
 DELETE /api/users/{user_id}
+
+GET    /api/agents/me/assignment
+GET    /api/agencies/{agency_id}/agents
+PATCH  /api/agents/{user_id}/assignment
 ```
 
 Rôles disponibles :
@@ -224,6 +264,19 @@ PATCH /api/users/{user_id}/access
 ```
 
 Le serveur valide l'état final du couple rôle/agence dans une seule transaction.
+
+Un `MANAGER` peut affecter les comptes `AGENT` de son agence à un guichet ou
+un bureau déjà relié à un service :
+
+```json
+{
+  "counter_id": "COUNTER_UUID"
+}
+```
+
+Pour retirer l'affectation, envoyer `{"counter_id": null}`. Un agent consulte
+sa propre affectation avec `GET /api/agents/me/assignment`. Une affectation est
+supprimée automatiquement lorsque l'agent change d'agence ou de rôle.
 
 ## Visiteurs et tickets
 

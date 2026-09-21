@@ -14,6 +14,10 @@ class TicketCallRequest(BaseModel):
     counter_id: str
 
 
+class TicketCompleteRequest(BaseModel):
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 class TicketResponse(BaseModel):
     id: str
     visitor_id: str
@@ -29,3 +33,4 @@ class TicketResponse(BaseModel):
     created_at: datetime
     called_at: datetime | None
     completed_at: datetime | None
+    notes: str | None

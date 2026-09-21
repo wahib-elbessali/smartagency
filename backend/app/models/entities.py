@@ -154,6 +154,7 @@ class Counter(Base):
     agency: Mapped["Agency"] = relationship(back_populates="counters")
     service: Mapped["Service | None"] = relationship(back_populates="counters")
     tickets: Mapped[list["Ticket"]] = relationship(back_populates="counter")
+    assigned_agents: Mapped[list["User"]] = relationship(back_populates="assigned_counter")
 
 
 class User(Base):
@@ -166,12 +167,17 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     role_id: Mapped[str] = mapped_column(ForeignKey("roles.id"), nullable=False)
     agency_id: Mapped[str | None] = mapped_column(ForeignKey("agencies.id"))
+    counter_id: Mapped[str | None] = mapped_column(
+        ForeignKey("counters.id", ondelete="SET NULL"),
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     role: Mapped["Role"] = relationship(back_populates="users")
     agency: Mapped["Agency | None"] = relationship(back_populates="users")
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")
     employee: Mapped["Employee | None"] = relationship(back_populates="user", uselist=False)
+    assigned_counter: Mapped["Counter | None"] = relationship(back_populates="assigned_agents")
 
 
 class Employee(Base):
@@ -241,6 +247,7 @@ class Ticket(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     visitor: Mapped["Visitor"] = relationship(back_populates="tickets")
     service: Mapped["Service | None"] = relationship(back_populates="tickets")
