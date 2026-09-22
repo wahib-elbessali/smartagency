@@ -8,7 +8,12 @@ import { SessionContext, type SessionValue } from '@/auth/SessionContext'
 import { ScopeProvider } from '@/agency/scope'
 import type { Role } from '@/api/types'
 import { mockUserForRole } from '@/mocks/currentUser'
-import { getWeaponThreshold, listCameras, resetCameraStore } from '@/mocks/cameraStore'
+import {
+  CAMERA_ID_LOBBY,
+  getWeaponThreshold,
+  listCameras,
+  resetCameraStore,
+} from '@/mocks/cameraStore'
 import { AGENCY_ID } from '@/mocks/fixtures/people'
 import '@/mocks'
 
@@ -55,8 +60,7 @@ describe('Cameras', () => {
     /* Rabat's camera is not this manager's to see. */
     expect(cameraHeading('cam-store')).not.toBeInTheDocument()
 
-    expect(screen.getByText('ONLINE')).toBeInTheDocument()
-    expect(screen.getByText('OFFLINE')).toBeInTheDocument()
+    expect(screen.getAllByText('ONLINE')).toHaveLength(2)
     expect(screen.getByText('rtsp://192.168.1.16:8554/lobby')).toBeInTheDocument()
   })
 
@@ -71,6 +75,7 @@ describe('Cameras', () => {
 
     expect(await screen.findByRole('heading', { name: 'cam-store' }, WAIT)).toBeInTheDocument()
     expect(cameraHeading('cam-lobby')).not.toBeInTheDocument()
+    expect(screen.getByText('OFFLINE')).toBeInTheDocument()
   })
 
   it('adds a camera and it appears in the list, OFFLINE until the detector reports', async () => {
@@ -142,6 +147,10 @@ describe('Cameras', () => {
       expect(screen.queryByRole('button', { name: 'Delete cam-lobby' })).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Edit cam-lobby' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /add camera/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'View cam-lobby' })).toHaveAttribute(
+        'href',
+        `/cameras/${CAMERA_ID_LOBBY}`,
+      )
       /* And no branch picker: GET /api/agencies is not theirs to call. */
       expect(screen.queryByLabelText('Branch')).not.toBeInTheDocument()
     })

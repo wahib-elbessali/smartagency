@@ -34,6 +34,14 @@ export interface RequestOptions {
   signal?: AbortSignal
   /** JSON request body. Only for POST/PATCH. */
   body?: unknown
+  /**
+   * What to make of the response. `json` (the default) parses it; `blob`
+   * hands the bytes back untouched, for the one contract entry that answers
+   * with an image rather than JSON (a camera frame). Fixtures for a blob
+   * endpoint return a Blob from their variant, the same way a JSON fixture
+   * returns an object.
+   */
+  responseType?: 'json' | 'blob'
 }
 
 export async function fetchJson<T>(
@@ -71,7 +79,7 @@ async function sendRequest<T>(
   endpoint: EndpointDescriptor,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { signal, body } = options
+  const { signal, body, responseType = 'json' } = options
 
   if (USE_MOCKS) {
     await mockDelay(signal)
@@ -91,7 +99,9 @@ async function sendRequest<T>(
     )
   }
 
-  const headers: Record<string, string> = { Accept: 'application/json' }
+  const headers: Record<string, string> = {
+    Accept: responseType === 'blob' ? 'image/*' : 'application/json',
+  }
 
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
@@ -133,6 +143,14 @@ async function sendRequest<T>(
   }
 
   if (response.status === 204) return undefined as T
+
+  if (responseType === 'blob') {
+    try {
+      return (await response.blob()) as T
+    } catch (cause) {
+      throw toApiError(cause)
+    }
+  }
 
   try {
     return (await response.json()) as T
