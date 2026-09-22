@@ -748,6 +748,88 @@ export type OccupancyFrame =
   | { type: 'snapshot'; zones: Record<string, ZoneOccupancy> }
   | { type: 'update'; zone: string; count: number; points: Array<[number, number]> }
 
+/**
+ * A drawn detection zone — PROPOSED, not in contracts/api.md (2026-09-19).
+ *
+ * NOT THE SAME THING AS `Zone` ABOVE, and the collision is the API's, not
+ * this file's. `Zone` is a room in a branch (`Accueil`, `Bureau · private`)
+ * from backend/app/schemas/agency.py, created with the agency and carrying
+ * `zone_type` / `is_private`. THIS is a polygon somebody drew over a camera
+ * picture so the detector counts the people standing inside it
+ * (contracts/ai-service.md §/zoning), and it lives in the AI service's own
+ * store, not in our database. Nothing links the two today; whether they
+ * should be linked is an open question for backend (BACKEND-ASKS.md §8d).
+ * Named `CameraZone` here so no screen can confuse them by accident.
+ *
+ * `name` is the primary key — the AI service stores zones in a flat
+ * name-keyed map, and re-posting a name OVERWRITES that zone, mode included.
+ * There is no id.
+ */
+export type CameraZoneMode = 'pixel' | 'world'
+
+export interface CameraZone {
+  name: string
+  /**
+   * Inferred by the AI service from how many cameras the zone was saved
+   * with, never sent by us: one camera is `pixel` (counted against that
+   * camera's own raw detections, no calibration needed), two or more is
+   * `world` (needs the drawn-on camera calibrated AND aligned).
+   *
+   * Everything this dashboard draws is `pixel` today. A `world` zone can
+   * appear in the list - somebody may have made one with the AI service's
+   * own tools - which is why the mode is read rather than assumed.
+   */
+  mode: CameraZoneMode
+  /**
+   * Which of our cameras it was drawn on, translated by the backend from the
+   * camera name the AI service knows it by. Null when the proxy cannot match
+   * that name to a camera row - a zone drawn before the camera was renamed,
+   * or against a source this dashboard does not manage.
+   */
+  camera_id: string | null
+  /** `pixel` mode: the polygon in that camera's own frame pixels. */
+  polygon_px: Array<[number, number]> | null
+  /** `world` mode: the polygon on the shared floor plane. Not drawn here. */
+  polygon_m: Array<[number, number]> | null
+}
+
+/**
+ * POST /api/zones — PROPOSED, the shape to ask backend for.
+ *
+ *   { "name": "lobby", "camera_id": "CAMERA_UUID",
+ *     "polygon": [[120, 430], [980, 410], [1010, 700], [95, 720]] }
+ *
+ * `polygon` is at least 3 points in the drawn-on frame's own pixels, in the
+ * order they were clicked; the closing edge is implied, so the first point is
+ * not repeated at the end. The backend translates `camera_id` to the camera
+ * name the AI service knows (the same mapping app/ai_alerts/consumer.py
+ * already does) and fills in `sources` from the stream URL it holds — the
+ * browser never handles RTSP credentials.
+ *
+ * One camera means `pixel` mode, which is the only mode this screen creates.
+ * Multi-camera `world` zones come with the calibration phase and will add a
+ * field for the extra cameras.
+ */
+export interface CameraZoneCreate {
+  name: string
+  camera_id: string
+  polygon: Array<[number, number]>
+}
+
+/**
+ * What POST /api/zones answers with: the saved zone, plus whatever the AI
+ * service warned about.
+ *
+ * `warnings` is passed through untouched and must be SHOWN. The AI service
+ * uses it to say things like "'/people' is not currently running … this zone
+ * will count 0 until it is" - a configuration mistake that is otherwise
+ * indistinguishable from an empty room. Empty for a pixel zone on a healthy
+ * service, which is the normal case here.
+ */
+export interface CameraZoneSaved extends CameraZone {
+  warnings: string[]
+}
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string
