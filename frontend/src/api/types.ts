@@ -830,6 +830,83 @@ export interface CameraZoneSaved extends CameraZone {
   warnings: string[]
 }
 
+/**
+ * A workstation — PROPOSED, not in contracts/api.md (2026-09-19).
+ *
+ * A name bound to a zone somebody drew (`CameraZone` above), which the AI
+ * service turns into "is anybody at this counter?".
+ * contracts/ai-service.md §/employee_activity, which is built entirely on
+ * /zoning's already-computed occupancy: no face recognition, no model of its
+ * own, nothing about WHO is there. It answers whether the chair is filled.
+ *
+ * NOT ATTENDANCE, and the difference is the point. `AttendanceRecord` is a
+ * badge at the door - who came to work today, from the RFID reader. This is
+ * whether counter 3 is being manned at 14:40 while twelve people wait. An
+ * employee can be present all day by one measure and away from their counter
+ * by the other, and both readings are true.
+ *
+ * `name` is the primary key, as it is for a zone. No id.
+ */
+export const WORKSTATION_STATUSES = ['unknown', 'present', 'away'] as const
+export type WorkstationStatus = (typeof WORKSTATION_STATUSES)[number]
+
+export interface Workstation {
+  name: string
+  /** The `CameraZone.name` this watches. The zone must exist first. */
+  zone: string
+  /**
+   * `present` fires on ANY sighting in the zone. `away` only after the zone
+   * has been continuously empty for the service's absence window
+   * (`employee_activity.absence_seconds`, 300s by default) - so a step away
+   * to the printer does not read as "not working", and a screen must not
+   * present `away` as if it were instant.
+   *
+   * `unknown` is not a third kind of absence: it means not classified yet.
+   */
+  status: WorkstationStatus
+  /**
+   * When the current status began - epoch SECONDS, float, not an ISO string
+   * and not milliseconds. The AI service speaks Unix time here where the rest
+   * of this dashboard speaks ISO 8601; converting at the edge (in the screen)
+   * rather than pretending otherwise keeps the mismatch visible.
+   */
+  since: number
+  /**
+   * Whether the bound zone has ever actually been read.
+   *
+   * `false` means "not measured yet" and is DISTINCT from a measured empty
+   * zone - a workstation bound to a zone whose camera has never produced a
+   * frame sits at `unknown` with `zone_known: false` forever, and that is a
+   * configuration problem, not a quiet counter.
+   */
+  zone_known: boolean
+}
+
+/**
+ * POST /api/workstations — PROPOSED, the shape to ask backend for.
+ *
+ *   { "name": "guichet-3", "zone": "counters" }
+ *
+ * 422 when the zone does not exist yet, which is the AI service's own
+ * refusal (§/employee_activity) and the reason the form picks from the zones
+ * that exist rather than taking free text.
+ */
+export interface WorkstationCreate {
+  name: string
+  zone: string
+}
+
+/**
+ * WS workstation frames.
+ *
+ * A snapshot of every workstation on connect, then one frame each time a
+ * status ACTUALLY FLIPS - not per poll. So silence means nothing changed,
+ * exactly as it does on the alerts and occupancy feeds, and the connection
+ * badge is again the only thing that separates "steady" from "dead".
+ */
+export type WorkstationFrame =
+  { type: 'snapshot'; workstations: Workstation[] } | ({ type: 'update' } & Workstation)
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string
