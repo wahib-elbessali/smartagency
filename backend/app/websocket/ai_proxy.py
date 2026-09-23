@@ -35,6 +35,8 @@ OCCUPANCY_ROLES = frozenset(
         RoleName.MANAGER.value,
     }
 )
+PEOPLE_ROLES = ALERT_ROLES
+EMPLOYEE_ACTIVITY_ROLES = ALERT_ROLES
 
 
 def _upstream_base_url() -> str:
@@ -161,3 +163,15 @@ async def wanted_alerts_websocket(websocket: WebSocket) -> None:
 @router.websocket("/ws/occupancy")
 async def occupancy_websocket(websocket: WebSocket) -> None:
     await _proxy(websocket, "/zoning/occupancy/stream", OCCUPANCY_ROLES)
+
+
+@router.websocket("/ws/people/tracks")
+async def people_tracks_websocket(websocket: WebSocket) -> None:
+    """Proxy live world tracks without exposing the AI service directly."""
+    await _proxy(websocket, "/people/tracks/stream", PEOPLE_ROLES)
+
+
+@router.websocket("/ws/employee-activity")
+async def employee_activity_websocket(websocket: WebSocket) -> None:
+    """Proxy workstation presence updates through the authenticated backend."""
+    await _proxy(websocket, "/employee_activity/status/stream", EMPLOYEE_ACTIVITY_ROLES)

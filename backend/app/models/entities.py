@@ -97,6 +97,10 @@ class Agency(Base):
     visitors: Mapped[list["Visitor"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
     devices: Mapped[list["Device"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
     cameras: Mapped[list["Camera"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
+    workstations: Mapped[list["Workstation"]] = relationship(
+        back_populates="agency",
+        cascade="all, delete-orphan",
+    )
     alerts: Mapped[list["Alert"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="agency")
     zones: Mapped[list["Zone"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
@@ -210,6 +214,7 @@ class Employee(Base):
     agency: Mapped["Agency"] = relationship(back_populates="employees")
     attendance: Mapped[list["Attendance"]] = relationship(back_populates="employee", cascade="all, delete-orphan")
     user: Mapped["User | None"] = relationship(back_populates="employee")
+    workstations: Mapped[list["Workstation"]] = relationship(back_populates="employee")
     authorized_zones: Mapped[list["Zone"]] = relationship(
         secondary=employee_zone_access,
         back_populates="authorized_employees",
@@ -218,6 +223,35 @@ class Employee(Base):
     @property
     def authorized_zone_ids(self) -> list[str]:
         return [zone.id for zone in self.authorized_zones]
+
+
+class Workstation(Base):
+    """Backend ownership and optional employee link for an AI workstation."""
+
+    __tablename__ = "workstations"
+    __table_args__ = (UniqueConstraint("name", name="uq_workstation_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    agency_id: Mapped[str] = mapped_column(
+        ForeignKey("agencies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    zone_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    employee_id: Mapped[str | None] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    agency: Mapped["Agency"] = relationship(back_populates="workstations")
+    employee: Mapped["Employee | None"] = relationship(back_populates="workstations")
 
 
 class Visitor(Base):

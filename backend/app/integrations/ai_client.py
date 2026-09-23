@@ -225,6 +225,46 @@ class AIClient:
         path = f"/cameras/{quote(camera_id, safe='')}/quality"
         return self.put(path, payload={"quality": quality})
 
+    def get_people_sources(self) -> Any:
+        """Return the cameras currently assigned to person tracking."""
+        return self.get("/people/sources")
+
+    def set_people_sources(self, sources: Mapping[str, str]) -> Any:
+        """Register camera streams for the AI person-tracking feature."""
+        return self.post("/people/sources", payload={"sources": dict(sources)})
+
+    def delete_people_source(self, camera_id: str) -> Any:
+        """Remove one camera from person tracking without deleting the camera."""
+        return self.delete(f"/people/sources/{quote(camera_id, safe='')}")
+
+    def get_people_status(self) -> Any:
+        """Return the person-tracking state machine and active-track count."""
+        return self.get("/people/status")
+
+    def list_zones(self) -> Any:
+        """Return the zones configured in the AI zoning module."""
+        return self.get("/zoning/zones")
+
+    def create_zone(self, payload: Mapping[str, Any]) -> Any:
+        """Create or replace one pixel/world occupancy zone."""
+        return self.post("/zoning/zones", payload=dict(payload))
+
+    def delete_zone(self, zone_name: str) -> Any:
+        """Delete one occupancy zone by its stable name."""
+        return self.delete(f"/zoning/zones/{quote(zone_name, safe='')}")
+
+    def list_workstations(self) -> Any:
+        """Return the AI employee-activity workstation states."""
+        return self.get("/employee_activity/workstations")
+
+    def create_workstation(self, payload: Mapping[str, Any]) -> Any:
+        """Bind one AI workstation name to an existing zoning zone."""
+        return self.post("/employee_activity/workstations", payload=dict(payload))
+
+    def delete_workstation(self, name: str) -> Any:
+        """Delete one AI employee-activity workstation."""
+        return self.delete(f"/employee_activity/workstations/{quote(name, safe='')}")
+
     def websocket_url(self, path: str) -> str:
         """Build the AI WebSocket URL from the configured HTTP base URL."""
         if self.base_url.startswith("https://"):

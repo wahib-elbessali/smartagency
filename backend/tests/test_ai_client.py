@@ -33,6 +33,16 @@ def test_ai_client_camera_operations_and_url_encoding() -> None:
     client.delete_camera("camera/entrance")
     client.update_camera_features("camera-entrance", ["people"])
     client.update_camera_quality("camera-entrance", 0.5)
+    client.get_people_sources()
+    client.set_people_sources({"camera-entrance": "rtsp://camera/stream"})
+    client.delete_people_source("camera/entrance")
+    client.get_people_status()
+    client.list_zones()
+    client.create_zone({"name": "hall", "camera": "camera-entrance"})
+    client.delete_zone("hall principal")
+    client.list_workstations()
+    client.create_workstation({"name": "guichet-1", "zone": "zone-guichet-1"})
+    client.delete_workstation("guichet 1")
 
     assert calls[3] == (
         "POST",
@@ -47,6 +57,28 @@ def test_ai_client_camera_operations_and_url_encoding() -> None:
     assert calls[4][0:2] == ("DELETE", "/cameras/camera%2Fentrance")
     assert calls[5][0:2] == ("PUT", "/cameras/camera-entrance/features")
     assert calls[6][0:2] == ("PUT", "/cameras/camera-entrance/quality")
+    assert calls[7][0:2] == ("GET", "/people/sources")
+    assert calls[8] == (
+        "POST",
+        "/people/sources",
+        {"sources": {"camera-entrance": "rtsp://camera/stream"}},
+    )
+    assert calls[9][0:2] == ("DELETE", "/people/sources/camera%2Fentrance")
+    assert calls[10][0:2] == ("GET", "/people/status")
+    assert calls[11][0:2] == ("GET", "/zoning/zones")
+    assert calls[12] == (
+        "POST",
+        "/zoning/zones",
+        {"name": "hall", "camera": "camera-entrance"},
+    )
+    assert calls[13][0:2] == ("DELETE", "/zoning/zones/hall%20principal")
+    assert calls[14][0:2] == ("GET", "/employee_activity/workstations")
+    assert calls[15] == (
+        "POST",
+        "/employee_activity/workstations",
+        {"name": "guichet-1", "zone": "zone-guichet-1"},
+    )
+    assert calls[16][0:2] == ("DELETE", "/employee_activity/workstations/guichet%201")
 
 
 @pytest.mark.parametrize(

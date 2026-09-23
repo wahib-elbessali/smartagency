@@ -17,6 +17,9 @@ from app.api.internal import router as internal_router
 from app.api.ticket_templates import router as ticket_templates_router
 from app.api.thresholds import router as thresholds_router
 from app.api.ai_calibration import router as ai_calibration_router
+from app.api.ai_people import router as ai_people_router
+from app.api.ai_zoning import router as ai_zoning_router
+from app.api.employee_activity import router as employee_activity_router
 from app.mqtt.attendance_consumer import attendance_consumer
 from app.mqtt.sensor_consumer import sensor_consumer
 from app.ai_alerts.consumer import weapon_alert_consumer
@@ -54,6 +57,9 @@ app.include_router(internal_router)
 app.include_router(ticket_templates_router, prefix="/api")
 app.include_router(thresholds_router, prefix="/api")
 app.include_router(ai_calibration_router, prefix="/api")
+app.include_router(ai_people_router, prefix="/api")
+app.include_router(ai_zoning_router, prefix="/api")
+app.include_router(employee_activity_router)
 app.include_router(attendance_websocket_router)
 app.include_router(ai_websocket_router)
 

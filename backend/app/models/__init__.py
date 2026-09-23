@@ -16,6 +16,7 @@ from app.models.entities import (
     Ticket,
     User,
     Visitor,
+    Workstation,
     Zone,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "Ticket",
     "User",
     "Visitor",
+    "Workstation",
     "Zone",
 ]

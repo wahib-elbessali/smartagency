@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Mapping
 
 from sqlalchemy import select
 
@@ -70,9 +71,11 @@ class AICameraSyncService:
         """
         if previous_name and previous_name != camera.name:
             self._delete_from_ai(previous_name)
+            self._delete_people_source_from_ai(previous_name)
 
         if not camera.stream_url:
             self._delete_from_ai(camera.name)
+            self._delete_people_source_from_ai(camera.name)
             camera.status = DeviceStatus.OFFLINE
             self.request_sync()
             return False
@@ -101,13 +104,15 @@ class AICameraSyncService:
             return False
 
         camera.status = DeviceStatus.ONLINE
+        self._sync_people_sources({camera.name: camera.stream_url})
         return True
 
     def delete_camera(self, camera_name: str) -> bool:
         """Supprime une camera du registre AI sans bloquer la suppression SQL."""
         deleted = self._delete_from_ai(camera_name)
+        people_deleted = self._delete_people_source_from_ai(camera_name)
         self.request_sync()
-        return deleted
+        return deleted and people_deleted
 
     def sync_all(self) -> bool:
         """Reconcile toutes les cameras backend avec le registre AI.
@@ -142,6 +147,14 @@ class AICameraSyncService:
                 if not self._delete_from_ai(stale_id):
                     all_ok = False
 
+            desired_people_sources = {
+                camera.name: camera.stream_url
+                for camera in cameras
+                if camera.stream_url
+            }
+            if not self.sync_people_sources(desired_people_sources, reconcile=True):
+                all_ok = False
+
             db.commit()
             return all_ok
         except Exception:
@@ -172,6 +185,73 @@ class AICameraSyncService:
             logger.exception("Erreur inattendue lors de la suppression AI de %s", camera_name)
             return False
 
+    def _delete_people_source_from_ai(self, camera_name: str) -> bool:
+        try:
+            self.client.delete_people_source(camera_name)
+            return True
+        except AIClientError as exc:
+            logger.warning(
+                "Source people %s non supprimee du registre AI: %s",
+                camera_name,
+                exc.detail,
+            )
+            return False
+        except Exception:
+            logger.exception(
+                "Erreur inattendue lors de la suppression people de %s",
+                camera_name,
+            )
+            return False
+
+    def _sync_people_sources(self, sources: Mapping[str, str]) -> bool:
+        """Add or update sources without removing other backend cameras.
+
+        The AI compatibility endpoint merges source registrations. This path
+        is used after one camera is created or edited, so deleting every other
+        source here would make the person tracker lose its second camera.
+        """
+        try:
+            self.client.get_people_sources()
+            self.client.set_people_sources(sources)
+            return True
+        except AIClientError as exc:
+            logger.warning("Sources people non synchronisees avec AI: %s", exc.detail)
+            self.request_sync()
+            return False
+        except Exception:
+            logger.exception("Erreur inattendue de synchronisation des sources people")
+            self.request_sync()
+            return False
+
+    def sync_people_sources(
+        self,
+        sources: Mapping[str, str],
+        *,
+        reconcile: bool = False,
+    ) -> bool:
+        """Synchronise les sources people et, au besoin, supprime les orphelines.
+
+        The periodic full reconciliation treats PostgreSQL as the source of
+        truth. It first reads AI sources, removes names no longer present in
+        PostgreSQL, then posts the complete desired mapping.
+        """
+        try:
+            current = self.client.get_people_sources()
+            if reconcile:
+                current_names = self._extract_people_source_names(current)
+                desired_names = set(sources)
+                for stale_name in current_names - desired_names:
+                    if not self._delete_people_source_from_ai(stale_name):
+                        return False
+            self.client.set_people_sources(sources)
+            return True
+        except AIClientError as exc:
+            logger.warning("Reconciliation des sources people impossible: %s", exc.detail)
+            return False
+        except Exception:
+            logger.exception("Erreur inattendue de reconciliation des sources people")
+            return False
+
     @staticmethod
     def _extract_ai_camera_ids(payload: object) -> set[str]:
         if not isinstance(payload, dict) or not isinstance(payload.get("cameras"), dict):
@@ -181,6 +261,16 @@ class AICameraSyncService:
                 path="/cameras",
             )
         return {str(camera_id) for camera_id in payload["cameras"]}
+
+    @staticmethod
+    def _extract_people_source_names(payload: object) -> set[str]:
+        if not isinstance(payload, dict) or not isinstance(payload.get("sources_known"), list):
+            raise AIClientError(
+                "Le service AI a retourne des sources people invalides",
+                status_code=502,
+                path="/people/sources",
+            )
+        return {str(name) for name in payload["sources_known"]}
 
 
 ai_camera_sync = AICameraSyncService()
