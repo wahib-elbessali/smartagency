@@ -3,11 +3,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.ai_alerts.consumer import weapon_alert_consumer
 from app.core.security import get_current_user, require_roles
 from app.database.connection import get_db
 from app.models.entities import Agency, Camera, RoleName, User
 from app.schemas.camera import CameraCreate, CameraResponse, CameraUpdate
+from app.ai_alerts.consumer import weapon_alert_consumer
+from app.services.ai_camera_sync import ai_camera_sync
 
 
 router = APIRouter(tags=["Cameras"])
@@ -91,6 +92,9 @@ def create_camera(
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="Le nom de la camera est deja utilise") from exc
+    ai_camera_sync.sync_camera(camera)
+    db.commit()
+    db.refresh(camera)
     weapon_alert_consumer.request_sync()
     return camera
 
@@ -108,6 +112,7 @@ def update_camera(
 ) -> CameraResponse:
     camera = get_camera_or_404(camera_id, db)
     ensure_agency_scope(camera.agency_id, current_user)
+    previous_name = camera.name
     changes = payload.model_dump(exclude_unset=True)
     if "name" in changes:
         changes["name"] = changes["name"].strip()
@@ -127,6 +132,9 @@ def update_camera(
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="Le nom de la camera est deja utilise") from exc
+    ai_camera_sync.sync_camera(camera, previous_name=previous_name)
+    db.commit()
+    db.refresh(camera)
     weapon_alert_consumer.request_sync()
     return camera
 
@@ -143,8 +151,10 @@ def delete_camera(
 ) -> None:
     camera = get_camera_or_404(camera_id, db)
     ensure_agency_scope(camera.agency_id, current_user)
+    camera_name = camera.name
     for alert in camera.alerts:
         alert.camera_id = None
     db.delete(camera)
     db.commit()
+    ai_camera_sync.delete_camera(camera_name)
     weapon_alert_consumer.request_sync()

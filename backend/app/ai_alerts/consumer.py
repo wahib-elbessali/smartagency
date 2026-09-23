@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 from typing import Any
 
-import httpx
 import websockets
 from sqlalchemy import select
 
@@ -20,6 +19,7 @@ from app.ai_alerts.classifier import (
 )
 from app.core.config import settings
 from app.database.connection import SessionLocal
+from app.integrations.ai_client import ai_client
 from app.models.entities import (
     AIAlertThreshold,
     Alert,
@@ -138,35 +138,19 @@ class WeaponAlertConsumer:
             db.close()
 
     @property
-    def _ai_http_base_url(self) -> str:
-        return settings.ai_service_url.rstrip("/")
-
-    @property
     def _ai_websocket_url(self) -> str:
-        base = self._ai_http_base_url
-        if base.startswith("https://"):
-            base = "wss://" + base[len("https://") :]
-        elif base.startswith("http://"):
-            base = "ws://" + base[len("http://") :]
-        return f"{base}/weapon/alerts/stream"
+        return ai_client.websocket_url("/weapon/alerts/stream")
 
     def _sync_sources(self, sources: dict[str, str], force: bool = False) -> None:
         if not force and sources == self._last_sources:
             return
 
-        with httpx.Client(timeout=5.0) as client:
-            response = client.post(
-                f"{self._ai_http_base_url}/weapon/sources",
-                json={"sources": sources},
-            )
-            response.raise_for_status()
+        ai_client.post("/weapon/sources", payload={"sources": sources})
 
-            # The AI endpoint accumulates sources. Remove only sources that
-            # this backend previously registered, never unknown AI sources.
-            for removed_name in set(self._last_sources) - set(sources):
-                client.delete(
-                    f"{self._ai_http_base_url}/weapon/sources/{quote(removed_name, safe='')}"
-                )
+        # The AI endpoint accumulates sources. Remove only sources that this
+        # backend previously registered, never unknown AI sources.
+        for removed_name in set(self._last_sources) - set(sources):
+            ai_client.delete(f"/weapon/sources/{quote(removed_name, safe='')}")
 
         self._last_sources = dict(sources)
         logger.info("Sources camera synchronisees avec le service IA: %s", sorted(sources))

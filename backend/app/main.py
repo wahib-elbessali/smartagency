@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.api.auth import router as auth_router
 from app.api.agencies import router as agencies_router
@@ -15,9 +16,12 @@ from app.api.assignments import router as assignments_router
 from app.api.internal import router as internal_router
 from app.api.ticket_templates import router as ticket_templates_router
 from app.api.thresholds import router as thresholds_router
+from app.api.ai_calibration import router as ai_calibration_router
 from app.mqtt.attendance_consumer import attendance_consumer
 from app.mqtt.sensor_consumer import sensor_consumer
 from app.ai_alerts.consumer import weapon_alert_consumer
+from app.integrations.ai_client import AIClientError
+from app.services.ai_camera_sync import ai_camera_sync
 from app.websocket.attendance import router as attendance_websocket_router
 from app.websocket.ai_proxy import router as ai_websocket_router
 
@@ -27,6 +31,12 @@ app = FastAPI(
     version="0.1.0",
     description="API backend pour la gestion des agences, des visiteurs et des appareils IoT.",
 )
+
+
+@app.exception_handler(AIClientError)
+async def handle_ai_client_error(_request: Request, exc: AIClientError) -> JSONResponse:
+    """Expose AI failures as controlled JSON responses to backend clients."""
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(agencies_router, prefix="/api")
@@ -43,6 +53,7 @@ app.include_router(assignments_router, prefix="/api")
 app.include_router(internal_router)
 app.include_router(ticket_templates_router, prefix="/api")
 app.include_router(thresholds_router, prefix="/api")
+app.include_router(ai_calibration_router, prefix="/api")
 app.include_router(attendance_websocket_router)
 app.include_router(ai_websocket_router)
 
@@ -51,6 +62,7 @@ app.include_router(ai_websocket_router)
 def start_mqtt_consumer() -> None:
     attendance_consumer.start()
     sensor_consumer.start()
+    ai_camera_sync.start()
     weapon_alert_consumer.start()
 
 
@@ -59,6 +71,7 @@ def stop_mqtt_consumer() -> None:
     attendance_consumer.stop()
     sensor_consumer.stop()
     weapon_alert_consumer.stop()
+    ai_camera_sync.stop()
 
 
 @app.get("/health", tags=["System"])
