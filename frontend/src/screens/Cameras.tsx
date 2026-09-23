@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera as CameraIcon, Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react'
+import { Link } from 'react-router'
+import { Camera as CameraIcon, Eye, Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchWeaponThreshold, setWeaponThreshold } from '@/api/endpoints/aiAlerts'
 import { createCamera, deleteCamera, fetchCameras, updateCamera } from '@/api/endpoints/cameras'
@@ -176,6 +177,17 @@ export default function Cameras() {
               <PanelHeader
                 action={
                   <div className="flex gap-1.5">
+                    {/* The live picture lives one level down (CameraView.tsx)
+                        rather than on this card: a grid of six polling images
+                        is a lot of requests for a screen whose job is the
+                        list, and a guard watching one camera wants it big. */}
+                    <Link
+                      to={`/cameras/${camera.id}`}
+                      aria-label={`View ${camera.name}`}
+                      className="text-ink-2 hover:surface-glass-2 hover:text-ink ease-soft inline-flex size-8 items-center justify-center rounded-lg transition-colors duration-150"
+                    >
+                      <Eye className="size-3.5" aria-hidden />
+                    </Link>
                     <Button
                       size="sm"
                       variant="ghost"

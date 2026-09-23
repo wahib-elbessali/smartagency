@@ -73,6 +73,22 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/users': ['ADMIN'],
   '/visitors': ['ADMIN', 'MANAGER', 'AGENT'],
   '/occupancy': ['ADMIN', 'MANAGER'],
+  /* PROPOSED routes, not transcribed from backend source: the zone-drawing
+     screen writes to the AI service's /zoning through proxies that do not
+     exist yet (api/endpoints/zones.ts, BACKEND-ASKS.md §8). Narrower than
+     /cameras on purpose - a guard registers the cameras they watch, but the
+     floor geometry every count is computed from is administration, not
+     monitoring. Confirm with backend before it ships. */
+  '/zones': ['ADMIN', 'MANAGER'],
+  /* Same rule and the same PROPOSED caveat as /zones - a workstation is a
+     name bound to one of those zones, so it cannot be read by anyone who
+     cannot see the zone behind it. Not AGENT: this reports on whether the
+     counters are manned, which is a thing said ABOUT agents. */
+  '/staffing': ['ADMIN', 'MANAGER'],
+  /* The site's floor geometry - the thing world-mode zones and person
+     tracking are computed against. Same roles and the same PROPOSED caveat
+     as the two above. */
+  '/calibration': ['ADMIN', 'MANAGER'],
   /* Transcribed from CAMERA_ROLES / AI_ALERT_ROLES (cameras.py, ai_alerts.py),
      added 2026-09-12. The one screen a guard can write to: they register the
      cameras they watch and set how sure the detector has to be before an
@@ -93,7 +109,8 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
  * lookup on a path carrying a real id would never match its entry, silently
  * treating it as unguarded (`!allowed` returns true). A nested path inherits
  * its parent's rule instead: /agencies/{id} is exactly as restricted as
- * /agencies, because it reads the same data one level deeper.
+ * /agencies, because it reads the same data one level deeper. /cameras/{id}
+ * (the live view, 2026-09-12) relies on the same fallback.
  */
 export function canReach(role: Role | null | undefined, path: string): boolean {
   const base = `/${path.split('/')[1] ?? ''}`

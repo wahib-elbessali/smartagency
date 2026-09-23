@@ -67,6 +67,28 @@ describe('canReach', () => {
     expect(canReach('TECHNICIAN', '/cameras')).toBe(false)
   })
 
+  /* Zone drawing is narrower than the cameras screen it hangs off: a guard
+     registers the cameras they watch, but the floor geometry every count is
+     computed from is administration. PROPOSED, so this pins a product call
+     rather than a transcription - see BACKEND-ASKS.md §8. */
+  it('keeps zone drawing to admins and managers', () => {
+    expect(canReach('ADMIN', '/zones')).toBe(true)
+    expect(canReach('MANAGER', '/zones')).toBe(true)
+    for (const role of ['SECURITY', 'AGENT', 'TECHNICIAN'] as const) {
+      expect(canReach(role, '/zones')).toBe(false)
+    }
+  })
+
+  /* Counter staffing reads the zones' statuses, so it cannot be wider than
+     the zones themselves. */
+  it('keeps counter staffing to admins and managers', () => {
+    expect(canReach('ADMIN', '/staffing')).toBe(true)
+    expect(canReach('MANAGER', '/staffing')).toBe(true)
+    for (const role of ['SECURITY', 'AGENT', 'TECHNICIAN'] as const) {
+      expect(canReach(role, '/staffing')).toBe(false)
+    }
+  })
+
   it('refuses everything to a session with no role', () => {
     expect(canReach(null, '/users')).toBe(false)
     expect(canReach(undefined, '/presence')).toBe(false)

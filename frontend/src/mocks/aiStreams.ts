@@ -1,6 +1,6 @@
 import { MOCK_SCENARIO } from '@/api/config'
 import type { SocketStream, StreamStatus } from '@/api/socketStream'
-import type { AlertFeature, AlertFrame, OccupancyFrame } from '@/api/types'
+import type { AlertFeature, AlertFrame, OccupancyFrame, WorkstationFrame } from '@/api/types'
 
 /**
  * Fake alerts and occupancy sockets for mock mode.
@@ -161,6 +161,63 @@ function occupancyScript(): OccupancyFrame[] {
   ]
 }
 
+/**
+ * Workstation statuses, on the same only-on-change rule as the other two.
+ *
+ * The script is built around the two readings that are easy to get wrong:
+ *
+ * - `coffre` never leaves `unknown`, with `zone_known: false`. Its zone is on
+ *   the Rabat camera, which is OFFLINE and has never produced a frame, so
+ *   nothing has ever been measured there. A screen that renders that as "away"
+ *   is reporting an empty counter when what it has is a broken camera.
+ * - `accueil` is already empty on connect, and stays that way: the reception
+ *   desk nobody is at. It matches workstationStore's seed so the list and the
+ *   feed agree from the first frame instead of flipping under the reader.
+ * - `guichet-3` goes away and comes back. `away` only arrives after the
+ *   service's full absence window (300s by default), so it is a slow, real
+ *   signal - not a flicker, and not something to show as instant.
+ *
+ * `since` is epoch SECONDS, as the contract has it, computed from now so the
+ * durations on screen read as minutes rather than as 1970.
+ */
+function workstationScript(): WorkstationFrame[] {
+  const now = Date.now() / 1000
+
+  return [
+    {
+      type: 'snapshot',
+      workstations: [
+        { name: 'accueil', zone: 'lobby', status: 'away', since: now - 720, zone_known: true },
+        {
+          name: 'guichet-3',
+          zone: 'counters',
+          status: 'present',
+          since: now - 2_400,
+          zone_known: true,
+        },
+        /* Bound to a zone nothing has ever read. */
+        { name: 'coffre', zone: 'vault', status: 'unknown', since: now - 7_200, zone_known: false },
+      ],
+    },
+    {
+      type: 'update',
+      name: 'guichet-3',
+      zone: 'counters',
+      status: 'away',
+      since: now - 5,
+      zone_known: true,
+    },
+    {
+      type: 'update',
+      name: 'guichet-3',
+      zone: 'counters',
+      status: 'present',
+      since: now,
+      zone_known: true,
+    },
+  ]
+}
+
 function createScriptedStream<T>(frames: T[]): SocketStream<T> {
   const eventListeners = new Set<(event: T) => void>()
   const statusListeners = new Set<(status: StreamStatus) => void>()
@@ -223,4 +280,8 @@ export function createMockAlertStream(feature: AlertFeature): SocketStream<Alert
 
 export function createMockOccupancyStream(): SocketStream<OccupancyFrame> {
   return createScriptedStream(occupancyScript())
+}
+
+export function createMockWorkstationStream(): SocketStream<WorkstationFrame> {
+  return createScriptedStream(workstationScript())
 }

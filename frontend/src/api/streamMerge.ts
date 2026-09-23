@@ -1,4 +1,11 @@
-import type { AlertDetection, AlertFrame, OccupancyFrame, ZoneOccupancy } from './types'
+import type {
+  AlertDetection,
+  AlertFrame,
+  OccupancyFrame,
+  Workstation,
+  WorkstationFrame,
+  ZoneOccupancy,
+} from './types'
 
 /**
  * Folding snapshot + update frames into current state.
@@ -47,6 +54,42 @@ export function applyOccupancyFrame(current: ZonesByName, frame: OccupancyFrame)
     return { ...frame.zones }
   }
   return { ...current, [frame.zone]: { count: frame.count, points: frame.points } }
+}
+
+export type WorkstationsByName = Record<string, Workstation>
+
+/**
+ * Same replace-not-merge rule as the two above, with one difference that
+ * comes from the feed rather than from taste: an update frame IS a
+ * workstation row, not a payload wrapped in one, so the discriminant is
+ * stripped off rather than reached through.
+ *
+ * A snapshot replaces everything, including workstations that have been
+ * deleted since - which is what makes an unbind on another screen show up
+ * here on reconnect rather than leaving a ghost counter on the wall.
+ */
+export function applyWorkstationFrame(
+  current: WorkstationsByName,
+  frame: WorkstationFrame,
+): WorkstationsByName {
+  if (frame.type === 'snapshot') {
+    return Object.fromEntries(frame.workstations.map((station) => [station.name, station]))
+  }
+  const { type: _type, ...station } = frame
+  return { ...current, [station.name]: station }
+}
+
+/**
+ * The counters nobody is at - what this screen exists to surface.
+ *
+ * `unknown` is deliberately NOT counted as unstaffed. It means the zone has
+ * not been classified yet, and padding the number that a manager acts on
+ * with "we do not know" is how a screen stops being believed.
+ */
+export function unstaffed(stations: WorkstationsByName): Workstation[] {
+  return Object.values(stations)
+    .filter((station) => station.status === 'away')
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** Cameras with at least one detection, which is what a screen leads with. */

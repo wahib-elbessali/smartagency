@@ -42,6 +42,7 @@ function renderShell(role: Role, initialPath = '/presence') {
                   <Route path="visitors" element={<p>visitors screen</p>} />
                   <Route path="alerts" element={<p>alerts screen</p>} />
                   <Route path="cameras" element={<p>cameras screen</p>} />
+                  <Route path="cameras/:id" element={<p>camera view</p>} />
                   <Route path="controls" element={<p>controls screen</p>} />
                   {/* TECHNICIAN's landing page (auth/landing.ts) - required so the
                       default-path redirect below has somewhere to land. */}
@@ -116,6 +117,13 @@ describe('AppShell URL guard', () => {
     renderShell('AGENT', '/employees')
 
     expect(screen.queryByText('employees screen')).not.toBeInTheDocument()
+    expect(screen.getByText('visitors screen')).toBeInTheDocument()
+  })
+
+  /* The nested path has no entry of its own and inherits /cameras - the
+     fallback in access.ts, which this is the test that it still works. */
+  it('guards the live view under cameras the same as the list', () => {
+    renderShell('AGENT', '/cameras/some-id')
     expect(screen.getByText('visitors screen')).toBeInTheDocument()
   })
 
