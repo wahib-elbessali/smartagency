@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     ai_service_url: str = "http://127.0.0.1:8001"
     ai_alerts_enabled: bool = True
+    ai_request_timeout_seconds: float = Field(default=5.0, gt=0)
     ai_reconnect_delay_seconds: float = 5.0
     ai_source_sync_interval_seconds: float = 15.0
     mq2_raw_to_ppm_enabled: bool = False
