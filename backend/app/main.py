@@ -20,9 +20,12 @@ from app.api.ai_calibration import router as ai_calibration_router
 from app.api.ai_people import router as ai_people_router
 from app.api.ai_zoning import router as ai_zoning_router
 from app.api.employee_activity import router as employee_activity_router
+from app.api.face_recognition import ai_router as ai_face_router
+from app.api.face_recognition import employee_router as employee_face_router
+from app.api.wanted import router as wanted_router
 from app.mqtt.attendance_consumer import attendance_consumer
 from app.mqtt.sensor_consumer import sensor_consumer
-from app.ai_alerts.consumer import weapon_alert_consumer
+from app.ai_alerts.consumer import ai_alert_consumers
 from app.integrations.ai_client import AIClientError
 from app.services.ai_camera_sync import ai_camera_sync
 from app.websocket.attendance import router as attendance_websocket_router
@@ -43,6 +46,7 @@ async def handle_ai_client_error(_request: Request, exc: AIClientError) -> JSONR
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(agencies_router, prefix="/api")
+app.include_router(employee_face_router, prefix="/api")
 app.include_router(employees_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(attendance_router, prefix="/api")
@@ -60,6 +64,8 @@ app.include_router(ai_calibration_router, prefix="/api")
 app.include_router(ai_people_router, prefix="/api")
 app.include_router(ai_zoning_router, prefix="/api")
 app.include_router(employee_activity_router)
+app.include_router(ai_face_router, prefix="/api")
+app.include_router(wanted_router, prefix="/api")
 app.include_router(attendance_websocket_router)
 app.include_router(ai_websocket_router)
 
@@ -69,14 +75,14 @@ def start_mqtt_consumer() -> None:
     attendance_consumer.start()
     sensor_consumer.start()
     ai_camera_sync.start()
-    weapon_alert_consumer.start()
+    ai_alert_consumers.start()
 
 
 @app.on_event("shutdown")
 def stop_mqtt_consumer() -> None:
     attendance_consumer.stop()
     sensor_consumer.stop()
-    weapon_alert_consumer.stop()
+    ai_alert_consumers.stop()
     ai_camera_sync.stop()
 
 

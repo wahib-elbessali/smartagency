@@ -136,3 +136,33 @@ def test_ai_client_returns_binary_content_and_media_type() -> None:
 
     assert content == b"frame-bytes"
     assert media_type == "image/jpeg"
+
+
+def test_ai_client_face_operations_use_expected_upstream_shapes() -> None:
+    calls: list[tuple[str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path, request.headers.get("content-type", "")))
+        return httpx.Response(200, json={"name": "employee-id", "embeddings_count": 1})
+
+    client = AIClient("http://ai.test", transport=httpx.MockTransport(handler))
+
+    client.enroll_face(
+        "employee-id",
+        filename="face.jpg",
+        content=b"jpeg-bytes",
+        content_type="image/jpeg",
+    )
+    client.list_faces()
+    client.delete_face("employee-id")
+    client.scan_face(source="rtsp://camera", timeout_seconds=15)
+    client.capture_face(source="rtsp://camera", timeout_seconds=15)
+
+    assert calls[0][0:2] == ("POST", "/face/enroll")
+    assert calls[0][2].startswith("multipart/form-data;")
+    assert [call[0:2] for call in calls[1:]] == [
+        ("GET", "/face/faces"),
+        ("DELETE", "/face/faces/employee-id"),
+        ("POST", "/face/scan"),
+        ("POST", "/face/capture"),
+    ]

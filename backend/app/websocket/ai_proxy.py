@@ -7,15 +7,18 @@ streams from being exposed directly to the frontend.
 """
 
 import asyncio
+import json
 import logging
 from urllib.parse import parse_qsl, urlencode
 
 import websockets
 from fastapi import APIRouter, WebSocket
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.security import decode_token
-from app.models.entities import RoleName
+from app.database.connection import SessionLocal
+from app.models.entities import Camera, RoleName, User
 
 
 logger = logging.getLogger(__name__)
@@ -82,12 +85,84 @@ async def _close(websocket: WebSocket, code: int) -> None:
         pass
 
 
-async def _proxy(websocket: WebSocket, upstream_path: str, allowed_roles: frozenset[str]) -> None:
+def _wanted_camera_scope(websocket: WebSocket) -> tuple[bool, set[str] | None]:
+    """Return (valid, camera names) for a wanted stream.
+
+    ``None`` means an ADMIN may see every camera. Other authorized users get
+    only camera names belonging to their agency. The raw AI service is global,
+    so filtering must happen at this backend boundary before a frame reaches
+    the browser.
+    """
+    token = websocket.query_params.get("token")
+    if not token:
+        return False, set()
+    try:
+        payload = decode_token(token)
+    except Exception:
+        return False, set()
+
+    db = SessionLocal()
+    try:
+        user = db.scalar(
+            select(User).where(
+                User.id == payload.get("sub"),
+                User.is_active.is_(True),
+            )
+        )
+        if user is None or user.role.name not in ALERT_ROLES:
+            return False, set()
+        if user.role.name == RoleName.ADMIN:
+            return True, None
+        if user.agency_id is None:
+            return True, set()
+        return True, set(
+            db.scalars(select(Camera.name).where(Camera.agency_id == user.agency_id)).all()
+        )
+    finally:
+        db.close()
+
+
+def _filter_wanted_frame(raw_message: str, camera_scope: set[str] | None) -> str | None:
+    """Remove cameras outside the user's agency from a wanted frame."""
+    if camera_scope is None:
+        return raw_message
+    try:
+        frame = json.loads(raw_message)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(frame, dict):
+        return None
+    if frame.get("type") == "snapshot" and isinstance(frame.get("cameras"), dict):
+        frame["cameras"] = {
+            name: detections
+            for name, detections in frame["cameras"].items()
+            if name in camera_scope
+        }
+        return json.dumps(frame)
+    if frame.get("type") == "update" and frame.get("camera") not in camera_scope:
+        return None
+    return json.dumps(frame)
+
+
+async def _proxy(
+    websocket: WebSocket,
+    upstream_path: str,
+    allowed_roles: frozenset[str],
+    *,
+    agency_scope: bool = False,
+) -> None:
     """Relay one AI stream until either side disconnects."""
     await websocket.accept()
     if not _is_authorized(websocket, allowed_roles):
         await _close(websocket, 1008)
         return
+
+    camera_scope: set[str] | None = None
+    if agency_scope:
+        valid_scope, camera_scope = _wanted_camera_scope(websocket)
+        if not valid_scope:
+            await _close(websocket, 1008)
+            return
 
     upstream_url = _upstream_url(websocket, upstream_path)
     upstream_finished = False
@@ -102,8 +177,21 @@ async def _proxy(websocket: WebSocket, upstream_path: str, allowed_roles: frozen
             async def relay_upstream() -> None:
                 async for message in upstream:
                     if isinstance(message, bytes):
-                        await websocket.send_bytes(message)
+                        if not agency_scope:
+                            await websocket.send_bytes(message)
+                            continue
+                        try:
+                            message = message.decode("utf-8")
+                        except UnicodeDecodeError:
+                            continue
+                        message = _filter_wanted_frame(message, camera_scope)
+                        if message is not None:
+                            await websocket.send_text(message)
                     else:
+                        if agency_scope:
+                            message = _filter_wanted_frame(message, camera_scope)
+                            if message is None:
+                                continue
                         await websocket.send_text(message)
 
             async def drain_client() -> None:
@@ -157,7 +245,12 @@ async def emotion_alerts_websocket(websocket: WebSocket) -> None:
 
 @router.websocket("/ws/alerts/wanted")
 async def wanted_alerts_websocket(websocket: WebSocket) -> None:
-    await _proxy(websocket, "/wanted/alerts/stream", ALERT_ROLES)
+    await _proxy(
+        websocket,
+        "/wanted/alerts/stream",
+        ALERT_ROLES,
+        agency_scope=True,
+    )
 
 
 @router.websocket("/ws/occupancy")

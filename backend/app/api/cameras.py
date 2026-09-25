@@ -7,7 +7,7 @@ from app.core.security import get_current_user, require_roles
 from app.database.connection import get_db
 from app.models.entities import Agency, Camera, RoleName, User
 from app.schemas.camera import CameraCreate, CameraResponse, CameraUpdate
-from app.ai_alerts.consumer import weapon_alert_consumer
+from app.ai_alerts.consumer import ai_alert_consumers
 from app.services.ai_camera_sync import ai_camera_sync
 
 
@@ -95,7 +95,7 @@ def create_camera(
     ai_camera_sync.sync_camera(camera)
     db.commit()
     db.refresh(camera)
-    weapon_alert_consumer.request_sync()
+    ai_alert_consumers.request_sync()
     return camera
 
 
@@ -135,7 +135,7 @@ def update_camera(
     ai_camera_sync.sync_camera(camera, previous_name=previous_name)
     db.commit()
     db.refresh(camera)
-    weapon_alert_consumer.request_sync()
+    ai_alert_consumers.request_sync()
     return camera
 
 
@@ -157,4 +157,4 @@ def delete_camera(
     db.delete(camera)
     db.commit()
     ai_camera_sync.delete_camera(camera_name)
-    weapon_alert_consumer.request_sync()
+    ai_alert_consumers.request_sync()

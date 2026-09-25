@@ -92,12 +92,25 @@ class AIClient:
         *,
         params: Mapping[str, Any] | None = None,
         payload: Any = None,
+        data: Mapping[str, Any] | None = None,
+        files: Mapping[str, Any] | None = None,
+        request_timeout: float | httpx.Timeout | None = None,
     ) -> httpx.Response:
         """Send one request and apply the common AI error policy."""
         url = self._url(path)
         try:
-            with httpx.Client(timeout=self.timeout, transport=self.transport) as client:
-                response = client.request(method, url, params=params, json=payload)
+            with httpx.Client(
+                timeout=request_timeout if request_timeout is not None else self.timeout,
+                transport=self.transport,
+            ) as client:
+                response = client.request(
+                    method,
+                    url,
+                    params=params,
+                    json=payload,
+                    data=data,
+                    files=files,
+                )
         except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError) as exc:
             logger.warning("Service AI indisponible pour %s %s: %s", method, path, exc)
             error = AIServiceUnavailable()
@@ -142,6 +155,7 @@ class AIClient:
         *,
         params: Mapping[str, Any] | None = None,
         payload: Any = None,
+        request_timeout: float | httpx.Timeout | None = None,
     ) -> Any:
         """Send one JSON request and return its decoded JSON body.
 
@@ -149,7 +163,13 @@ class AIClient:
         route. An upstream 5xx becomes 502, while timeout and connection
         failures become 503 Service Unavailable.
         """
-        response = self._send(method, path, params=params, payload=payload)
+        response = self._send(
+            method,
+            path,
+            params=params,
+            payload=payload,
+            request_timeout=request_timeout,
+        )
 
         try:
             return response.json()
@@ -175,11 +195,53 @@ class AIClient:
             "content-type", "application/octet-stream"
         )
 
+    def request_multipart_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        data: Mapping[str, Any],
+        files: Mapping[str, Any],
+        request_timeout: float | httpx.Timeout | None = None,
+    ) -> Any:
+        """Send multipart form data and decode the JSON response."""
+        response = self._send(
+            method,
+            path,
+            data=data,
+            files=files,
+            request_timeout=request_timeout,
+        )
+        try:
+            return response.json()
+        except ValueError as exc:
+            logger.error("Reponse JSON invalide du service AI pour %s %s", method, path)
+            raise AIClientError(
+                "Le service AI a retourne une reponse invalide",
+                status_code=502,
+                upstream_status=response.status_code,
+                path=path,
+            ) from exc
+
     def get(self, path: str, *, params: Mapping[str, Any] | None = None) -> Any:
         return self.request_json("GET", path, params=params)
 
     def post(self, path: str, *, payload: Any = None) -> Any:
         return self.request_json("POST", path, payload=payload)
+
+    def post_with_timeout(
+        self,
+        path: str,
+        *,
+        payload: Any = None,
+        request_timeout: float | httpx.Timeout,
+    ) -> Any:
+        return self.request_json(
+            "POST",
+            path,
+            payload=payload,
+            request_timeout=request_timeout,
+        )
 
     def put(self, path: str, *, payload: Any = None) -> Any:
         return self.request_json("PUT", path, payload=payload)
@@ -264,6 +326,74 @@ class AIClient:
     def delete_workstation(self, name: str) -> Any:
         """Delete one AI employee-activity workstation."""
         return self.delete(f"/employee_activity/workstations/{quote(name, safe='')}")
+
+    def enroll_face(
+        self,
+        stable_name: str,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str,
+    ) -> Any:
+        """Enroll one employee photo without persisting the image in backend."""
+        return self.request_multipart_json(
+            "POST",
+            "/face/enroll",
+            data={"name": stable_name},
+            files={"image": (filename, content, content_type)},
+            request_timeout=30,
+        )
+
+    def list_faces(self) -> Any:
+        """Return the AI face gallery; callers must strip embeddings before exposure."""
+        return self.get("/face/faces")
+
+    def delete_face(self, stable_name: str) -> Any:
+        return self.delete(f"/face/faces/{quote(stable_name, safe='')}")
+
+    def scan_face(self, *, source: str, timeout_seconds: float) -> Any:
+        return self.post_with_timeout(
+            "/face/scan",
+            payload={"source": source, "timeout_seconds": timeout_seconds},
+            request_timeout=timeout_seconds + 25,
+        )
+
+    def capture_face(self, *, source: str, timeout_seconds: float) -> Any:
+        return self.post_with_timeout(
+            "/face/capture",
+            payload={"source": source, "timeout_seconds": timeout_seconds},
+            request_timeout=timeout_seconds + 25,
+        )
+
+    def add_wanted_watchlist_entry(
+        self,
+        name: str,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str,
+    ) -> Any:
+        """Add one image to the AI wanted gallery without storing it locally."""
+        return self.request_multipart_json(
+            "POST",
+            "/wanted/watchlist",
+            data={"name": name},
+            files={"image": (filename, content, content_type)},
+            request_timeout=30,
+        )
+
+    def list_wanted_watchlist(self) -> Any:
+        """List wanted names and counts; embeddings are never requested."""
+        return self.get("/wanted/watchlist", params={"include_embeddings": "false"})
+
+    def delete_wanted_watchlist_entry(self, name: str) -> Any:
+        return self.delete(f"/wanted/watchlist/{quote(name, safe='')}")
+
+    def get_wanted_threshold(self) -> Any:
+        return self.get("/wanted/threshold")
+
+    def update_wanted_threshold(self, payload: Mapping[str, Any]) -> Any:
+        return self.put("/wanted/threshold", payload=dict(payload))
 
     def websocket_url(self, path: str) -> str:
         """Build the AI WebSocket URL from the configured HTTP base URL."""

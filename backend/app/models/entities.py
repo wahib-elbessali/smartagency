@@ -106,6 +106,10 @@ class Agency(Base):
     zones: Mapped[list["Zone"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
     counters: Mapped[list["Counter"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
     services: Mapped[list["Service"]] = relationship(back_populates="agency", cascade="all, delete-orphan")
+    wanted_people: Mapped[list["WantedPerson"]] = relationship(
+        back_populates="agency",
+        cascade="all, delete-orphan",
+    )
 
 
 class Service(Base):
@@ -358,6 +362,34 @@ class Camera(Base):
 
     agency: Mapped["Agency"] = relationship(back_populates="cameras")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="camera")
+
+
+class WantedPerson(Base):
+    """Backend ownership metadata for one AI watchlist entry.
+
+    The image and face embeddings remain exclusively inside the AI service.
+    This table only records the stable name, agency and a non-sensitive count
+    so that access can be scoped without copying biometric data to PostgreSQL.
+    """
+
+    __tablename__ = "wanted_people"
+    __table_args__ = (UniqueConstraint("name", name="uq_wanted_person_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    agency_id: Mapped[str] = mapped_column(
+        ForeignKey("agencies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    embeddings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    agency: Mapped["Agency"] = relationship(back_populates="wanted_people")
 
 
 class Alert(Base):
