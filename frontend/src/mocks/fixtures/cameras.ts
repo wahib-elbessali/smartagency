@@ -4,6 +4,7 @@ import { ApiError } from '@/api/errors'
 import * as store from '../cameraStore'
 import { requestUser } from '../currentUser'
 import { videoFrame } from '../videoFrames'
+import * as gateway from '../aiGateway'
 
 /**
  * Field names from CameraResponse / AIWeaponThresholdResponse in
@@ -79,7 +80,8 @@ registerMockWriter('PUT /api/ai-alerts/thresholds/weapon', (body) =>
 )
 
 /**
- * PROPOSED - GET /api/cameras/{id}/frame, see api/endpoints/cameras.ts.
+ * GET /api/agencies/{id}/ai/frame?camera=<name> - backend/app/api/ai_calibration.py,
+ * see fetchCameraFrame in api/endpoints/cameras.ts.
  *
  * The real answer is a JPEG the detector is looking at; the fixture cannot
  * have one, so it draws a placard that says which camera it is, at 1920x1080
@@ -119,12 +121,12 @@ function placard(name: string): Blob {
  * back and see how the screens handle a dead stream.
  */
 async function frameFor(path: string): Promise<Blob> {
-  const parts = path.split('?')[0].split('/').filter(Boolean)
-  /* `native=true` may be on the query string (calibration wants the
-     unscaled frame); the id is still the segment before 'frame'. */
-  const id = parts[parts.length - 2] ?? ''
-  const camera = store.getCamera(id)
-  ensureAgencyScope(camera.agency_id)
+  /* The gateway's order: agency scope, then the camera by NAME in that
+     agency with a stream URL, then the AI service's own 404. */
+  const agencyId = gateway.agencyIdFromPath(path)
+  gateway.ensureAgencyScope(agencyId)
+  const name = new URLSearchParams(path.split('?')[1] ?? '').get('camera') ?? ''
+  const camera = gateway.camerasByName(agencyId, [name], true).get(name) as Camera
 
   const fromVideo = await videoFrame(camera.name)
   if (fromVideo) return fromVideo
@@ -135,7 +137,7 @@ async function frameFor(path: string): Promise<Blob> {
   return placard(camera.name)
 }
 
-registerMock<Blob>('GET /api/cameras/{id}/frame', {
+registerMock<Blob>('GET /api/agencies/{id}/ai/frame', {
   normal: frameFor,
   empty: frameFor,
   large: frameFor,

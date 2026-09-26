@@ -11,6 +11,8 @@ import { ScopeProvider } from '@/agency/scope'
 import type { Role } from '@/api/types'
 import { mockUserForRole } from '@/mocks/currentUser'
 import { resetCameraStore } from '@/mocks/cameraStore'
+import { createEmployee, listEmployees, resetEmployeeStore } from '@/mocks/employeeStore'
+import { AGENCY_ID, AGENCY_ID_RABAT } from '@/mocks/fixtures/people'
 import { resetZoneStore } from '@/mocks/zoneStore'
 import * as workstationStore from '@/mocks/workstationStore'
 import '@/mocks'
@@ -58,12 +60,17 @@ describe('Staffing', () => {
 
     expect(await screen.findByRole('heading', { name: 'accueil' }, WAIT)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'guichet-3' })).toBeInTheDocument()
-    /* coffre watches the Rabat zone, which this manager cannot see. */
+    /* coffre is a Rabat row; the list is scoped by the agency in the path. */
     expect(screen.queryByRole('heading', { name: 'coffre' })).not.toBeInTheDocument()
   })
 
   it('shows an admin the one nothing has ever measured, as a camera problem', async () => {
+    const user = userEvent.setup()
     renderAs('ADMIN')
+
+    /* An admin starts on the first branch and picks Rabat, where coffre is. */
+    await screen.findByRole('heading', { name: 'accueil' }, WAIT)
+    await user.selectOptions(await screen.findByLabelText('Branch', {}, WAIT), AGENCY_ID_RABAT)
 
     expect(await screen.findByRole('heading', { name: 'coffre' }, WAIT)).toBeInTheDocument()
     /* Not "away": zone_known is false, so there is no reading to report. */
@@ -105,6 +112,19 @@ describe('Staffing', () => {
     expect(screen.queryByText(/Empty just now/)).not.toBeInTheDocument()
   })
 
+  /* The employee is ours, from REST; the stream carries none. So it is shown
+     from the row and survives whatever the feed says about the status. */
+  it('says whose counter it is', async () => {
+    renderAs('MANAGER')
+    await screen.findByRole('heading', { name: 'guichet-3' }, WAIT)
+
+    const first = listEmployees().find((employee) => employee.agency_id === AGENCY_ID)
+    expect(first).toBeDefined()
+    expect(
+      screen.getByText(`${first?.first_name} ${first?.last_name}`, { exact: false }),
+    ).toBeInTheDocument()
+  })
+
   it('binds a new workstation to an existing zone', async () => {
     const user = userEvent.setup()
     renderAs('MANAGER')
@@ -115,16 +135,26 @@ describe('Staffing', () => {
        offering it. */
     await user.click(await screen.findByRole('button', { name: /add workstation/i }, WAIT))
     const dialog = await screen.findByRole('dialog', {}, WAIT)
+    const zonePicker = within(dialog).getByLabelText(/^zone/i)
+    /* Only this branch's zones are offered. The gateway would accept Rabat's
+       vault - any zone on the site exists as far as it is concerned. */
+    expect(within(zonePicker).queryByRole('option', { name: 'vault' })).not.toBeInTheDocument()
+
     await user.type(within(dialog).getByLabelText(/^name/i), 'guichet-1')
-    await user.selectOptions(within(dialog).getByLabelText(/^zone/i), 'lobby')
+    await user.selectOptions(zonePicker, 'lobby')
+    const first = listEmployees().find((employee) => employee.agency_id === AGENCY_ID)
+    await user.selectOptions(within(dialog).getByLabelText(/^employee/i), first?.id ?? '')
     await user.click(within(dialog).getByRole('button', { name: /add workstation/i }))
 
     expect(await screen.findByRole('heading', { name: 'guichet-1' }, WAIT)).toBeInTheDocument()
     /* Starts unclassified rather than away - nothing has been read yet. */
-    expect(workstationStore.listWorkstations().find((s) => s.name === 'guichet-1')).toMatchObject({
+    expect(
+      workstationStore.listWorkstations(AGENCY_ID).find((s) => s.name === 'guichet-1'),
+    ).toMatchObject({
       status: 'unknown',
       zone_known: false,
       zone: 'lobby',
+      employee_id: first?.id,
     })
   })
 
@@ -141,16 +171,29 @@ describe('Staffing', () => {
     )
   })
 
-  it('refuses a workstation bound to another branch’s zone', async () => {
+  it('refuses a manager writing into another branch', async () => {
     setSession({
       accessToken: 'mock-token',
       refreshToken: 'mock-refresh',
       user: mockUserForRole('MANAGER'),
     })
 
-    await expect(postWorkstation({ name: 'coffre-2', zone: 'vault' })).rejects.toMatchObject({
-      status: 403,
+    await expect(
+      postWorkstation(AGENCY_ID_RABAT, { name: 'coffre-2', zone: 'vault' }),
+    ).rejects.toMatchObject({ status: 403 })
+  })
+
+  /* Names are unique across the site, not per branch. */
+  it('refuses a name another branch already uses', async () => {
+    setSession({
+      accessToken: 'mock-token',
+      refreshToken: 'mock-refresh',
+      user: mockUserForRole('MANAGER'),
     })
+
+    await expect(
+      postWorkstation(AGENCY_ID, { name: 'coffre', zone: 'lobby' }),
+    ).rejects.toMatchObject({ status: 409 })
   })
 })
 
@@ -164,7 +207,23 @@ describe('workstationStore', () => {
      already exist, which is why the form picks rather than types. */
   it('refuses a zone that does not exist', () => {
     expect(() =>
-      workstationStore.createWorkstation({ name: 'guichet-9', zone: 'nowhere' }),
-    ).toThrowError(/n'existe pas/)
+      workstationStore.createWorkstation(AGENCY_ID, { name: 'guichet-9', zone: 'nowhere' }),
+    ).toThrowError(/introuvable/)
+  })
+
+  it('refuses an employee from another branch', () => {
+    const rabat = createEmployee({
+      first_name: 'Samir',
+      last_name: 'Rabat',
+      agency_id: AGENCY_ID_RABAT,
+    })
+    expect(() =>
+      workstationStore.createWorkstation(AGENCY_ID, {
+        name: 'guichet-9',
+        zone: 'lobby',
+        employee_id: rabat.id,
+      }),
+    ).toThrowError(/meme agence/)
+    resetEmployeeStore()
   })
 })

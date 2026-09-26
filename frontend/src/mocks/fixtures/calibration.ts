@@ -1,70 +1,55 @@
 import { registerMock, registerMockWriter } from '../registry'
-import type { CalibrationRectRequest, CameraCalibration, SharedPoint } from '@/api/types'
-import { ApiError } from '@/api/errors'
-import * as cameras from '../cameraStore'
+import type { CalibrationEntry, CalibrationRectRequest, SharedPoint } from '@/api/types'
+import { agencyIdFromPath, camerasByName, ensureAgencyScope } from '../aiGateway'
+import { listCameras } from '../cameraStore'
 import * as store from '../calibrationStore'
-import { requestUser } from '../currentUser'
 
 /**
- * PROPOSED - the /api/calibration routes, see api/endpoints/calibration.ts.
+ * GET /api/agencies/{id}/ai/calibration and POST .../calibration/rect|align -
+ * backend/app/api/ai_calibration.py, reproduced check for check.
  *
- * Scoped through the camera, like zones: the AI service knows nothing about
- * agencies, so the proxy is what keeps one branch's geometry out of
- * another's list. A calibration whose camera has since been deleted is
- * dropped from a non-admin's view rather than shown unattributed.
+ * Unlike zones, the gateway DOES narrow this read: it drops every entry whose
+ * key is not one of the agency's camera names. The writes check each named
+ * camera belongs to the agency - rect also that it has a stream URL - and
+ * then hand the AI service the body untouched. Alignment is still site-wide
+ * underneath: it re-solves every calibrated camera the AI service knows.
  */
 
-function agencyOfCamera(cameraId: string): string | null {
-  try {
-    return cameras.getCamera(cameraId).agency_id
-  } catch {
-    return null
-  }
+function visible(path: string): Record<string, CalibrationEntry> {
+  const agencyId = agencyIdFromPath(path)
+  ensureAgencyScope(agencyId)
+  const names = new Set(listCameras(agencyId).map((camera) => camera.name))
+  return Object.fromEntries(
+    Object.entries(store.listCalibration()).filter(([name]) => names.has(name)),
+  )
 }
 
-function ensureCameraScope(cameraId: string): void {
-  const user = requestUser()
-  const agencyId = agencyOfCamera(cameraId)
-  if (agencyId === null) throw new ApiError('http', 'Camera introuvable', 404)
-  if (!user || user.role === 'ADMIN') return
-  if (user.agency_id !== agencyId) {
-    throw new ApiError('http', 'Acces limite a votre agence', 403)
-  }
-}
-
-function visible(): CameraCalibration[] {
-  const user = requestUser()
-  const all = store.listCalibration()
-  if (!user || user.role === 'ADMIN') return all
-  return all.filter((entry) => agencyOfCamera(entry.camera_id) === user.agency_id)
-}
-
-registerMock<CameraCalibration[]>('GET /api/calibration', {
+registerMock<Record<string, CalibrationEntry>>('GET /api/agencies/{id}/ai/calibration', {
   normal: visible,
-  empty: () => [],
+  empty: (path) => {
+    ensureAgencyScope(agencyIdFromPath(path))
+    return {}
+  },
   large: visible,
 })
 
-registerMockWriter('POST /api/calibration/rect', (body) => {
+registerMockWriter('POST /api/agencies/{id}/ai/calibration/rect', (body, path) => {
+  const agencyId = agencyIdFromPath(path)
+  ensureAgencyScope(agencyId)
   const payload = body as CalibrationRectRequest
-  ensureCameraScope(payload.camera_id)
+  camerasByName(agencyId, [payload.camera], true)
   return store.calibrateRect(payload)
 })
 
-registerMockWriter('POST /api/calibration/align', (body) => {
+registerMockWriter('POST /api/agencies/{id}/ai/calibration/align', (body, path) => {
+  const agencyId = agencyIdFromPath(path)
+  ensureAgencyScope(agencyId)
   const payload = body as { points: SharedPoint[] }
-  /* Every camera named in a shared point has to be one the caller may
-     touch - alignment rewrites the geometry of all of them at once. */
-  for (const point of payload.points ?? []) {
-    for (const cameraId of Object.keys(point)) ensureCameraScope(cameraId)
-  }
+  /* Every camera named in a shared point has to be this agency's -
+     alignment rewrites the geometry of all of them at once. */
+  camerasByName(
+    agencyId,
+    (payload.points ?? []).flatMap((point) => Object.keys(point)),
+  )
   return store.alignCameras(payload.points ?? [])
-})
-
-registerMockWriter('DELETE /api/calibration/{id}', (_body, path) => {
-  const parts = path.split('/').filter(Boolean)
-  const cameraId = parts[parts.length - 1] ?? ''
-  ensureCameraScope(cameraId)
-  store.deleteCalibration(cameraId)
-  return undefined
 })

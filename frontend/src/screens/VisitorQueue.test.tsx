@@ -7,6 +7,7 @@ import VisitorQueue from './VisitorQueue'
 import { SessionProvider } from '@/auth/session'
 import { useSession } from '@/auth/SessionContext'
 import { resetAssignmentStore } from '@/mocks/assignmentStore'
+import { resetServiceStore, SERVICE_ID_OUV, updateService } from '@/mocks/serviceStore'
 import { resetTicketStore } from '@/mocks/ticketStore'
 import '@/mocks'
 
@@ -42,6 +43,7 @@ describe('VisitorQueue', () => {
   beforeEach(() => {
     resetTicketStore()
     resetAssignmentStore()
+    resetServiceStore()
   })
 
   /* Nadia is pre-assigned to Guichet 1 / VIR in the seed (assignmentStore.ts),
@@ -51,7 +53,8 @@ describe('VisitorQueue', () => {
 
     expect(await screen.findByText('Nadia Cherkaoui', {}, WAIT)).toBeInTheDocument()
     expect(screen.getByText('Virement et consultation · Guichet 1')).toBeInTheDocument()
-    expect(screen.getByText('2 waiting')).toBeInTheDocument()
+    /* The queue is its own query and can land after the agents list. */
+    expect(await screen.findByText('2 waiting', {}, WAIT)).toBeInTheDocument()
   })
 
   /* Guichet 2 is deliberately absent from the dropdown's options - it has no
@@ -89,5 +92,43 @@ describe('VisitorQueue', () => {
        count to disappear is the real signal that the mutation landed. */
     await waitFor(() => expect(screen.queryByText(/\d waiting/)).not.toBeInTheDocument(), WAIT)
     expect(screen.getByText('Not assigned', { selector: 'p' })).toBeInTheDocument()
+  })
+
+  /* contracts/api.md §5: the counter must have an ACTIVE service or the
+     route answers 409, so a counter whose service is switched off is not
+     offered as a target at all. */
+  it('does not offer a counter whose service is inactive', async () => {
+    updateService(SERVICE_ID_OUV, { is_active: false })
+    renderScreen()
+    await screen.findByText('Nadia Cherkaoui', {}, WAIT)
+
+    const select = screen.getByLabelText(/assign nadia cherkaoui/i)
+    await waitFor(() => expect(select).toBeEnabled(), WAIT)
+    await waitFor(
+      () => expect(within(select).queryByText(/guichet 3/i)).not.toBeInTheDocument(),
+      WAIT,
+    )
+  })
+
+  /* The service can be switched off after the picker loaded. The refusal is
+     worded as an assignment problem - not the ticket wording this screen
+     used to borrow, which would have said a ticket "has already been
+     handled". */
+  it('explains a 409 in terms of the counter, not a ticket', async () => {
+    const user = userEvent.setup()
+    renderScreen()
+    await screen.findByText('Nadia Cherkaoui', {}, WAIT)
+
+    const select = screen.getByLabelText(/assign nadia cherkaoui/i)
+    await waitFor(() => expect(select).toBeEnabled(), WAIT)
+    const guichet3 = await within(select).findByRole('option', { name: /guichet 3/i }, WAIT)
+
+    updateService(SERVICE_ID_OUV, { is_active: false })
+    await user.selectOptions(select, guichet3)
+
+    expect(
+      await screen.findByText(/no longer has an active service/i, {}, WAIT),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/ticket has already been handled/i)).not.toBeInTheDocument()
   })
 })

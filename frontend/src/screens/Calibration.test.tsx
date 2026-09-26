@@ -9,7 +9,8 @@ import { SessionContext, type SessionValue } from '@/auth/SessionContext'
 import { ScopeProvider } from '@/agency/scope'
 import type { Role } from '@/api/types'
 import { mockUserForRole } from '@/mocks/currentUser'
-import { CAMERA_ID_COUNTER, CAMERA_ID_LOBBY, resetCameraStore } from '@/mocks/cameraStore'
+import { resetCameraStore } from '@/mocks/cameraStore'
+import { AGENCY_ID } from '@/mocks/fixtures/people'
 import * as store from '@/mocks/calibrationStore'
 import '@/mocks'
 
@@ -59,6 +60,10 @@ const SQUARE: Array<[number, number]> = [
   [90, 490],
 ]
 
+/* The AI side addresses cameras by name (cameraStore's seeded names). */
+const LOBBY = 'cam-lobby'
+const COUNTER = 'cam-counter'
+
 describe('Calibration', () => {
   beforeEach(() => {
     store.resetCalibrationStore()
@@ -76,7 +81,7 @@ describe('Calibration', () => {
 
   it('reads a saved calibration back as calibrated but not yet aligned', async () => {
     store.calibrateRect({
-      camera_id: CAMERA_ID_LOBBY,
+      camera: LOBBY,
       points: SQUARE,
       img_w: 1920,
       img_h: 1080,
@@ -92,7 +97,7 @@ describe('Calibration', () => {
   it('refuses to offer alignment until two cameras are calibrated', async () => {
     const user = userEvent.setup()
     store.calibrateRect({
-      camera_id: CAMERA_ID_LOBBY,
+      camera: LOBBY,
       points: SQUARE,
       img_w: 1920,
       img_h: 1080,
@@ -110,8 +115,8 @@ describe('Calibration', () => {
 
   it('offers both canvases once two cameras are calibrated', async () => {
     const user = userEvent.setup()
-    for (const id of [CAMERA_ID_LOBBY, CAMERA_ID_COUNTER]) {
-      store.calibrateRect({ camera_id: id, points: SQUARE, img_w: 1920, img_h: 1080 })
+    for (const camera of [LOBBY, COUNTER]) {
+      store.calibrateRect({ camera, points: SQUARE, img_w: 1920, img_h: 1080 })
     }
     renderAs('MANAGER')
     await waitFor(() => expect(screen.getAllByText('not aligned')).toHaveLength(2), WAIT)
@@ -127,10 +132,12 @@ describe('Calibration', () => {
     expect(screen.getByRole('button', { name: /^align the cameras$/i })).toBeDisabled()
   })
 
-  it('forgets a calibration', async () => {
-    const user = userEvent.setup()
+  /* The backend gateway has no route for the AI service's
+     DELETE /calibration/{camera}, so there is nothing for a button to call.
+     Pinned so one does not come back pointing at a 404. */
+  it('offers no way to forget a calibration', async () => {
     store.calibrateRect({
-      camera_id: CAMERA_ID_LOBBY,
+      camera: LOBBY,
       points: SQUARE,
       img_w: 1920,
       img_h: 1080,
@@ -138,16 +145,13 @@ describe('Calibration', () => {
     renderAs('MANAGER')
     await screen.findByText('not aligned', {}, WAIT)
 
-    await user.click(screen.getByRole('button', { name: /forget calibration for cam-lobby/i }))
-
-    await waitFor(() => expect(screen.getAllByText('not calibrated')).toHaveLength(2), WAIT)
-    expect(store.listCalibration()).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /forget calibration/i })).not.toBeInTheDocument()
   })
 
   it('keeps another branch’s calibration out of a manager’s list', async () => {
     const { fetchCalibration } = await import('@/api/endpoints/calibration')
     store.calibrateRect({
-      camera_id: 'c1000000-0000-4000-8000-000000000003',
+      camera: 'cam-store',
       points: SQUARE,
       img_w: 1920,
       img_h: 1080,
@@ -158,7 +162,8 @@ describe('Calibration', () => {
       user: mockUserForRole('MANAGER'),
     })
 
-    await expect(fetchCalibration()).resolves.toHaveLength(0)
+    /* The gateway narrows this read to the agency's own camera names. */
+    await expect(fetchCalibration(AGENCY_ID)).resolves.toHaveLength(0)
   })
 })
 
@@ -172,7 +177,7 @@ describe('calibrationStore', () => {
   it('demands exactly four points', () => {
     expect(() =>
       store.calibrateRect({
-        camera_id: CAMERA_ID_LOBBY,
+        camera: LOBBY,
         points: SQUARE.slice(0, 3),
         img_w: 1920,
         img_h: 1080,
@@ -183,7 +188,7 @@ describe('calibrationStore', () => {
   it('refuses a degenerate quad, as the real solve does', () => {
     expect(() =>
       store.calibrateRect({
-        camera_id: CAMERA_ID_LOBBY,
+        camera: LOBBY,
         points: [
           [100, 100],
           [102, 100],
@@ -198,7 +203,7 @@ describe('calibrationStore', () => {
 
   it('leaves a freshly calibrated camera unaligned', () => {
     const result = store.calibrateRect({
-      camera_id: CAMERA_ID_LOBBY,
+      camera: LOBBY,
       points: SQUARE,
       img_w: 1920,
       img_h: 1080,
@@ -208,7 +213,7 @@ describe('calibrationStore', () => {
   })
 
   it('needs two calibrated cameras before it will align anything', () => {
-    store.calibrateRect({ camera_id: CAMERA_ID_LOBBY, points: SQUARE, img_w: 1920, img_h: 1080 })
+    store.calibrateRect({ camera: LOBBY, points: SQUARE, img_w: 1920, img_h: 1080 })
     expect(() => store.alignCameras([])).toThrowError(/deux cameras/)
   })
 
@@ -218,42 +223,43 @@ describe('calibrationStore', () => {
    * success reports a site that agrees with itself when it does not.
    */
   it('reports an unreachable camera per-camera rather than failing the call', () => {
-    store.calibrateRect({ camera_id: CAMERA_ID_LOBBY, points: SQUARE, img_w: 1920, img_h: 1080 })
-    store.calibrateRect({ camera_id: CAMERA_ID_COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
+    store.calibrateRect({ camera: LOBBY, points: SQUARE, img_w: 1920, img_h: 1080 })
+    store.calibrateRect({ camera: COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
 
-    const result = store.alignCameras([{ [CAMERA_ID_LOBBY]: [10, 10] }])
+    const result = store.alignCameras([{ [LOBBY]: [10, 10] }])
 
-    expect(result.results[CAMERA_ID_COUNTER].aligned).toBe(false)
-    expect(result.results[CAMERA_ID_COUNTER].error).toMatch(/no chain of >=2-point/)
+    expect(result.results[COUNTER].aligned).toBe(false)
+    expect(result.results[COUNTER].error).toMatch(/no chain of >=2-point/)
   })
 
   it('aligns on two shared points, and says the fit was weak below four', () => {
-    store.calibrateRect({ camera_id: CAMERA_ID_LOBBY, points: SQUARE, img_w: 1920, img_h: 1080 })
-    store.calibrateRect({ camera_id: CAMERA_ID_COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
+    store.calibrateRect({ camera: LOBBY, points: SQUARE, img_w: 1920, img_h: 1080 })
+    store.calibrateRect({ camera: COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
 
     const result = store.alignCameras([
-      { [CAMERA_ID_LOBBY]: [10, 10], [CAMERA_ID_COUNTER]: [20, 20] },
-      { [CAMERA_ID_LOBBY]: [30, 30], [CAMERA_ID_COUNTER]: [40, 40] },
+      { [LOBBY]: [10, 10], [COUNTER]: [20, 20] },
+      { [LOBBY]: [30, 30], [COUNTER]: [40, 40] },
     ])
 
-    expect(result.results[CAMERA_ID_COUNTER]).toMatchObject({ aligned: true, n_points: 2 })
+    expect(result.results[COUNTER]).toMatchObject({ aligned: true, n_points: 2 })
     expect(result.weak_fits).toMatch(/<4 shared points/)
-    expect(store.listCalibration().every((entry) => entry.aligned)).toBe(true)
+    expect(Object.values(store.listCalibration()).every((entry) => entry.diagnostics.aligned)).toBe(
+      true,
+    )
   })
 
   /* Re-measuring a camera changes its floor frame, so whatever it was
      reconciled with no longer holds. */
   it('drops alignment when a camera is recalibrated', () => {
-    store.calibrateRect({ camera_id: CAMERA_ID_LOBBY, points: SQUARE, img_w: 1920, img_h: 1080 })
-    store.calibrateRect({ camera_id: CAMERA_ID_COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
+    store.calibrateRect({ camera: LOBBY, points: SQUARE, img_w: 1920, img_h: 1080 })
+    store.calibrateRect({ camera: COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
     store.alignCameras([
-      { [CAMERA_ID_LOBBY]: [10, 10], [CAMERA_ID_COUNTER]: [20, 20] },
-      { [CAMERA_ID_LOBBY]: [30, 30], [CAMERA_ID_COUNTER]: [40, 40] },
+      { [LOBBY]: [10, 10], [COUNTER]: [20, 20] },
+      { [LOBBY]: [30, 30], [COUNTER]: [40, 40] },
     ])
 
-    store.calibrateRect({ camera_id: CAMERA_ID_COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
+    store.calibrateRect({ camera: COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
 
-    const counter = store.listCalibration().find((e) => e.camera_id === CAMERA_ID_COUNTER)
-    expect(counter?.aligned).toBe(false)
+    expect(store.listCalibration()[COUNTER]?.diagnostics.aligned).toBe(false)
   })
 })

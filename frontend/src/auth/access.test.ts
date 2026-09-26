@@ -39,15 +39,23 @@ describe('canReach', () => {
      still <ContractPending>, which is a different thing from forbidden. */
   it('offers the unguarded screens to everyone', () => {
     for (const role of ROLES) {
-      for (const path of ['/climate', '/alerts', '/controls']) {
+      for (const path of ['/climate', '/controls']) {
         expect(canReach(role, path)).toBe(true)
       }
     }
   })
 
-  /* Occupancy has no per-agency scoping behind it yet - every zone comes back
-     regardless of role - so restricting who may look is the only lever this
-     table has until the feed itself carries an agency_id. */
+  /* contracts/api.md §13 closes every alert stream on anyone else with
+     1008, so the screen built on them is theirs alone. */
+  it('gives alerts to admins, managers and security', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SECURITY'] as const) {
+      expect(canReach(role, '/alerts')).toBe(true)
+    }
+    expect(canReach('AGENT', '/alerts')).toBe(false)
+    expect(canReach('TECHNICIAN', '/alerts')).toBe(false)
+  })
+
+  /* OCCUPANCY_ROLES on the backend's socket (contracts/api.md §13). */
   it('gives occupancy to admins and managers only', () => {
     expect(canReach('ADMIN', '/occupancy')).toBe(true)
     expect(canReach('MANAGER', '/occupancy')).toBe(true)
@@ -68,9 +76,9 @@ describe('canReach', () => {
   })
 
   /* Zone drawing is narrower than the cameras screen it hangs off: a guard
-     registers the cameras they watch, but the floor geometry every count is
-     computed from is administration. PROPOSED, so this pins a product call
-     rather than a transcription - see BACKEND-ASKS.md §8. */
+     registers the cameras they watch, and the gateway lets them READ zones,
+     but drawing the floor geometry every count is computed from is
+     administration. This pins that product call. */
   it('keeps zone drawing to admins and managers', () => {
     expect(canReach('ADMIN', '/zones')).toBe(true)
     expect(canReach('MANAGER', '/zones')).toBe(true)

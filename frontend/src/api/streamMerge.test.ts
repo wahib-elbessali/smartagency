@@ -63,12 +63,15 @@ describe('applyAlertFrame', () => {
 
 describe('applyOccupancyFrame', () => {
   it('keeps a zone that drops to zero rather than dropping the row', () => {
-    const before: ZonesByName = { lobby: { count: 4, points: [[1, 1]] } }
+    const before: ZonesByName = {
+      lobby: { count: 4, points: [[1, 1]], people_tracking_ready: true },
+    }
     const after = applyOccupancyFrame(before, {
       type: 'update',
       zone: 'lobby',
       count: 0,
       points: [],
+      people_tracking_ready: true,
     })
 
     /* Not just "count is 0" - the key has to survive, or the screen stops
@@ -78,15 +81,18 @@ describe('applyOccupancyFrame', () => {
   })
 
   it('adds a zone it has not seen before', () => {
-    const after = applyOccupancyFrame({}, { type: 'update', zone: 'vault', count: 2, points: [] })
+    const after = applyOccupancyFrame(
+      {},
+      { type: 'update', zone: 'vault', count: 2, points: [], people_tracking_ready: true },
+    )
     expect(after.vault?.count).toBe(2)
   })
 
   it('replaces everything on a snapshot', () => {
-    const before: ZonesByName = { gone: { count: 9, points: [] } }
+    const before: ZonesByName = { gone: { count: 9, points: [], people_tracking_ready: true } }
     const after = applyOccupancyFrame(before, {
       type: 'snapshot',
-      zones: { lobby: { count: 1, points: [] } },
+      zones: { lobby: { count: 1, points: [], people_tracking_ready: true } },
     })
     expect(Object.keys(after)).toEqual(['lobby'])
   })
@@ -96,10 +102,30 @@ describe('applyOccupancyFrame', () => {
   it('sums across zones without pretending it is a headcount', () => {
     expect(
       totalAcrossZones({
-        lobby: { count: 4, points: [] },
-        counters: { count: 3, points: [] },
+        lobby: { count: 4, points: [], people_tracking_ready: true },
+        counters: { count: 3, points: [], people_tracking_ready: true },
       }),
     ).toBe(7)
+  })
+
+  /* contracts/api.md §13: while a world zone is not tracking, its 0 is "not
+     tracking yet". Dropping the flag in the merge would turn that into a
+     confident empty zone on the next update. */
+  it('keeps people_tracking_ready through an update', () => {
+    const after = applyOccupancyFrame(
+      { hall: { count: 0, points: [], people_tracking_ready: true } },
+      { type: 'update', zone: 'hall', count: 0, points: [], people_tracking_ready: false },
+    )
+    expect(after.hall?.people_tracking_ready).toBe(false)
+  })
+
+  it('leaves a zone that is not tracking out of the total', () => {
+    expect(
+      totalAcrossZones({
+        lobby: { count: 4, points: [], people_tracking_ready: true },
+        hall: { count: 3, points: [], people_tracking_ready: false },
+      }),
+    ).toBe(4)
   })
 })
 
@@ -126,6 +152,32 @@ describe('frame parsers', () => {
       }),
     )
     expect(update?.type).toBe('update')
+  })
+
+  /* An AI build from before the field would otherwise read as "not
+     tracking" in every zone at once. Absent means what it meant before the
+     field existed: the count is a count. */
+  it('treats a missing people_tracking_ready as ready', () => {
+    const update = parseOccupancyFrame(
+      JSON.stringify({ type: 'update', zone: 'lobby', count: 5, points: [] }),
+    )
+    expect(update?.type === 'update' && update.people_tracking_ready).toBe(true)
+
+    const snapshot = parseOccupancyFrame(
+      JSON.stringify({ type: 'snapshot', zones: { lobby: { count: 1, points: [] } } }),
+    )
+    expect(snapshot?.type === 'snapshot' && snapshot.zones.lobby?.people_tracking_ready).toBe(true)
+
+    const notReady = parseOccupancyFrame(
+      JSON.stringify({
+        type: 'update',
+        zone: 'hall',
+        count: 0,
+        points: [],
+        people_tracking_ready: false,
+      }),
+    )
+    expect(notReady?.type === 'update' && notReady.people_tracking_ready).toBe(false)
   })
 
   it('parses the contract-shaped occupancy frames', () => {

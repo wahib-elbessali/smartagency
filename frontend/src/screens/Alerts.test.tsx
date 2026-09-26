@@ -1,9 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import Alerts from './Alerts'
 import Occupancy from './Occupancy'
+import { clearSession, setSession } from '@/api/tokenStore'
+import type { Role } from '@/api/types'
+import { SessionContext, type SessionValue } from '@/auth/SessionContext'
+import { mockUserForRole } from '@/mocks/currentUser'
+import '@/mocks'
 
 /* Mock mode drives both screens from the scripted fixtures in mocks/aiStreams,
    which emit a snapshot and then changes on a timer. The waits below are
@@ -92,9 +98,37 @@ describe('Alerts', () => {
   })
 })
 
+/**
+ * Occupancy reads the session: a MANAGER sees only the zones on their own
+ * branch's cameras, because the stream carries the whole site. The session
+ * goes in both places for the reason Zones.test.tsx gives.
+ */
+function renderOccupancyAs(role: Role) {
+  const user = mockUserForRole(role)
+  setSession({ accessToken: 'mock-token', refreshToken: 'mock-refresh', user })
+  const session: SessionValue = {
+    status: 'authenticated',
+    user,
+    signIn: async () => {},
+    signOut: () => {},
+  }
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <SessionContext value={session}>
+        <MemoryRouter>
+          <Occupancy />
+        </MemoryRouter>
+      </SessionContext>
+    </QueryClientProvider>,
+  )
+}
+
 describe('Occupancy', () => {
+  afterEach(clearSession)
+
   it('lists every zone including one that is empty', async () => {
-    renderScreen(<Occupancy />)
+    renderOccupancyAs('ADMIN')
     expect(await screen.findByText('lobby', {}, WAIT)).toBeInTheDocument()
     /* vault starts at zero - an empty zone is measured, not missing. */
     expect(screen.getByText('vault')).toBeInTheDocument()
@@ -103,7 +137,7 @@ describe('Occupancy', () => {
   /* The bug this guards: a zone emptying and the screen keeping the last busy
      number, because the row was filtered out rather than set to zero. */
   it('keeps a zone visible after its count drops to zero', async () => {
-    renderScreen(<Occupancy />)
+    renderOccupancyAs('ADMIN')
     await screen.findByText('lobby', {}, WAIT)
 
     await waitFor(() => {
@@ -113,9 +147,29 @@ describe('Occupancy', () => {
   })
 
   it('calls the total detections rather than a headcount', async () => {
-    renderScreen(<Occupancy />)
+    renderOccupancyAs('ADMIN')
     await screen.findByText('lobby', {}, WAIT)
     expect(screen.getByText('Detections across zones')).toBeInTheDocument()
     expect(screen.getByText(/counted in both/i)).toBeInTheDocument()
+  })
+
+  /* contracts/api.md §13: a world zone's 0 while tracking is not ready is
+     "not tracking yet", never an empty room. */
+  it('says a zone is not tracking yet instead of showing its zero', async () => {
+    renderOccupancyAs('ADMIN')
+    await screen.findByText('hall', {}, WAIT)
+    await waitFor(() => {
+      const row = screen.getByText('hall').closest('div')?.parentElement
+      expect(row?.textContent).toMatch(/hallNot tracking yet/)
+    }, WAIT)
+  })
+
+  /* The stream is the whole site's. vault is drawn on the Rabat camera, so a
+     Casablanca manager never sees its row, even though the feed sends it. */
+  it('keeps another branch’s zones off a manager’s screen', async () => {
+    renderOccupancyAs('MANAGER')
+    await screen.findByText('lobby', {}, WAIT)
+    expect(screen.getByText('counters')).toBeInTheDocument()
+    expect(screen.queryByText('vault')).not.toBeInTheDocument()
   })
 })

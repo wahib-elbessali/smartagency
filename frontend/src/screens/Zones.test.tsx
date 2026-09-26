@@ -10,7 +10,8 @@ import { SessionContext, type SessionValue } from '@/auth/SessionContext'
 import { ScopeProvider } from '@/agency/scope'
 import type { Role } from '@/api/types'
 import { mockUserForRole } from '@/mocks/currentUser'
-import { CAMERA_ID_COUNTER, CAMERA_ID_STORE, resetCameraStore } from '@/mocks/cameraStore'
+import { resetCameraStore } from '@/mocks/cameraStore'
+import { AGENCY_ID, AGENCY_ID_RABAT } from '@/mocks/fixtures/people'
 import * as zoneStore from '@/mocks/zoneStore'
 import '@/mocks'
 
@@ -31,6 +32,10 @@ import '@/mocks'
  * is tested is everything the drawing produces and everything around it -
  * scoping, the per-camera split, delete, and the store's own rules. The
  * click-to-coordinate mapping was verified in Chrome instead.
+ *
+ * The gateway returns the WHOLE site's zones to anyone who may read the
+ * agency (backend/app/api/ai_zoning.py), and the fixture does the same - so
+ * every "not shown" below is the screen's filter at work, not the mock's.
  */
 function renderAs(role: Role) {
   const user = mockUserForRole(role)
@@ -76,9 +81,10 @@ describe('Zones', () => {
     expect(await screen.findByRole('heading', { name: 'cam-counter' }, WAIT)).toBeInTheDocument()
     expect(await screen.findByText('counters', {}, WAIT)).toBeInTheDocument()
 
-    /* lobby is on this branch's other camera; vault is in Rabat and this
-       manager is never sent it at all. */
-    expect(screen.getByText(/1 more on other cameras/)).toBeInTheDocument()
+    /* lobby and the world zone hall are on this branch's other camera.
+       vault is in Rabat: the gateway sends it anyway, the screen drops it,
+       and it is not in the count either. */
+    expect(screen.getByText(/2 more on other cameras/)).toBeInTheDocument()
     expect(screen.queryByText('vault')).not.toBeInTheDocument()
   })
 
@@ -92,15 +98,19 @@ describe('Zones', () => {
 
     expect(await screen.findByText('lobby', {}, WAIT)).toBeInTheDocument()
     expect(screen.queryByText('counters')).not.toBeInTheDocument()
+    /* A world zone made elsewhere still shows on the camera it was drawn
+       on, read as what it is. */
+    expect(screen.getByText('hall')).toBeInTheDocument()
+    expect(screen.getByText('world')).toBeInTheDocument()
   })
 
-  it('sends an admin every branch’s zones', async () => {
+  it('counts only the picked branch’s zones for an admin too', async () => {
     renderAs('ADMIN')
-    /* An admin starts in Casablanca, so Rabat's zone is not on screen - but
-       it is in the payload, which is what the count reads from: lobby and
-       vault both sit on other cameras. */
+    /* An admin starts in Casablanca. Rabat's vault is in the payload but on
+       none of these cameras, so it is neither listed nor counted. */
     expect(await screen.findByText('counters', {}, WAIT)).toBeInTheDocument()
     expect(screen.getByText(/2 more on other cameras/)).toBeInTheDocument()
+    expect(screen.queryByText('vault')).not.toBeInTheDocument()
   })
 
   it('deletes a zone', async () => {
@@ -111,30 +121,75 @@ describe('Zones', () => {
     await user.click(screen.getByRole('button', { name: 'Delete counters' }))
 
     await waitFor(() => expect(screen.queryByText('counters')).not.toBeInTheDocument(), WAIT)
-    expect(zoneStore.listZones().some((zone) => zone.name === 'counters')).toBe(false)
+    expect('counters' in zoneStore.listZones()).toBe(false)
   })
+})
 
-  it('refuses a zone drawn on another branch’s camera', async () => {
-    /* The screen cannot build this request - its camera picker only ever
-       offers the caller's own branch - but the proxy has to refuse it
-       anyway, so the rule is asserted at the layer that owns it. */
+/**
+ * The gateway's refusals, asserted at the layer that owns them. The screen
+ * cannot build most of these requests - its pickers only offer the caller's
+ * own branch and cameras - but the gateway refuses them anyway.
+ */
+describe('zone gateway', () => {
+  beforeEach(() => {
+    zoneStore.resetZoneStore()
+    resetCameraStore()
     setSession({
       accessToken: 'mock-token',
       refreshToken: 'mock-refresh',
       user: mockUserForRole('MANAGER'),
     })
+  })
+  afterEach(clearSession)
 
+  const TRIANGLE: Array<[number, number]> = [
+    [0, 0],
+    [10, 0],
+    [10, 10],
+  ]
+
+  it('refuses another branch outright', async () => {
     await expect(
-      postZone({
+      postZone(AGENCY_ID_RABAT, {
         name: 'vault-2',
-        camera_id: CAMERA_ID_STORE,
-        polygon: [
-          [0, 0],
-          [10, 0],
-          [10, 10],
-        ],
+        camera: 'cam-store',
+        polygon: TRIANGLE,
+        sources: { 'cam-store': 'rtsp://x' },
       }),
     ).rejects.toMatchObject({ status: 403 })
+  })
+
+  it('refuses another branch’s camera under your own branch', async () => {
+    await expect(
+      postZone(AGENCY_ID, {
+        name: 'vault-2',
+        camera: 'cam-store',
+        polygon: TRIANGLE,
+        sources: { 'cam-store': 'rtsp://x' },
+      }),
+    ).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('refuses a drawn-on camera missing from sources', async () => {
+    await expect(
+      postZone(AGENCY_ID, {
+        name: 'odd',
+        camera: 'cam-lobby',
+        polygon: TRIANGLE,
+        sources: { 'cam-counter': 'rtsp://x' },
+      }),
+    ).rejects.toMatchObject({ status: 422 })
+  })
+
+  it('saves a pixel zone with the database’s stream url, not the one sent', async () => {
+    const saved = await postZone(AGENCY_ID, {
+      name: 'queue',
+      camera: 'cam-lobby',
+      polygon: TRIANGLE,
+      sources: { 'cam-lobby': 'rtsp://anything' },
+    })
+    expect(saved).toMatchObject({ name: 'queue', mode: 'pixel', warnings: [] })
+    expect(zoneStore.listZones().queue?.camera).toBe('cam-lobby')
   })
 })
 
@@ -149,35 +204,37 @@ describe('zoneStore', () => {
     expect(() =>
       zoneStore.createZone({
         name: 'sliver',
-        camera_id: CAMERA_ID_COUNTER,
+        camera: 'cam-counter',
         polygon: [
           [0, 0],
           [5, 5],
         ],
+        sources: { 'cam-counter': 'rtsp://x' },
       }),
     ).toThrowError(/3 points/)
   })
 
   it('replaces a zone whose name already exists rather than adding a second', () => {
-    const before = zoneStore.listZones().length
+    const before = Object.keys(zoneStore.listZones()).length
 
     zoneStore.createZone({
       name: 'lobby',
-      camera_id: CAMERA_ID_COUNTER,
+      camera: 'cam-counter',
       polygon: [
         [1, 1],
         [2, 2],
         [3, 3],
       ],
+      sources: { 'cam-counter': 'rtsp://x' },
     })
 
     const after = zoneStore.listZones()
-    expect(after).toHaveLength(before)
-    const lobby = after.find((zone) => zone.name === 'lobby')
+    expect(Object.keys(after)).toHaveLength(before)
+    const lobby = after.lobby
     expect(lobby?.polygon_px).toHaveLength(3)
     /* Including the camera: replacing moves the zone to wherever it was
        just drawn, which is the behaviour that makes the warning in the
        naming dialog worth showing. */
-    expect(lobby?.camera_id).toBe(CAMERA_ID_COUNTER)
+    expect(lobby?.camera).toBe('cam-counter')
   })
 })

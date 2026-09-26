@@ -2,8 +2,9 @@ import type {
   AlertDetection,
   AlertFrame,
   OccupancyFrame,
-  Workstation,
   WorkstationFrame,
+  WorkstationState,
+  WorkstationStatus,
   ZoneOccupancy,
 } from './types'
 
@@ -53,10 +54,14 @@ export function applyOccupancyFrame(current: ZonesByName, frame: OccupancyFrame)
   if (frame.type === 'snapshot') {
     return { ...frame.zones }
   }
-  return { ...current, [frame.zone]: { count: frame.count, points: frame.points } }
+  /* The whole occupancy, readiness included - dropping
+     `people_tracking_ready` here would turn "not tracking yet" into a
+     confident zero on screen. */
+  const { type: _type, zone, ...occupancy } = frame
+  return { ...current, [zone]: occupancy }
 }
 
-export type WorkstationsByName = Record<string, Workstation>
+export type WorkstationsByName = Record<string, WorkstationState>
 
 /**
  * Same replace-not-merge rule as the two above, with one difference that
@@ -86,7 +91,9 @@ export function applyWorkstationFrame(
  * not been classified yet, and padding the number that a manager acts on
  * with "we do not know" is how a screen stops being believed.
  */
-export function unstaffed(stations: WorkstationsByName): Workstation[] {
+export function unstaffed<T extends { name: string; status: WorkstationStatus }>(
+  stations: Record<string, T>,
+): T[] {
   return Object.values(stations)
     .filter((station) => station.status === 'away')
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -108,5 +115,9 @@ export function activeCameras(alerts: AlertsByCamera): string[] {
  * as nothing labels it as a headcount.
  */
 export function totalAcrossZones(zones: ZonesByName): number {
-  return Object.values(zones).reduce((sum, zone) => sum + zone.count, 0)
+  /* A zone that is not tracking yet has no count to add, only a 0 that
+     means nothing - see ZoneOccupancy.people_tracking_ready. */
+  return Object.values(zones)
+    .filter((zone) => zone.people_tracking_ready)
+    .reduce((sum, zone) => sum + zone.count, 0)
 }

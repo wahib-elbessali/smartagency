@@ -119,6 +119,7 @@ function occupancyScript(): OccupancyFrame[] {
             [300, 512],
             [180, 498],
           ],
+          people_tracking_ready: true,
         },
         counters: {
           count: 2,
@@ -126,11 +127,15 @@ function occupancyScript(): OccupancyFrame[] {
             [620, 300],
             [660, 310],
           ],
+          people_tracking_ready: true,
         },
         /* Empty from the start: a zone with nobody in it is normal, not a
            missing zone, and the screen has to show it as zero rather than
            omitting the row. */
-        vault: { count: 0, points: [] },
+        vault: { count: 0, points: [], people_tracking_ready: true },
+        /* A world zone while person tracking is still bootstrapping: its 0
+           is "not tracking yet", which the screen must not show as empty. */
+        hall: { count: 0, points: [], people_tracking_ready: false },
       },
     },
     {
@@ -144,6 +149,7 @@ function occupancyScript(): OccupancyFrame[] {
         [180, 498],
         [240, 470],
       ],
+      people_tracking_ready: true,
     },
     {
       type: 'update',
@@ -154,10 +160,11 @@ function occupancyScript(): OccupancyFrame[] {
         [660, 310],
         [700, 295],
       ],
+      people_tracking_ready: true,
     },
     /* Back to zero - the case where a naive "only render non-empty" screen
        leaves a stale count on the wall. */
-    { type: 'update', zone: 'lobby', count: 0, points: [] },
+    { type: 'update', zone: 'lobby', count: 0, points: [], people_tracking_ready: true },
   ]
 }
 

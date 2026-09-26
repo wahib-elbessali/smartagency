@@ -100,7 +100,15 @@ describe('AppShell navigation', () => {
   it('leaves the unguarded screens for every role', () => {
     renderShell('TECHNICIAN')
     expect(navLink(/manual controls/i)).toBeInTheDocument()
+  })
+
+  /* The alert streams refuse anyone outside ADMIN, MANAGER and SECURITY
+     (contracts/api.md §13), so the link would lead only to a refusal. */
+  it('offers alerts to security and not to a technician', () => {
+    renderShell('SECURITY')
     expect(navLink(/alerts/i)).toBeInTheDocument()
+    renderShell('TECHNICIAN')
+    expect(screen.queryAllByRole('link', { name: /alerts/i })).toHaveLength(1)
   })
 })
 

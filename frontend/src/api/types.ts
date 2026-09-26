@@ -304,13 +304,10 @@ export interface CounterServiceAssignment {
 }
 
 /**
- * PROPOSED - not in contracts/api.md, and nothing on the real backend stores
- * this yet (backend/app/models/entities.py: neither User nor Employee carries
- * a service or counter). Built ahead of the backend (2026-09-05, at the
- * user's direction) so AgentQueue can read which counter a MANAGER put an
- * agent on, instead of asking the agent to pick their own. See
- * api/endpoints/assignments.ts for the anticipated `GET` this backs, and
- * mocks/assignmentStore.ts for the seeded data standing in for it.
+ * GET /api/agents/me/assignment, and the `assignment` inside each
+ * GET /api/agencies/{id}/agents row - contracts/api.md §5. Which guichet or
+ * bureau a MANAGER has put an AGENT on. Only reported while that point has an
+ * active service; `null` when the agent has no assignment.
  */
 export interface AgentAssignment {
   counter_id: string
@@ -320,13 +317,9 @@ export interface AgentAssignment {
 }
 
 /**
- * PROPOSED - not in contracts/api.md. Backs GET /api/agencies/{id}/agents,
- * the MANAGER-facing counterpart to AgentAssignment above: one row per AGENT
- * account in the agency, with whatever they're currently assigned to (or
- * null). Deliberately narrower than GET /api/users, which is ADMIN-only
- * (contracts/api.md §5) - a MANAGER can't read that list at all today, so
- * this doesn't loosen it, it's a separate, smaller surface built for exactly
- * this screen. See api/endpoints/assignments.ts.
+ * One row of GET /api/agencies/{agency_id}/agents - contracts/api.md §5.
+ * Every AGENT account in the agency with its current assignment, or null.
+ * Deliberately narrower than GET /api/users, which stays ADMIN-only.
  */
 export interface AgentSummary {
   user_id: string
@@ -516,6 +509,11 @@ export interface Ticket {
   created_at: string
   called_at: string | null
   completed_at: string | null
+  /**
+   * contracts/api.md §8. Null until the ticket is completed with a note, and
+   * set only by POST /api/tickets/{id}/complete. At most 2,000 characters,
+   * trimmed; a blank note is stored as null.
+   */
   notes: string | null
 }
 
@@ -735,122 +733,161 @@ export interface ZoneOccupancy {
    * number of people present.
    */
   points: Array<[number, number]>
+  /**
+   * contracts/api.md §13. Always true for a pixel zone. For a world zone it
+   * says whether person tracking is running - and while it is `false`, a
+   * `count` of 0 means "not tracking yet", NOT a confirmed empty zone. The
+   * contract says so in as many words; a screen must not render that 0 as
+   * a number.
+   */
+  people_tracking_ready: boolean
 }
 
 /**
- * WS occupancy frames.
+ * WS /ws/occupancy frames - contracts/api.md §13.
  *
- * Pushed only when a zone's count changes - there is no heartbeat, so an
- * unchanging count and a dead connection look identical from the payload
- * alone. The stream status badge is the thing that distinguishes them.
+ * Pushed only when a zone's count crosses the threshold or its readiness
+ * flips - there is no heartbeat, so an unchanging count and a dead connection
+ * look identical from the payload alone. The stream status badge is the
+ * thing that distinguishes them.
  */
 export type OccupancyFrame =
   | { type: 'snapshot'; zones: Record<string, ZoneOccupancy> }
-  | { type: 'update'; zone: string; count: number; points: Array<[number, number]> }
+  | ({ type: 'update'; zone: string } & ZoneOccupancy)
 
 /**
- * A drawn detection zone — PROPOSED, not in contracts/api.md (2026-09-19).
+ * A drawn detection zone - the AI service's /zoning store, reached through
+ * backend/app/api/ai_zoning.py (PR #109, 2026-09-23). No contracts/api.md
+ * entry yet; every field below is the AI service's own
+ * (contracts/ai-service.md §/zoning), which the gateway passes through
+ * unchanged.
  *
  * NOT THE SAME THING AS `Zone` ABOVE, and the collision is the API's, not
  * this file's. `Zone` is a room in a branch (`Accueil`, `Bureau · private`)
  * from backend/app/schemas/agency.py, created with the agency and carrying
  * `zone_type` / `is_private`. THIS is a polygon somebody drew over a camera
- * picture so the detector counts the people standing inside it
- * (contracts/ai-service.md §/zoning), and it lives in the AI service's own
- * store, not in our database. Nothing links the two today; whether they
- * should be linked is an open question for backend (BACKEND-ASKS.md §8d).
+ * picture so the detector counts the people standing inside it, and it lives
+ * in the AI service's own store, not in our database. Nothing links the two.
  * Named `CameraZone` here so no screen can confuse them by accident.
  *
- * `name` is the primary key — the AI service stores zones in a flat
+ * CAMERAS ARE NAMED, NOT ID'D. Backend registers each camera row with the AI
+ * service under `Camera.name` (app/services/ai_camera_sync.py), so every
+ * `camera` below and every key of `sources` is one of our camera NAMES.
+ *
+ * `name` is the primary key - the AI service stores zones in a flat
  * name-keyed map, and re-posting a name OVERWRITES that zone, mode included.
  * There is no id.
  */
 export type CameraZoneMode = 'pixel' | 'world'
 
-export interface CameraZone {
-  name: string
+/**
+ * One value of GET /api/agencies/{agency_id}/ai/zones, which answers the AI
+ * service's name-keyed map as-is: `{ "till": { ... }, "lobby": { ... } }`.
+ *
+ * The gateway checks the caller may read that agency and then returns the
+ * WHOLE site's map - it does not filter by agency. So a screen keeps only the
+ * zones whose camera is one of the agency's own camera names.
+ */
+export interface CameraZoneEntry {
   /**
    * Inferred by the AI service from how many cameras the zone was saved
-   * with, never sent by us: one camera is `pixel` (counted against that
-   * camera's own raw detections, no calibration needed), two or more is
-   * `world` (needs the drawn-on camera calibrated AND aligned).
-   *
-   * Everything this dashboard draws is `pixel` today. A `world` zone can
-   * appear in the list - somebody may have made one with the AI service's
-   * own tools - which is why the mode is read rather than assumed.
+   * with: one is `pixel` (that camera's own raw detections, no calibration),
+   * two or more is `world` (the drawn-on camera calibrated AND aligned).
    */
   mode: CameraZoneMode
-  /**
-   * Which of our cameras it was drawn on, translated by the backend from the
-   * camera name the AI service knows it by. Null when the proxy cannot match
-   * that name to a camera row - a zone drawn before the camera was renamed,
-   * or against a source this dashboard does not manage.
-   */
-  camera_id: string | null
-  /** `pixel` mode: the polygon in that camera's own frame pixels. */
+  /** `pixel` zones: the camera name it was drawn on. */
+  camera?: string
+  /** `pixel` zones: the polygon in that camera's own frame pixels. */
+  polygon_px?: Array<[number, number]>
+  /** `world` zones: the polygon on the shared floor plane, centimetres. */
+  polygon_m?: Array<[number, number]>
+  /** `world` zones: the camera and pixel outline it was drawn as. */
+  converted_from?: { camera: string; polygon_px: Array<[number, number]> }
+}
+
+/**
+ * One zone as screens use it - an entry of that map with its key folded in,
+ * and the drawn-on camera read from wherever the zone's mode keeps it. The
+ * fold happens in api/endpoints/zones.ts and nowhere else.
+ */
+export interface CameraZone {
+  name: string
+  mode: CameraZoneMode
+  /** The camera name it was drawn on; null for a world zone with no record of one. */
+  camera: string | null
+  /** The outline in `camera`'s frame pixels - what gets redrawn on its picture. */
   polygon_px: Array<[number, number]> | null
-  /** `world` mode: the polygon on the shared floor plane. Not drawn here. */
   polygon_m: Array<[number, number]> | null
 }
 
 /**
- * POST /api/zones — PROPOSED, the shape to ask backend for.
+ * POST /api/agencies/{agency_id}/ai/zones - from ZoneCreateRequest
+ * (backend/app/schemas/ai_zoning.py).
  *
- *   { "name": "lobby", "camera_id": "CAMERA_UUID",
- *     "polygon": [[120, 430], [980, 410], [1010, 700], [95, 720]] }
+ *   { "name": "lobby", "camera": "cam-lobby",
+ *     "polygon": [[120, 430], [980, 410], [1010, 700], [95, 720]],
+ *     "sources": { "cam-lobby": "rtsp://..." } }
  *
- * `polygon` is at least 3 points in the drawn-on frame's own pixels, in the
- * order they were clicked; the closing edge is implied, so the first point is
- * not repeated at the end. The backend translates `camera_id` to the camera
- * name the AI service knows (the same mapping app/ai_alerts/consumer.py
- * already does) and fills in `sources` from the stream URL it holds — the
- * browser never handles RTSP credentials.
- *
- * One camera means `pixel` mode, which is the only mode this screen creates.
- * Multi-camera `world` zones come with the calibration phase and will add a
- * field for the extra cameras.
+ * `camera` must be one of the `sources` keys (422 otherwise). The URLs in
+ * `sources` must be non-blank but are then REPLACED by the gateway with the
+ * stream URLs our database holds, so the browser cannot point the detector at
+ * an arbitrary address; sending the camera row's own `stream_url` is what the
+ * gateway's comment calls convenience. One source means `pixel` mode, the
+ * only mode this dashboard creates.
  */
 export interface CameraZoneCreate {
   name: string
-  camera_id: string
+  camera: string
   polygon: Array<[number, number]>
+  sources: Record<string, string>
 }
 
 /**
- * What POST /api/zones answers with: the saved zone, plus whatever the AI
- * service warned about.
+ * What that POST answers - the AI service's own response, passed through.
  *
- * `warnings` is passed through untouched and must be SHOWN. The AI service
- * uses it to say things like "'/people' is not currently running … this zone
- * will count 0 until it is" - a configuration mistake that is otherwise
- * indistinguishable from an empty room. Empty for a pixel zone on a healthy
- * service, which is the normal case here.
+ * `warnings` must be SHOWN. The AI service uses it to say things like
+ * "'/people' is not currently running … this zone will count 0 until it is",
+ * a configuration mistake that is otherwise indistinguishable from an empty
+ * room. Empty for a pixel zone on a healthy service, the normal case here.
  */
-export interface CameraZoneSaved extends CameraZone {
+export interface CameraZoneSaved {
+  name: string
+  mode: CameraZoneMode
+  /** Where the AI service wrote the zone file. A server path, not for display. */
+  saved: string
+  sources_known: string[]
   warnings: string[]
 }
 
 /**
- * A workstation — PROPOSED, not in contracts/api.md (2026-09-19).
+ * Workstations - backend/app/api/employee_activity.py (PR #109), a table of
+ * our own in front of the AI service's /employee_activity
+ * (contracts/ai-service.md). Not in contracts/api.md yet; every field is
+ * from WorkstationResponse in backend/app/schemas/employee_activity.py.
  *
  * A name bound to a zone somebody drew (`CameraZone` above), which the AI
- * service turns into "is anybody at this counter?".
- * contracts/ai-service.md §/employee_activity, which is built entirely on
+ * service turns into "is anybody at this counter?" - built entirely on
  * /zoning's already-computed occupancy: no face recognition, no model of its
  * own, nothing about WHO is there. It answers whether the chair is filled.
+ * The employee on the row is who is SUPPOSED to be there, set by a manager;
+ * the detector never checks it.
  *
  * NOT ATTENDANCE, and the difference is the point. `AttendanceRecord` is a
  * badge at the door - who came to work today, from the RFID reader. This is
- * whether counter 3 is being manned at 14:40 while twelve people wait. An
- * employee can be present all day by one measure and away from their counter
- * by the other, and both readings are true.
+ * whether counter 3 is being manned at 14:40 while twelve people wait.
  *
- * `name` is the primary key, as it is for a zone. No id.
+ * `name` is the key, unique across the whole site: backend answers 409 for a
+ * name another agency already uses.
  */
 export const WORKSTATION_STATUSES = ['unknown', 'present', 'away'] as const
 export type WorkstationStatus = (typeof WORKSTATION_STATUSES)[number]
 
-export interface Workstation {
+/**
+ * What the AI service knows about one workstation - the rows of its GET and
+ * of WS /ws/employee-activity, which the backend relays untouched
+ * (contracts/ai-service.md §/employee_activity).
+ */
+export interface WorkstationState {
   name: string
   /** The `CameraZone.name` this watches. The zone must exist first. */
   zone: string
@@ -866,54 +903,70 @@ export interface Workstation {
   status: WorkstationStatus
   /**
    * When the current status began - epoch SECONDS, float, not an ISO string
-   * and not milliseconds. The AI service speaks Unix time here where the rest
-   * of this dashboard speaks ISO 8601; converting at the edge (in the screen)
-   * rather than pretending otherwise keeps the mismatch visible.
+   * and not milliseconds. Converted at the edge (in the screen) rather than
+   * pretending otherwise.
    */
   since: number
   /**
-   * Whether the bound zone has ever actually been read.
-   *
    * `false` means "not measured yet" and is DISTINCT from a measured empty
-   * zone - a workstation bound to a zone whose camera has never produced a
-   * frame sits at `unknown` with `zone_known: false` forever, and that is a
-   * configuration problem, not a quiet counter.
+   * zone - a workstation whose camera has never produced a frame sits at
+   * `unknown` with `zone_known: false`, and that is a configuration problem,
+   * not a quiet counter.
    */
   zone_known: boolean
 }
 
 /**
- * POST /api/workstations — PROPOSED, the shape to ask backend for.
+ * GET /api/agencies/{agency_id}/workstations - WorkstationResponse. Our row
+ * (name, zone, employee) wearing the AI service's current state for it.
+ */
+export interface Workstation extends Omit<WorkstationState, 'since'> {
+  employee_id: string | null
+  /** "First Last", built by backend from the employee row. */
+  employee_name: string | null
+  /** Null when the AI service has no state for this name (it is down, or lost it). */
+  since: number | null
+}
+
+/**
+ * POST /api/agencies/{agency_id}/workstations - WorkstationCreate.
  *
- *   { "name": "guichet-3", "zone": "counters" }
+ *   { "name": "guichet-3", "zone": "counters", "employee_id": null }
  *
- * 422 when the zone does not exist yet, which is the AI service's own
- * refusal (§/employee_activity) and the reason the form picks from the zones
- * that exist rather than taking free text.
+ * 422 when the zone does not exist in the AI service yet, or the employee
+ * belongs to another agency; 404 for an unknown employee. Re-posting a name
+ * this agency already has REBINDS it (zone and employee both replaced).
  */
 export interface WorkstationCreate {
   name: string
   zone: string
+  employee_id?: string | null
 }
 
 /**
- * WS workstation frames.
+ * WS /ws/employee-activity frames - the AI service's own, relayed as-is.
  *
- * A snapshot of every workstation on connect, then one frame each time a
- * status ACTUALLY FLIPS - not per poll. So silence means nothing changed,
- * exactly as it does on the alerts and occupancy feeds, and the connection
- * badge is again the only thing that separates "steady" from "dead".
+ * A snapshot of every workstation ON THE SITE on connect, then one frame each
+ * time a status ACTUALLY FLIPS - not per poll. So silence means nothing
+ * changed, and the connection badge is the only thing separating "steady"
+ * from "dead". The stream is not filtered by agency and carries no employee.
  */
 export type WorkstationFrame =
-  { type: 'snapshot'; workstations: Workstation[] } | ({ type: 'update' } & Workstation)
+  { type: 'snapshot'; workstations: WorkstationState[] } | ({ type: 'update' } & WorkstationState)
 
 /**
- * Camera calibration — PROPOSED, not in contracts/api.md (2026-09-20).
+ * Camera calibration - backend/app/api/ai_calibration.py (PR #109), the
+ * gateway in front of contracts/ai-service.md §/calibration. Not in
+ * contracts/api.md yet; bodies are from backend/app/schemas/ai_calibration.py
+ * and responses are the AI service's, passed through.
  *
  * The one-time per-site geometry every multi-camera feature sits on:
  * world-mode zones, person tracking, anything that needs a real floor
- * position rather than one camera's pixels. contracts/ai-service.md
- * §/calibration, proxied by the backend (BACKEND-ASKS.md §8b).
+ * position rather than one camera's pixels.
+ *
+ * Cameras are named here, as everywhere on the AI side: every camera key
+ * below is a `Camera.name`, the name backend registered it with the AI
+ * service under.
  *
  * TWO FIELD NAMES BELOW COME FROM THE AI SOURCE, NOT THE CONTRACT, because
  * the contract's example for /calibration/align disagrees with what
@@ -968,33 +1021,46 @@ export interface CalibrationDiagnostics {
 }
 
 /**
- * One entry of GET /api/calibration.
- *
- * `Hinv` is deliberately absent: the AI service returns it, and the only
- * thing a browser could do with it is draw the bird's-eye overlay, which
- * this screen does not. The proxy can drop it rather than shipping a 3x3
- * matrix to every caller - noted in BACKEND-ASKS.md §8b so that stays a
- * decision rather than an omission.
+ * One value of GET /api/agencies/{agency_id}/ai/calibration, which answers
+ * the AI service's camera-name-keyed map, cut down by the gateway to this
+ * agency's own camera names: `{ "cam-lobby": { "Hinv": [...], ... } }`.
  */
-export interface CameraCalibration {
-  camera_id: string
-  aligned: boolean
+export interface CalibrationEntry {
+  /**
+   * Image pixels -> floor centimetres, 3x3. Nothing in this dashboard reads
+   * it (it would drive a bird's-eye overlay, which is not built); typed only
+   * because the gateway sends it.
+   */
+  Hinv: number[][]
   diagnostics: CalibrationDiagnostics
 }
 
 /**
- * POST /api/calibration/rect — exactly 4 points, in order around a shape
- * that is a right angle in real life.
+ * One calibrated camera as the screen uses it - an entry of that map with
+ * its key folded in (api/endpoints/calibration.ts). Whether it is aligned is
+ * `diagnostics.aligned`; there is no separate flag.
+ */
+export interface CameraCalibration {
+  /** The camera NAME. */
+  camera: string
+  diagnostics: CalibrationDiagnostics
+}
+
+/**
+ * POST /api/agencies/{agency_id}/ai/calibration/rect - CalibrationRectRequest.
+ * Exactly 4 points, in order around a shape that is a right angle in real
+ * life; 404 for a camera name not in this agency, 422 for one without a
+ * stream URL or for points the solve cannot use.
  *
  * `img_w` / `img_h` are REQUIRED by the service: the orthogonality solve
- * needs the image centre as an assumed principal point, and recording them
- * is what lets the calibration be rescaled if the frame size ever changes.
- * They must describe the frame the points were clicked on, which is why
- * this screen asks the proxy for a native-resolution frame rather than the
- * detector-scaled one the live view uses.
+ * needs the image centre as an assumed principal point, and they are
+ * recorded as `calib_res` so the calibration can be rescaled if the frame
+ * size ever changes. They must be the size of THE FRAME THE POINTS WERE
+ * CLICKED ON - the gateway's frame is the detector-scaled one, and that is
+ * fine as long as these describe it.
  */
 export interface CalibrationRectRequest {
-  camera_id: string
+  camera: string
   points: Array<[number, number]>
   img_w: number
   img_h: number
@@ -1006,9 +1072,10 @@ export interface CalibrationRectResult extends CalibrationDiagnostics {
 }
 
 /**
- * POST /api/calibration/align — the FULL accumulated list of shared-point
- * observations, not a delta. One entry per real point, naming the cameras
- * it was clicked in: `{ "CAMERA_UUID": [x, y], "OTHER_UUID": [x, y] }`.
+ * POST /api/agencies/{agency_id}/ai/calibration/align - the FULL accumulated
+ * list of shared-point observations, not a delta. One entry per real point,
+ * naming the cameras it was clicked in: `{ "cam-lobby": [x, y],
+ * "cam-counter": [x, y] }`. Every name must be a camera of this agency (404).
  */
 export type SharedPoint = Record<string, [number, number]>
 

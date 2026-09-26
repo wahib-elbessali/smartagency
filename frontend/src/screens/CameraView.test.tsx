@@ -68,12 +68,23 @@ describe('CameraView', () => {
   })
 
   it('shows the current frame from an online camera', async () => {
-    renderAt('SECURITY', CAMERA_ID_LOBBY)
+    renderAt('MANAGER', CAMERA_ID_LOBBY)
     expect(
       await screen.findByRole('img', { name: 'Current frame from cam-lobby' }, WAIT),
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'cam-lobby', level: 1 })).toBeInTheDocument()
     expect(screen.getByText('ONLINE')).toBeInTheDocument()
+  })
+
+  /* The frame route sits on the calibration gateway, ADMIN and MANAGER only,
+     while the weapon stream admits SECURITY. A guard gets the detections and
+     a plain statement about the picture - not a dead-camera message. */
+  it('tells a guard the picture is not theirs to see, and keeps the detections', async () => {
+    renderAt('SECURITY', CAMERA_ID_COUNTER)
+    expect(
+      await screen.findByText(/can see this camera’s detections but not its picture/i, {}, WAIT),
+    ).toBeInTheDocument()
+    await screen.findByText('pistol', {}, WAIT)
   })
 
   /* The fixture answers 404 for a camera the backend has never heard from
