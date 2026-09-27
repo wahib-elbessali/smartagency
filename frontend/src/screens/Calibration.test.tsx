@@ -3,11 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import Calibration from './Calibration'
+import Calibration, { AlignReport } from './Calibration'
 import { clearSession, setSession } from '@/api/tokenStore'
 import { SessionContext, type SessionValue } from '@/auth/SessionContext'
 import { ScopeProvider } from '@/agency/scope'
-import type { Role } from '@/api/types'
+import type { Camera, Role } from '@/api/types'
 import { mockUserForRole } from '@/mocks/currentUser'
 import { resetCameraStore } from '@/mocks/cameraStore'
 import { AGENCY_ID } from '@/mocks/fixtures/people'
@@ -261,5 +261,51 @@ describe('calibrationStore', () => {
     store.calibrateRect({ camera: COUNTER, points: SQUARE, img_w: 1920, img_h: 1080 })
 
     expect(store.listCalibration()[COUNTER]?.diagnostics.aligned).toBe(false)
+  })
+})
+
+/**
+ * Alignment is site-wide underneath, and the gateway returns every camera the
+ * AI service aligned. The report must speak only about this branch's own.
+ */
+describe('AlignReport', () => {
+  const camera = (name: string): Camera => ({
+    id: name,
+    agency_id: 'a',
+    name,
+    stream_url: 'rtsp://x',
+    status: 'ONLINE',
+  })
+
+  it('keeps another branch’s cameras out of the report', () => {
+    render(
+      <AlignReport
+        cameras={[camera('cam-lobby'), camera('cam-counter')]}
+        result={{
+          reference: 'cam-store',
+          results: {
+            'cam-store': { aligned: true, reference: true, n_points: null, via: null },
+            'cam-lobby': { aligned: true, reference: false, n_points: 2, via: 'cam-store' },
+            'cam-counter': { aligned: true, reference: false, n_points: 5, via: 'cam-store' },
+          },
+          residual_checks: [
+            {
+              pairs: [
+                { cam_a: 'cam-lobby', cam_b: 'cam-store', distance_cm: 900 },
+                { cam_a: 'cam-lobby', cam_b: 'cam-counter', distance_cm: 3.5 },
+              ],
+            },
+          ],
+          weak_fits: 'camera(s) cam-lobby, cam-store were aligned with <4 shared points',
+        }}
+      />,
+    )
+
+    expect(screen.queryByText(/cam-store/)).not.toBeInTheDocument()
+    expect(screen.getAllByText(/a camera in another branch/).length).toBeGreaterThan(0)
+    /* The weak-fit note is rebuilt from this branch's rows, not echoed. */
+    expect(screen.getByText(/cam-lobby was aligned on fewer than 4/)).toBeInTheDocument()
+    /* Only the pair wholly inside the branch feeds the residual. */
+    expect(screen.getByText(/3\.5\s*cm/)).toBeInTheDocument()
   })
 })

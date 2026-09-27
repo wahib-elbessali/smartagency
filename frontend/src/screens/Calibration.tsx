@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 import { AlertTriangle, ImageOff, Ruler, Undo2 } from 'lucide-react'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { alignCameras, calibrateRect, fetchCalibration } from '@/api/endpoints/calibration'
-import { fetchCameraFrame, fetchCameras } from '@/api/endpoints/cameras'
+import { fetchCameras } from '@/api/endpoints/cameras'
 import { ApiError, describeApiError } from '@/api/errors'
 import type { AlignResult, Camera, CameraCalibration, SharedPoint } from '@/api/types'
 import { useScope } from '@/agency/ScopeContext'
@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { controlClass } from '@/components/ui/control'
+import { useCameraFrame } from '@/hooks/useCameraFrame'
 import { Screen } from './Screen'
 
 /**
@@ -64,11 +65,6 @@ import { Screen } from './Screen'
 
 type Point = [number, number]
 type Mode = 'calibrate' | 'align'
-
-/* Matches the live view's cadence, which matches the detectors' own
-   update_interval (ai-service.md GET /config) - polling faster would fetch
-   the same frame twice. */
-const FRAME_MS = 2_000
 
 export default function Calibration() {
   const { user } = useSession()
@@ -260,6 +256,7 @@ function CalibrateMode({
 
         {camera && (
           <FrameCanvas
+            key={camera.id}
             camera={camera}
             points={points}
             maxPoints={4}
@@ -622,16 +619,34 @@ function AlignMode({
         </p>
       )}
 
-      {run.data && <AlignReport result={run.data} />}
+      {run.data && <AlignReport result={run.data} cameras={cameras} />}
     </div>
   )
 }
 
-function AlignReport({ result }: { result: AlignResult }) {
-  /* Results are keyed by camera name already - the AI service's own key. */
-  const nameOf = (name: string) => name
-  const entries = Object.entries(result.results)
+/**
+ * The outcome of one alignment, told only about this branch's cameras.
+ *
+ * Alignment is site-wide underneath: the AI service re-solves every
+ * calibrated camera it knows, and the gateway passes the whole result back.
+ * So the report keeps the rows, the residuals and the weak-fit note to this
+ * branch's own cameras, and names another branch's camera only as that -
+ * never by name - when it happens to be the reference. The free-text
+ * `weak_fits` lists camera names, so it is rebuilt here from the per-camera
+ * rows instead of shown verbatim. (Raised with backend: the gateway should
+ * scope this itself.)
+ */
+export function AlignReport({ result, cameras }: { result: AlignResult; cameras: Camera[] }) {
+  const mine = new Set(cameras.map((camera) => camera.name))
+  const nameOf = (name: string) => (mine.has(name) ? name : 'a camera in another branch')
+  const entries = Object.entries(result.results).filter(([name]) => mine.has(name))
   const failed = entries.filter(([, value]) => !value.aligned)
+  const weak = entries
+    .filter(([, value]) => value.aligned && !value.reference && (value.n_points ?? 0) < 4)
+    .map(([name]) => name)
+  const residuals = result.residual_checks.flatMap((check) =>
+    check.pairs.filter((pair) => mine.has(pair.cam_a) && mine.has(pair.cam_b)),
+  )
   /* The contract calls this `results_warning`; the service emits
      `reference_warning`. Both are read so neither is silently dropped. */
   const referenceWarning = result.reference_warning ?? result.results_warning
@@ -681,21 +696,20 @@ function AlignReport({ result }: { result: AlignResult }) {
             {referenceWarning}
           </p>
         )}
-        {result.weak_fits && (
-          <p className="text-ink-2 mt-3 text-sm leading-relaxed">{result.weak_fits}</p>
+        {weak.length > 0 && (
+          <p className="text-ink-2 mt-3 text-sm leading-relaxed">
+            {weak.join(', ')} {weak.length === 1 ? 'was' : 'were'} aligned on fewer than 4 shared
+            spots, so {weak.length === 1 ? 'its' : 'their'} own rectangle still sets the floor
+            shape. If one looks stretched, record more shared spots (4 or more) to replace it
+            outright.
+          </p>
         )}
 
-        {result.residual_checks.length > 0 && (
+        {residuals.length > 0 && (
           <p className="text-ink-3 mt-3 text-xs leading-relaxed">
             Across the spots you recorded, the cameras now place the same point within{' '}
             <span className="text-ink-2 tabular">
-              {Math.max(
-                0,
-                ...result.residual_checks.flatMap((check) =>
-                  check.pairs.map((pair) => pair.distance_cm),
-                ),
-              ).toFixed(1)}{' '}
-              cm
+              {Math.max(0, ...residuals.map((pair) => pair.distance_cm)).toFixed(1)} cm
             </span>{' '}
             of each other at worst. Small is the whole point; metres mean the alignment did not
             take.
@@ -730,7 +744,7 @@ function FrameCanvas({
   points: Point[]
   maxPoints: number
   onAddPoint: (point: Point) => void
-  onSize?: (size: { w: number; h: number }) => void
+  onSize?: (size: { w: number; h: number } | null) => void
   hint: string
   footer?: React.ReactNode
 }) {
@@ -745,26 +759,14 @@ function FrameCanvas({
    * the points starts it again.
    */
   const frozen = points.length > 0
-  const frame = useQuery({
-    queryKey: ['calibrationFrame', camera.id],
-    queryFn: ({ signal }) => fetchCameraFrame(camera, signal),
-    retry: false,
-    refetchInterval: frozen ? false : FRAME_MS,
-    /* Keeps the last picture up while the next arrives, so the preview does
-       not blink through a skeleton twice a second. */
-    placeholderData: (previous) => previous,
-    gcTime: 0,
-  })
-
-  const [src, setSrc] = useState<string | null>(null)
+  const frame = useCameraFrame(camera, { hold: frozen })
+  const { src, size } = frame
+  /* The parent sends this size as img_w/img_h, so it has to follow the
+     picture exactly - including back to null on a camera switch, or the
+     next camera would be calibrated against the previous one's frame size. */
   useEffect(() => {
-    if (!frame.data) return
-    const url = URL.createObjectURL(frame.data)
-    setSrc(url)
-    return () => URL.revokeObjectURL(url)
-  }, [frame.data])
-
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+    onSize?.(size)
+  }, [size, onSize])
   const svgRef = useRef<SVGSVGElement | null>(null)
 
   const noFrame = frame.isError
@@ -811,14 +813,7 @@ function FrameCanvas({
               src={src}
               alt={`Current frame from ${camera.name}`}
               className="absolute inset-0 h-full w-full object-contain"
-              onLoad={(e) => {
-                const next = {
-                  w: e.currentTarget.naturalWidth,
-                  h: e.currentTarget.naturalHeight,
-                }
-                setSize(next)
-                onSize?.(next)
-              }}
+              onLoad={frame.onLoad}
             />
           ) : (
             <div className="text-ink-3 absolute inset-0 grid place-items-center p-6 text-center text-sm">
