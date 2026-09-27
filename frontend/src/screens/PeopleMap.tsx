@@ -349,11 +349,15 @@ function FloorMap({
               stroke="#6ea0ff"
               strokeWidth={dot / 3}
             />
+            {/* Centred inside the shape: a label on a vertex falls off the
+                map whenever that vertex sits on its edge. */}
             <text
-              x={zone.polygon_m[0][0]}
-              y={zone.polygon_m[0][1] - dot}
+              x={zone.polygon_m.reduce((sum, p) => sum + p[0], 0) / zone.polygon_m.length}
+              y={zone.polygon_m.reduce((sum, p) => sum + p[1], 0) / zone.polygon_m.length}
               fontSize={dot * 2.2}
               fill="#6ea0ff"
+              textAnchor="middle"
+              dominantBaseline="middle"
               fontFamily="system-ui, sans-serif"
             >
               {zone.name}

@@ -42,7 +42,10 @@ import { PEOPLE_CYCLE_MS, peoplePhase, peopleStatus, peopleTracks } from './peop
  */
 const UNDER_TEST = import.meta.env.MODE === 'test'
 const FIRST_FRAME_MS = UNDER_TEST ? 10 : 1_500
-const INTERVAL_MS = UNDER_TEST ? 20 : 5_000
+/* 100 ms, not less: a frame has to stay on screen longer than waitFor's
+   50 ms polling, or a test that must SEE a short-lived detection can miss it
+   when the whole suite is loading the machine. */
+const INTERVAL_MS = UNDER_TEST ? 100 : 5_000
 
 /* A 1x1 transparent PNG. Stands in for the base64 JPEG the wanted feed sends,
    so the screen can prove it renders one without shipping a picture of a
@@ -363,18 +366,21 @@ function createScriptedStream<T>(frames: T[], expand?: (frame: T) => T[]): Socke
   if (MOCK_SCENARIO === 'error') {
     status = 'closed'
   } else {
+    /* Each frame is timed from the one before it, not from the start. With
+       absolute offsets, a busy moment made every overdue frame fire back to
+       back - a detection could appear and clear in the same tick, never on
+       screen at all. Chained, each frame gets its full interval. */
+    const emit = (i: number) => {
+      if (stopped || i >= frames.length) return
+      for (const sent of [frames[i], ...(expand?.(frames[i]) ?? [])]) {
+        for (const listener of eventListeners) listener(sent)
+      }
+      timers.push(setTimeout(() => emit(i + 1), INTERVAL_MS))
+    }
     timers.push(
       setTimeout(() => {
         setStatus('open')
-        frames.forEach((frame, i) => {
-          timers.push(
-            setTimeout(() => {
-              for (const sent of [frame, ...(expand?.(frame) ?? [])]) {
-                for (const listener of eventListeners) listener(sent)
-              }
-            }, i * INTERVAL_MS),
-          )
-        })
+        emit(0)
       }, FIRST_FRAME_MS),
     )
   }

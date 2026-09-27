@@ -49,6 +49,12 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    /* Not the 5 s default. The form tests type character by character with
+       user-event, which takes 2-3 s alone and roughly twice that when the
+       whole suite runs in parallel - right on the default, so they failed
+       at random under load (and CI runners are slower than a desktop). The
+       limit exists to catch a hang, which 15 s still does. */
+    testTimeout: 15_000,
     /* Pin the environment the suite runs in.
     
        Vitest loads .env.local like Vite does, so without this the tests inherit
