@@ -55,6 +55,14 @@ describe('canReach', () => {
     expect(canReach('TECHNICIAN', '/alerts')).toBe(false)
   })
 
+  it('keeps face enrollment to admins and managers', () => {
+    expect(canReach('ADMIN', '/faces')).toBe(true)
+    expect(canReach('MANAGER', '/faces')).toBe(true)
+    for (const role of ['SECURITY', 'AGENT', 'TECHNICIAN'] as const) {
+      expect(canReach(role, '/faces')).toBe(false)
+    }
+  })
+
   /* WATCHLIST_READ_ROLES: security acts on a hit, so it reads the list. */
   it('gives the watchlist to admins, managers and security', () => {
     for (const role of ['ADMIN', 'MANAGER', 'SECURITY'] as const) {

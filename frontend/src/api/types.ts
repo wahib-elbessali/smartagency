@@ -1245,6 +1245,26 @@ export interface WantedThresholdUpdate {
   min_face_px?: number
 }
 
+/**
+ * An employee's enrolled face - EmployeeFaceResponse,
+ * backend/app/schemas/face_recognition.py (PR #109). Not in contracts/api.md
+ * yet. GET /api/employees/faces lists only employees who ARE enrolled; POST
+ * /api/employees/{id}/face answers the same shape.
+ *
+ * Enrollment is keyed to the EMPLOYEE, not to a typed name: the backend
+ * registers the photo with the AI service under the employee's id. No photo
+ * or embedding ever comes back - `embeddings_count` is how many photos are
+ * enrolled, and enrolling again ADDS one.
+ */
+export interface EmployeeFace {
+  employee_id: string
+  /** "First Last", built by the backend. */
+  employee_name: string
+  agency_id: string
+  enrolled: boolean
+  embeddings_count: number
+}
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string

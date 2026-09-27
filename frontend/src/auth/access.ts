@@ -67,6 +67,8 @@ export const ASSIGNABLE_ROLES: readonly Role[] = ROLES.filter((role) => role !==
 const ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/presence': ['ADMIN', 'MANAGER', 'SECURITY'],
   '/employees': ['ADMIN', 'MANAGER'],
+  /* ENROLL_ROLES and FACE_READ_ROLES in backend/app/api/face_recognition.py. */
+  '/faces': ['ADMIN', 'MANAGER'],
   '/agencies': ['ADMIN', 'MANAGER'],
   '/services': ['ADMIN', 'MANAGER'],
   '/devices': ['ADMIN', 'MANAGER', 'TECHNICIAN'],

@@ -5,6 +5,7 @@ import {
   Camera,
   Cpu,
   Fan,
+  Fingerprint,
   Grid3x3,
   IdCard,
   KeyRound,
@@ -32,6 +33,7 @@ export interface ScreenEntry {
 export const SCREENS: readonly ScreenEntry[] = [
   { to: '/presence', label: 'Employee presence', icon: UserCheck },
   { to: '/employees', label: 'Employees', icon: IdCard },
+  { to: '/faces', label: 'Face enrollment', icon: Fingerprint },
   { to: '/agencies', label: 'Agencies', icon: Building2 },
   { to: '/services', label: 'Services', icon: Layers },
   { to: '/users', label: 'User accounts', icon: ShieldCheck },
