@@ -1,5 +1,11 @@
 import { registerMock, registerMockWriter } from '../registry'
-import type { CalibrationEntry, CalibrationRectRequest, SharedPoint } from '@/api/types'
+import type {
+  CalibrationEntry,
+  CalibrationGates,
+  CalibrationGatesRequest,
+  CalibrationRectRequest,
+  SharedPoint,
+} from '@/api/types'
 import { agencyIdFromPath, camerasByName, ensureAgencyScope } from '../aiGateway'
 import { listCameras } from '../cameraStore'
 import * as store from '../calibrationStore'
@@ -52,4 +58,45 @@ registerMockWriter('POST /api/agencies/{id}/ai/calibration/align', (body, path) 
     (payload.points ?? []).flatMap((point) => Object.keys(point)),
   )
   return store.alignCameras(payload.points ?? [])
+})
+
+registerMockWriter('POST /api/agencies/{id}/ai/calibration/cross-check', (body, path) => {
+  const agencyId = agencyIdFromPath(path)
+  ensureAgencyScope(agencyId)
+  const payload = body as { points: SharedPoint }
+  camerasByName(agencyId, Object.keys(payload.points ?? {}))
+  return store.crossCheck(payload.points ?? {})
+})
+
+/* Gates are floor coordinates for the whole site: the gateway checks the
+   agency and cannot narrow the list any further. */
+registerMock<CalibrationGates>('GET /api/agencies/{id}/ai/calibration/gates', {
+  normal: (path) => {
+    ensureAgencyScope(agencyIdFromPath(path))
+    return store.getGates()
+  },
+  empty: (path) => {
+    ensureAgencyScope(agencyIdFromPath(path))
+    return { gates: [] }
+  },
+  large: (path) => {
+    ensureAgencyScope(agencyIdFromPath(path))
+    return store.getGates()
+  },
+})
+
+registerMockWriter('POST /api/agencies/{id}/ai/calibration/gates', (body, path) => {
+  const agencyId = agencyIdFromPath(path)
+  ensureAgencyScope(agencyId)
+  const payload = body as CalibrationGatesRequest
+  camerasByName(
+    agencyId,
+    (payload.gates ?? []).map((gate) => gate.camera),
+  )
+  return store.saveGates(payload)
+})
+
+registerMockWriter('DELETE /api/agencies/{id}/ai/calibration/gates', (_body, path) => {
+  ensureAgencyScope(agencyIdFromPath(path))
+  return store.clearGates()
 })

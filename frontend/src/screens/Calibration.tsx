@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { controlClass } from '@/components/ui/control'
 import { AlignMode } from './calibration/AlignMode'
 import { CalibrateMode } from './calibration/CalibrateMode'
+import { GatesMode } from './calibration/GatesMode'
 import { Screen } from './Screen'
 
 export { AlignReport } from './calibration/AlignReport'
@@ -29,7 +30,7 @@ export { AlignReport } from './calibration/AlignReport'
  * same floor. World-mode zones and person tracking are built on it, and
  * neither can exist until this is done once per site.
  *
- * TWO STEPS, AND THE SECOND IS NOT OPTIONAL
+ * TWO STEPS, AND THE SECOND IS NOT OPTIONAL (plus a third that is)
  *
  * 1. CALIBRATE one camera: click 3 corners of something that is a right
  *    angle in real life; the 4th is placed as a draggable guess. No
@@ -39,7 +40,10 @@ export { AlignReport } from './calibration/AlignReport'
  *    real straight edge - in two or more of them, record it, repeat
  *    (calibration/AlignMode.tsx). Until this runs, every camera has invented its own
  *    private coordinate system and two cameras can each look perfect while
- *    disagreeing by metres about where the same person is standing.
+ *    disagreeing by metres about where the same person is standing. The same
+ *    clicks can then be CROSS-CHECKED - read-only - to see the alignment took.
+ * 3. GATES, optional: the doorways the person tracker treats as where new
+ *    people appear (calibration/GatesMode.tsx).
  *
  * THE REPROJECTION ERROR IS A TRAP AND IS NOT SHOWN AS ACCURACY
  *
@@ -60,7 +64,7 @@ export { AlignReport } from './calibration/AlignReport'
  * it lands.
  */
 
-type Mode = 'calibrate' | 'align'
+type Mode = 'calibrate' | 'align' | 'gates'
 
 export default function Calibration() {
   const { user } = useSession()
@@ -146,6 +150,13 @@ export default function Calibration() {
           >
             2. Align the cameras
           </Button>
+          <Button
+            size="sm"
+            variant={mode === 'gates' ? 'primary' : 'secondary'}
+            onClick={() => setMode('gates')}
+          >
+            3. Entry gates
+          </Button>
         </div>
       </div>
 
@@ -165,6 +176,8 @@ export default function Calibration() {
             byCamera={byCamera}
             onSaved={() => void queryClient.invalidateQueries({ queryKey: ['calibration'] })}
           />
+        ) : mode === 'gates' ? (
+          <GatesMode agencyId={agencyId as string} cameras={cameraRows} byCamera={byCamera} />
         ) : (
           <AlignMode
             agencyId={agencyId as string}
