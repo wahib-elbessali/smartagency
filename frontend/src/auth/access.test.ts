@@ -55,6 +55,15 @@ describe('canReach', () => {
     expect(canReach('TECHNICIAN', '/alerts')).toBe(false)
   })
 
+  /* WATCHLIST_READ_ROLES: security acts on a hit, so it reads the list. */
+  it('gives the watchlist to admins, managers and security', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SECURITY'] as const) {
+      expect(canReach(role, '/watchlist')).toBe(true)
+    }
+    expect(canReach('AGENT', '/watchlist')).toBe(false)
+    expect(canReach('TECHNICIAN', '/watchlist')).toBe(false)
+  })
+
   /* OCCUPANCY_ROLES on the backend's socket (contracts/api.md §13). */
   it('gives occupancy to admins and managers only', () => {
     expect(canReach('ADMIN', '/occupancy')).toBe(true)

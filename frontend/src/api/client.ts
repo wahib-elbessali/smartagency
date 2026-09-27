@@ -32,7 +32,11 @@ export interface EndpointDescriptor {
 
 export interface RequestOptions {
   signal?: AbortSignal
-  /** JSON request body. Only for POST/PATCH. */
+  /**
+   * Request body. Sent as JSON - except a FormData, which goes as-is as
+   * multipart/form-data: the two routes that take a photo (the watchlist and
+   * face enrollment) cannot take JSON.
+   */
   body?: unknown
   /**
    * What to make of the response. `json` (the default) parses it; `blob`
@@ -103,7 +107,10 @@ async function sendRequest<T>(
     Accept: responseType === 'blob' ? 'image/*' : 'application/json',
   }
 
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const multipart = body instanceof FormData
+  /* No Content-Type for multipart: the browser writes it, boundary included,
+     and a hand-set one without the boundary is unreadable to the server. */
+  if (body !== undefined && !multipart) headers['Content-Type'] = 'application/json'
 
   if (endpoint.auth) {
     const token = getAccessToken()
@@ -127,7 +134,7 @@ async function sendRequest<T>(
     response = await fetch(`${API_BASE_URL}${endpoint.path}`, {
       method: endpoint.method ?? 'GET',
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
       /* Explicit, not left to the default. The contract answers this now: auth
          is bearer tokens, not cookie sessions, so credentials are not sent and
          CSRF is not in play. See SECURITY.md. */

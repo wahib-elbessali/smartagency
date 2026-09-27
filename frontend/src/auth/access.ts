@@ -89,6 +89,10 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
      ADMIN, MANAGER and SECURITY, and closes anyone else with 1008. Before
      that entry existed this route was open to every role. */
   '/alerts': ['ADMIN', 'MANAGER', 'SECURITY'],
+  /* WATCHLIST_READ_ROLES in backend/app/api/wanted.py. SECURITY reads it -
+     they are the ones who act on a hit - and the screen hides the edits
+     from them, which are ADMIN and MANAGER. */
+  '/watchlist': ['ADMIN', 'MANAGER', 'SECURITY'],
   /* Transcribed from CAMERA_ROLES / AI_ALERT_ROLES (cameras.py, ai_alerts.py),
      added 2026-09-12. The one screen a guard can write to: they register the
      cameras they watch and set how sure the detector has to be before an

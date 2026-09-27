@@ -38,6 +38,8 @@ import { requestUser } from './currentUser'
  *   cameras      ADMIN, MANAGER, SECURITY;              (CAMERA_ROLES; delete
  *                delete is ADMIN, MANAGER only            is its own dependency)
  *   ai-alerts    ADMIN, MANAGER, SECURITY               (AI_ALERT_ROLES)
+ *   watchlist    ADMIN, MANAGER, SECURITY to read;      (WATCHLIST_READ_ROLES,
+ *                ADMIN, MANAGER to write, threshold too  WATCHLIST_WRITE_ROLES)
  *   assignments  AGENT for /agents/me; ADMIN, MANAGER    (assignments.py,
  *                for the rest                             contracts/api.md §5)
  *   ai zones     ADMIN, MANAGER, SECURITY to read;      (ZONE_READ_ROLES,
@@ -90,6 +92,9 @@ export function rolesFor(key: string): Role[] | null {
   /* Stored alerts (#112) hang off /api/agencies/{id}/..., so ahead of the
      agencies rule below, which would lock SECURITY out. */
   if (path.endsWith('/alerts')) return ['ADMIN', 'MANAGER', 'SECURITY']
+  if (path.startsWith('/api/ai/watchlist')) {
+    return method === 'GET' ? ['ADMIN', 'MANAGER', 'SECURITY'] : ['ADMIN', 'MANAGER']
+  }
 
   /* The AI gateway (PR #109) hangs off /api/agencies/{id}/..., so it is
      checked ahead of the agencies rule below, which would otherwise give

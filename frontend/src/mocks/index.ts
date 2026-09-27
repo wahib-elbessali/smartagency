@@ -17,6 +17,7 @@ import './fixtures/alerts'
 import './fixtures/zones'
 import './fixtures/workstations'
 import './fixtures/calibration'
+import './fixtures/watchlist'
 import './fixtures/attendance'
 import './fixtures/auth'
 
