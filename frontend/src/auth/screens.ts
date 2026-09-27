@@ -10,6 +10,7 @@ import {
   KeyRound,
   Layers,
   Pentagon,
+  ScanFace,
   Ruler,
   UserCheck,
   UserCog,
@@ -125,6 +126,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     icon: Bell,
     group: 'live',
     description: 'Live security alerts from the cameras.',
+  },
+  {
+    to: '/watchlist',
+    label: 'Watchlist',
+    icon: ScanFace,
+    group: 'setup',
+    description: 'Who the wanted detector looks for.',
   },
   {
     to: '/cameras',

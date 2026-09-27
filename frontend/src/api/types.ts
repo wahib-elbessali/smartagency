@@ -1186,6 +1186,65 @@ export interface CalibrationGatesSaved extends CalibrationGates {
   saved: string
 }
 
+/**
+ * One person on the wanted watchlist - WantedPersonResponse,
+ * backend/app/schemas/wanted.py (PR #109). Not in contracts/api.md yet.
+ *
+ * The backend keeps its own row per person, owned by one agency, in front of
+ * the AI service's gallery (contracts/ai-service.md §/wanted). The gallery is
+ * a SEPARATE store from employee face enrollment on purpose, so a staff
+ * member and a wanted person can never be confused. No photo ever comes
+ * back: `embeddings_count` is how many photos are enrolled for the name.
+ */
+export interface WantedPerson {
+  id: string
+  agency_id: string
+  /** 1-80 characters of letters, digits, space and . _ + - ; unique site-wide. */
+  name: string
+  embeddings_count: number
+  /** ISO 8601. */
+  created_at: string
+}
+
+/** DELETE /api/ai/watchlist/{name} - WantedDeleteResponse. */
+export interface WantedDeleted {
+  name: string
+  agency_id: string
+  /** Every photo for the name goes; there is no removing one photo. */
+  embeddings_removed: number
+}
+
+/**
+ * GET|PUT /api/ai/watchlist/threshold - WantedThresholdResponse.
+ *
+ * `threshold` is a cosine similarity in [floor, 1], NOT a probability: the
+ * score a face must reach against a watchlist photo to raise an alert.
+ * Changes apply on the AI service's next detection cycle
+ * (`applies_within_seconds`), and the AI service does not keep them across a
+ * restart - `startup_default` is what it falls back to.
+ */
+export interface WantedThreshold {
+  threshold: number
+  /** Faces smaller than this many pixels are not matched at all. */
+  min_face_px: number
+  startup_default: { threshold: number; min_face_px: number }
+  /** The lowest threshold the service accepts. */
+  floor: number
+  watchlist_size: number
+  embeddings_total: number
+  applies_within_seconds: number
+  /** PUT only: the values it replaced. */
+  previous?: { threshold: number; min_face_px: number } | null
+  /** PUT only: e.g. that a threshold below the default raises false accusations. */
+  warnings: string[]
+}
+
+/** PUT /api/ai/watchlist/threshold - WantedThresholdUpdate; at least one. */
+export interface WantedThresholdUpdate {
+  threshold?: number
+  min_face_px?: number
+}
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string
