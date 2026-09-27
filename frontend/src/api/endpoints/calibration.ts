@@ -45,6 +45,7 @@ export async function fetchCalibration(
   )
   return Object.entries(map).map(([camera, entry]) => ({
     camera,
+    Hinv: entry.Hinv,
     diagnostics: entry.diagnostics ?? {},
   }))
 }

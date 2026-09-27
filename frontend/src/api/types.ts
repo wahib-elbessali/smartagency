@@ -1027,9 +1027,10 @@ export interface CalibrationDiagnostics {
  */
 export interface CalibrationEntry {
   /**
-   * Image pixels -> floor centimetres, 3x3. Nothing in this dashboard reads
-   * it (it would drive a bird's-eye overlay, which is not built); typed only
-   * because the gateway sends it.
+   * Image pixels -> floor coordinates, 3x3 row-major. Read in the browser for
+   * the checks a person makes while clicking - a shared line's straightness,
+   * where saved gates sit on a camera, the bird's-eye overlay - never to
+   * solve anything; the AI service does that (screens/homography.ts).
    */
   Hinv: number[][]
   diagnostics: CalibrationDiagnostics
@@ -1043,6 +1044,7 @@ export interface CalibrationEntry {
 export interface CameraCalibration {
   /** The camera NAME. */
   camera: string
+  Hinv: number[][]
   diagnostics: CalibrationDiagnostics
 }
 
