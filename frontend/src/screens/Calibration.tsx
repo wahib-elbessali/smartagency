@@ -10,6 +10,7 @@ import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { controlClass } from '@/components/ui/control'
 import { AlignMode } from './calibration/AlignMode'
+import { BirdsEyeMode } from './calibration/BirdsEyeMode'
 import { CalibrateMode } from './calibration/CalibrateMode'
 import { GatesMode } from './calibration/GatesMode'
 import { Screen } from './Screen'
@@ -44,6 +45,8 @@ export { AlignReport } from './calibration/AlignReport'
  *    clicks can then be CROSS-CHECKED - read-only - to see the alignment took.
  * 3. GATES, optional: the doorways the person tracker treats as where new
  *    people appear (calibration/GatesMode.tsx).
+ * 4. BIRD'S-EYE CHECK: every camera's picture laid onto one top-down floor,
+ *    to see the alignment agree - or double (calibration/BirdsEyeMode.tsx).
  *
  * THE REPROJECTION ERROR IS A TRAP AND IS NOT SHOWN AS ACCURACY
  *
@@ -64,7 +67,7 @@ export { AlignReport } from './calibration/AlignReport'
  * it lands.
  */
 
-type Mode = 'calibrate' | 'align' | 'gates'
+type Mode = 'calibrate' | 'align' | 'gates' | 'birdseye'
 
 export default function Calibration() {
   const { user } = useSession()
@@ -135,7 +138,7 @@ export default function Calibration() {
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             variant={mode === 'calibrate' ? 'primary' : 'secondary'}
@@ -157,6 +160,13 @@ export default function Calibration() {
           >
             3. Entry gates
           </Button>
+          <Button
+            size="sm"
+            variant={mode === 'birdseye' ? 'primary' : 'secondary'}
+            onClick={() => setMode('birdseye')}
+          >
+            4. Bird's-eye check
+          </Button>
         </div>
       </div>
 
@@ -176,6 +186,8 @@ export default function Calibration() {
             byCamera={byCamera}
             onSaved={() => void queryClient.invalidateQueries({ queryKey: ['calibration'] })}
           />
+        ) : mode === 'birdseye' ? (
+          <BirdsEyeMode cameras={cameraRows} byCamera={byCamera} />
         ) : mode === 'gates' ? (
           <GatesMode agencyId={agencyId as string} cameras={cameraRows} byCamera={byCamera} />
         ) : (

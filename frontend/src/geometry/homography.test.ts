@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyH,
+  canvasTransform,
+  coverageCheck,
+  footprint,
+  niceStep,
+  toMatrix3d,
   completeParallelogram,
   invert,
   lineDiagnostics,
@@ -166,5 +171,52 @@ describe('solveHomography', () => {
         ],
       ),
     ).toBeNull()
+  })
+})
+
+describe("bird's-eye geometry", () => {
+  it('projects a camera that sees only floor, and measures it', () => {
+    const fp = footprint(SCALE_SHIFT, 100, 50)
+    expect(fp.horizonFrac).toBeCloseTo(0)
+    /* x2 scale on both axes: 100x50 px -> 200x100 floor units. */
+    expect(fp.area).toBeCloseTo(20_000)
+  })
+
+  /* Denominator y - 20: the top 20 of 50 rows are at or past the horizon. */
+  it('clips the part of the frame past the horizon, and reports it', () => {
+    const horizon: Matrix3 = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 1, -20],
+    ]
+    const fp = footprint(horizon, 100, 50)
+    expect(fp.horizonFrac).toBeCloseTo(0.4, 2)
+    expect(fp.pixels.every(([, y]) => y >= 20)).toBe(true)
+  })
+
+  it('flags a footprint wildly off the median, and sets aside unbounded ones', () => {
+    const fp = (area: number, horizonFrac = 0) => ({ pixels: [], world: [], area, horizonFrac })
+    const result = coverageCheck({ a: fp(100), b: fp(120), c: fp(5000), d: fp(80, 0.3) })
+    expect(result.median).toBe(120)
+    expect(result.flagged).toEqual(['c'])
+    expect(result.unbounded).toEqual(['d'])
+  })
+
+  it('builds a uniform canvas transform over the bounds', () => {
+    const S = canvasTransform({ xmin: 0, xmax: 200, ymin: 0, ymax: 100 }, 220, 10)
+    expect(applyH(S, [0, 0])).toEqual([10, 10])
+    expect(applyH(S, [200, 100])).toEqual([210, 110])
+  })
+
+  it('writes a homography as a column-major matrix3d', () => {
+    expect(toMatrix3d(SCALE_SHIFT)).toBe(
+      'matrix3d(2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, 10, 20, 0, 1)',
+    )
+  })
+
+  it('picks round grid steps', () => {
+    expect(niceStep(1000)).toBe(100)
+    expect(niceStep(730)).toBe(100)
+    expect(niceStep(37)).toBe(5)
   })
 })

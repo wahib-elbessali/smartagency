@@ -193,3 +193,146 @@ export function solveHomography(src: Point[], dst: Point[]): Matrix3 | null {
     [h[6], h[7], 1],
   ]
 }
+
+/* ------------------------------------------------------------ bird's-eye */
+
+export interface Footprint {
+  /** The part of the frame below the horizon, in the frame's pixels. */
+  pixels: Point[]
+  /** The same polygon on the floor. */
+  world: Point[]
+  /** Its floor area, in floor units squared. */
+  area: number
+  /** Share of the frame at or above the horizon (0 = all floor, 1 = none). */
+  horizonFrac: number
+}
+
+function shoelace(points: Point[]): number {
+  let sum = 0
+  for (let i = 0; i < points.length; i += 1) {
+    const [x1, y1] = points[i]
+    const [x2, y2] = points[(i + 1) % points.length]
+    sum += x1 * y2 - x2 * y1
+  }
+  return Math.abs(sum) / 2
+}
+
+/**
+ * A camera's floor footprint - the reference's _camera_world_footprint. Only
+ * the part of the frame BELOW the horizon is projected: a floor homography
+ * sends the horizon line to infinity, so a pixel above it is behind the
+ * camera or arbitrarily far away, and its "area" would be a confident,
+ * made-up number. The frame is clipped (Sutherland-Hodgman) against the
+ * half-plane where Hinv's denominator is positive before projecting.
+ */
+export function footprint(Hinv: Matrix3, w: number, h: number): Footprint {
+  let [a, b, c] = Hinv[2]
+  const sign = Math.sign(a * (w / 2) + b * (h / 2) + c) || 1
+  a *= sign
+  b *= sign
+  c *= sign
+  const eps = 1e-9 * Math.max(1, Math.abs(c))
+  const frame: Point[] = [
+    [0, 0],
+    [w, 0],
+    [w, h],
+    [0, h],
+  ]
+  const clipped: Point[] = []
+  for (let i = 0; i < frame.length; i += 1) {
+    const cur = frame[i]
+    const next = frame[(i + 1) % frame.length]
+    const fc = a * cur[0] + b * cur[1] + c
+    const fn = a * next[0] + b * next[1] + c
+    if (fc >= eps) clipped.push(cur)
+    if (fc >= eps !== fn >= eps) {
+      const t = (eps - fc) / (fn - fc)
+      clipped.push([cur[0] + t * (next[0] - cur[0]), cur[1] + t * (next[1] - cur[1])])
+    }
+  }
+  if (clipped.length < 3) return { pixels: [], world: [], area: 0, horizonFrac: 1 }
+  const world = clipped.map((p) => applyH(Hinv, p))
+  return {
+    pixels: clipped,
+    world,
+    area: shoelace(world),
+    horizonFrac: Math.max(0, 1 - shoelace(clipped) / (w * h)),
+  }
+}
+
+export interface CoverageCheck {
+  areas: Record<string, number>
+  median: number | null
+  /** Wildly off the median - more than 20x, or under 1/20th. */
+  flagged: string[]
+  /** Seeing past the horizon: no finite floor footprint to compare. */
+  unbounded: string[]
+}
+
+/**
+ * The reference's _coverage_check. READ ITS CAVEAT: footprint area is a WEAK
+ * signal, dominated by how near a camera looks to the horizon rather than
+ * how much room it sees. It catches only gross scale blow-ups; a clean
+ * result is not a green light, and the screen says so.
+ */
+export function coverageCheck(footprints: Record<string, Footprint>): CoverageCheck {
+  const areas: Record<string, number> = {}
+  const unbounded: string[] = []
+  for (const [camera, fp] of Object.entries(footprints)) {
+    if (fp.horizonFrac > 0.01) unbounded.push(camera)
+    else areas[camera] = fp.area
+  }
+  const values = Object.values(areas).sort((x, y) => x - y)
+  if (values.length < 2) return { areas, median: null, flagged: [], unbounded: unbounded.sort() }
+  const mid = Math.floor(values.length / 2)
+  const median = values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2
+  const flagged = Object.entries(areas)
+    .filter(([, area]) => median > 1e-9 && (area / median > 20 || area / median < 0.05))
+    .map(([camera]) => camera)
+    .sort()
+  return { areas, median, flagged, unbounded: unbounded.sort() }
+}
+
+export interface Bounds {
+  xmin: number
+  xmax: number
+  ymin: number
+  ymax: number
+}
+
+/**
+ * The shared canvas transform S: floor -> canvas pixels, UNIFORM scale plus
+ * a shift. Uniform on purpose - a stretched axis would make real skew and
+ * real misalignment look the same by eye.
+ */
+export function canvasTransform(bounds: Bounds, size: number, pad = 20): Matrix3 {
+  const span = Math.max(bounds.xmax - bounds.xmin, bounds.ymax - bounds.ymin, 1e-6)
+  const scale = (size - 2 * pad) / span
+  return [
+    [scale, 0, pad - bounds.xmin * scale],
+    [0, scale, pad - bounds.ymin * scale],
+    [0, 0, 1],
+  ]
+}
+
+/**
+ * A 3x3 planar homography as a CSS matrix3d() - column-major 4x4 with the
+ * z row and column left as identity. Applied to an element whose top-left is
+ * at the origin (transform-origin 0 0), it maps element pixel (x, y) exactly
+ * as H maps (x, y, 1), perspective divide included.
+ */
+export function toMatrix3d(H: Matrix3): string {
+  const [[a, b, c], [d, e, f], [g, h, i]] = H
+  return `matrix3d(${[a, d, 0, g, b, e, 0, h, 0, 0, 1, 0, c, f, 0, i].join(', ')})`
+}
+
+/** A round grid spacing (1, 2 or 5 times a power of ten) for about `lines` lines. */
+export function niceStep(span: number, lines = 10): number {
+  const raw = span / Math.max(lines, 1)
+  if (raw <= 0) return 1
+  const magnitude = 10 ** Math.floor(Math.log10(raw))
+  for (const m of [1, 2, 5, 10]) {
+    if (m * magnitude >= raw) return m * magnitude
+  }
+  return 10 * magnitude
+}
