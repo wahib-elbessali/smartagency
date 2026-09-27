@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   activeCameras,
+  applyPeopleFrame,
+  EMPTY_PEOPLE,
   applyAlertFrame,
   applyAlertState,
   mergeStoredAlerts,
@@ -332,5 +334,45 @@ describe('stored alerts', () => {
       'new',
       'old',
     ])
+  })
+})
+
+describe('applyPeopleFrame', () => {
+  const track = (id: number, x = 0) => ({ id, x, y: 0, hits: 1, misses: 0 })
+
+  it('takes the phase and tracks from a snapshot', () => {
+    const after = applyPeopleFrame(EMPTY_PEOPLE, {
+      type: 'snapshot',
+      state: 'running',
+      tracks: [track(1)],
+    })
+    expect(after.phase).toBe('running')
+    expect(after.tracks).toHaveLength(1)
+  })
+
+  /* Full snapshot every cycle: someone who left is just not in the next one. */
+  it('replaces the tracks each cycle rather than merging', () => {
+    const before = { ...EMPTY_PEOPLE, phase: 'running' as const, tracks: [track(1), track(2)] }
+    const after = applyPeopleFrame(before, { type: 'tracks', tracks: [track(2, 5)], boxes: {} })
+    expect(after.tracks.map((t) => t.id)).toEqual([2])
+    expect(after.tracks[0].x).toBe(5)
+  })
+
+  it('drops the dots when tracking stops running', () => {
+    const before = { ...EMPTY_PEOPLE, phase: 'running' as const, tracks: [track(1)] }
+    const after = applyPeopleFrame(before, {
+      type: 'state',
+      phase: 'bootstrapping',
+      warnings: [],
+      error: null,
+      person_scale: null,
+      room: null,
+      fps: null,
+      cams_bootstrapped: null,
+      gates_loaded: null,
+    })
+    expect(after.phase).toBe('bootstrapping')
+    expect(after.tracks).toEqual([])
+    expect(after.status?.phase).toBe('bootstrapping')
   })
 })

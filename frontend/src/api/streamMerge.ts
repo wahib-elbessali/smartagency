@@ -3,6 +3,9 @@ import type {
   AlertFrame,
   OccupancyFrame,
   StoredAlert,
+  PeopleFrame,
+  PeopleStatus,
+  PersonTrack,
   WorkstationFrame,
   WorkstationState,
   WorkstationStatus,
@@ -189,4 +192,40 @@ export function totalAcrossZones(zones: ZonesByName): number {
   return Object.values(zones)
     .filter((zone) => zone.people_tracking_ready)
     .reduce((sum, zone) => sum + zone.count, 0)
+}
+
+/** What the person-tracking socket has said so far. */
+export interface PeopleState {
+  /** Null until the socket has said anything - the REST status fills in. */
+  status: Omit<PeopleStatus, 'active_tracks'> | null
+  phase: PeopleStatus['phase'] | null
+  tracks: PersonTrack[]
+}
+
+export const EMPTY_PEOPLE: PeopleState = { status: null, phase: null, tracks: [] }
+
+/**
+ * Folds person-tracking frames. `tracks` frames are the FULL set every cycle,
+ * so they replace rather than merge - a person who left is simply absent
+ * from the next one. A phase that is not `running` has no tracks: a tracker
+ * that dropped back to bootstrapping must not leave its last dots frozen on
+ * the map as if people were standing still.
+ */
+export function applyPeopleFrame(current: PeopleState, frame: PeopleFrame): PeopleState {
+  if (frame.type === 'snapshot') {
+    return {
+      ...current,
+      phase: frame.state,
+      tracks: frame.state === 'running' ? frame.tracks : [],
+    }
+  }
+  if (frame.type === 'state') {
+    const { type: _type, ...status } = frame
+    return {
+      status,
+      phase: status.phase,
+      tracks: status.phase === 'running' ? current.tracks : [],
+    }
+  }
+  return { ...current, phase: current.phase ?? 'running', tracks: frame.tracks }
 }

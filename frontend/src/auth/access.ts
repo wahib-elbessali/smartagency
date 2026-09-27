@@ -77,6 +77,8 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
   /* OCCUPANCY_ROLES in backend/app/websocket/ai_proxy.py, and
      contracts/api.md §13. */
   '/occupancy': ['ADMIN', 'MANAGER'],
+  /* PEOPLE_ROLES in ai_people.py and ai_proxy.py. */
+  '/map': ['ADMIN', 'MANAGER', 'SECURITY'],
   /* The three AI setup screens, on the backend's AI gateway (PR #109). The
      gateway lets SECURITY READ zones and workstations; these screens exist
      to draw and bind them, which is ADMIN and MANAGER, so the route is. The

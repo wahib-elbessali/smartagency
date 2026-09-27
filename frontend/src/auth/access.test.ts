@@ -55,6 +55,14 @@ describe('canReach', () => {
     expect(canReach('TECHNICIAN', '/alerts')).toBe(false)
   })
 
+  /* PEOPLE_ROLES: security watches the floor too. */
+  it('gives the live floor map to admins, managers and security', () => {
+    for (const role of ['ADMIN', 'MANAGER', 'SECURITY'] as const) {
+      expect(canReach(role, '/map')).toBe(true)
+    }
+    expect(canReach('AGENT', '/map')).toBe(false)
+  })
+
   it('keeps face enrollment to admins and managers', () => {
     expect(canReach('ADMIN', '/faces')).toBe(true)
     expect(canReach('MANAGER', '/faces')).toBe(true)

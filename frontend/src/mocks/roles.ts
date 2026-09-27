@@ -105,6 +105,8 @@ export function rolesFor(key: string): Role[] | null {
   if (path.includes('/ai/calibration') || path.includes('/ai/frame')) {
     return ['ADMIN', 'MANAGER']
   }
+  /* PEOPLE_ROLES in ai_people.py. */
+  if (path.includes('/ai/people')) return ['ADMIN', 'MANAGER', 'SECURITY']
   if (path.includes('/ai/zones') || path.includes('/workstations')) {
     return method === 'GET' ? ['ADMIN', 'MANAGER', 'SECURITY'] : ['ADMIN', 'MANAGER']
   }

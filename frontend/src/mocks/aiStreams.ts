@@ -5,10 +5,13 @@ import type {
   AlertFrame,
   AlertStateFrame,
   OccupancyFrame,
+  PeopleFrame,
+  PeoplePhase,
   WorkstationFrame,
 } from '@/api/types'
 import * as alertStore from './alertStore'
 import { findCameraByName, getWeaponThreshold } from './cameraStore'
+import { PEOPLE_CYCLE_MS, peoplePhase, peopleStatus, peopleTracks } from './peopleStore'
 
 /**
  * Fake alerts and occupancy sockets for mock mode.
@@ -412,4 +415,65 @@ export function createMockOccupancyStream(): SocketStream<OccupancyFrame> {
 
 export function createMockWorkstationStream(): SocketStream<WorkstationFrame> {
   return createScriptedStream(workstationScript())
+}
+
+/**
+ * The person-tracking socket, read off peopleStore's clock rather than a
+ * fixed script: a snapshot on connect, a `state` frame each time the phase
+ * moves on, and a full `tracks` frame every cycle once running - the same
+ * three kinds, in the same order, as the real stream.
+ */
+export function createMockPeopleStream(): SocketStream<PeopleFrame> {
+  const eventListeners = new Set<(event: PeopleFrame) => void>()
+  const statusListeners = new Set<(status: StreamStatus) => void>()
+  let status: StreamStatus = MOCK_SCENARIO === 'error' ? 'closed' : 'connecting'
+  let stopped = false
+  let lastPhase: PeoplePhase | null = null
+  let cycle: ReturnType<typeof setInterval> | null = null
+
+  function emit(frame: PeopleFrame) {
+    for (const listener of eventListeners) listener(frame)
+  }
+
+  const start =
+    MOCK_SCENARIO === 'error'
+      ? null
+      : setTimeout(() => {
+          if (stopped) return
+          status = 'open'
+          for (const listener of statusListeners) listener(status)
+          lastPhase = peoplePhase()
+          emit({ type: 'snapshot', state: lastPhase, tracks: peopleTracks() })
+          cycle = setInterval(() => {
+            const phase = peoplePhase()
+            if (phase !== lastPhase) {
+              lastPhase = phase
+              const { active_tracks: _active, ...state } = peopleStatus()
+              emit({ type: 'state', ...state })
+            }
+            if (phase === 'running') emit({ type: 'tracks', tracks: peopleTracks(), boxes: {} })
+          }, PEOPLE_CYCLE_MS)
+        }, FIRST_FRAME_MS)
+
+  return {
+    get status() {
+      return status
+    },
+    subscribe(onEvent) {
+      eventListeners.add(onEvent)
+      return () => eventListeners.delete(onEvent)
+    },
+    onStatusChange(listener) {
+      statusListeners.add(listener)
+      listener(status)
+      return () => statusListeners.delete(listener)
+    },
+    close() {
+      stopped = true
+      if (start) clearTimeout(start)
+      if (cycle) clearInterval(cycle)
+      eventListeners.clear()
+      statusListeners.clear()
+    },
+  }
 }

@@ -19,6 +19,7 @@ import './fixtures/workstations'
 import './fixtures/calibration'
 import './fixtures/watchlist'
 import './fixtures/faces'
+import './fixtures/tracking'
 import './fixtures/attendance'
 import './fixtures/auth'
 

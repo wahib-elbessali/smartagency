@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ImageOff, Pentagon, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { fetchAgencies } from '@/api/endpoints/agencies'
+import { fetchCalibration } from '@/api/endpoints/calibration'
 import { fetchCameras } from '@/api/endpoints/cameras'
+import { fetchPeopleStatus } from '@/api/endpoints/people'
 import { createZone, deleteZone, fetchZones, zonesOnCameras } from '@/api/endpoints/zones'
 import { ApiError, describeApiError } from '@/api/errors'
 import type { Camera, CameraZone } from '@/api/types'
@@ -56,16 +58,23 @@ import { Screen } from './Screen'
  * could only ever report on zones somebody had drawn with the AI service's
  * own tools. This is where they come from.
  *
- * PIXEL MODE ONLY, DELIBERATELY
+ * ONE CAMERA OR SEVERAL
  *
  * The AI service infers a zone's mode from how many cameras it is saved
- * with: one camera is `pixel` - counted against that camera's own raw
- * detections, no calibration anywhere - and two or more is `world`, which
- * requires the drawn-on camera to be calibrated AND aligned into a shared
- * floor frame or it answers 422. Calibration is its own screen and its own
- * phase; offering a multi-camera zone before it exists would offer a button
- * whose only outcome is a refusal. A `world` zone made elsewhere still shows
- * in the list, read as what it is.
+ * with. One camera is `pixel` - counted against that camera's own raw
+ * detections, no calibration anywhere. Two or more is `world`: the outline
+ * drawn on one camera is converted onto the shared floor through that
+ * camera's calibration, and people are counted from the person tracker's
+ * floor positions, fed by every camera named.
+ *
+ * So the second mode only offers what can succeed. It lists only cameras
+ * that are calibrated AND aligned (the same `diagnostics.aligned` the
+ * Calibration screen shows - a camera that is not would have its outline
+ * anchored to a private frame, and the AI service refuses it). And it waits
+ * for person tracking to be `running`, because the backend refuses a floor
+ * zone before then (backend/app/api/ai_zoning.py) - the AI service on its
+ * own would save it with a "will count 0" warning, which is still shown if
+ * it ever comes back.
  *
  * THE PICTURE PLAYS UNTIL YOU CLICK, THEN HOLDS STILL
  *
@@ -147,9 +156,50 @@ export default function Zones() {
     [cameras.data],
   )
 
+  const [mode, setMode] = useState<'pixel' | 'world'>('pixel')
+  const world = mode === 'world'
+
+  const calibration = useQuery({
+    queryKey: ['calibration', agencyId],
+    queryFn: ({ signal }) => fetchCalibration(agencyId as string, signal),
+    enabled: agencyId !== null,
+  })
+  const aligned = useMemo(
+    () =>
+      new Set((calibration.data ?? []).filter((e) => e.diagnostics.aligned).map((e) => e.camera)),
+    [calibration.data],
+  )
+  /* Polled while floor zones are being drawn: the tracker bootstraps on its
+     own, and the screen should notice it start. */
+  const people = useQuery({
+    queryKey: ['peopleStatus', agencyId],
+    queryFn: ({ signal }) => fetchPeopleStatus(agencyId as string, signal),
+    enabled: agencyId !== null && world,
+    refetchInterval: 5_000,
+  })
+
+  /* In floor mode only aligned cameras can carry a zone at all. */
+  const pickable = useMemo(
+    () => (world ? cameraRows.filter((c) => aligned.has(c.name)) : cameraRows),
+    [world, cameraRows, aligned],
+  )
   const [pickedCameraId, setPickedCameraId] = useState<string | null>(null)
-  const camera: Camera | null =
-    cameraRows.find((c) => c.id === pickedCameraId) ?? cameraRows[0] ?? null
+  const camera: Camera | null = pickable.find((c) => c.id === pickedCameraId) ?? pickable[0] ?? null
+
+  /* The other cameras a floor zone is counted from, by name. */
+  const [alsoFrom, setAlsoFrom] = useState<string[]>([])
+  const others = pickable.filter((c) => c.name !== camera?.name)
+  const extra = alsoFrom.filter((name) => others.some((c) => c.name === name))
+
+  const worldBlocker = !world
+    ? null
+    : pickable.length < 2
+      ? 'A floor zone needs at least two cameras that are calibrated and aligned. Do that on the Calibration screen first.'
+      : extra.length === 0
+        ? 'Tick at least one more camera that sees this area.'
+        : people.data && people.data.phase !== 'running'
+          ? `Person tracking is ${people.data.phase}. The backend only accepts a floor zone once it is running; it starts by itself when every registered camera is aligned.`
+          : null
 
   /* Points are in the frame's own pixels, which is what the AI service
      stores and what a later frame of the same camera can be redrawn with. */
@@ -171,7 +221,11 @@ export default function Zones() {
         polygon: points,
         /* The gateway requires a non-blank URL per source and then swaps in
            the one our database holds, so the row's own is sent. */
-        sources: { [(camera as Camera).name]: camera?.stream_url ?? '' },
+        sources: Object.fromEntries(
+          [camera as Camera, ...(world ? others.filter((c) => extra.includes(c.name)) : [])].map(
+            (c) => [c.name, c.stream_url ?? ''],
+          ),
+        ),
       }),
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({ queryKey: ['zones'] })
@@ -244,13 +298,39 @@ export default function Zones() {
           </div>
         )}
 
-        {cameraRows.length > 0 && (
+        <div className="flex items-end gap-2" role="group" aria-label="Zone type">
+          <Button
+            size="sm"
+            variant={world ? 'secondary' : 'primary'}
+            aria-pressed={!world}
+            onClick={() => {
+              setMode('pixel')
+              setPoints([])
+            }}
+          >
+            One camera
+          </Button>
+          <Button
+            size="sm"
+            variant={world ? 'primary' : 'secondary'}
+            aria-pressed={world}
+            onClick={() => {
+              setMode('world')
+              setPoints([])
+              setPickedCameraId(null)
+            }}
+          >
+            Several cameras (floor)
+          </Button>
+        </div>
+
+        {pickable.length > 0 && (
           <div className="max-w-xs flex-1">
             <label
               htmlFor="zones_camera"
               className="text-ink-3 tracked mb-2 block text-[11px] font-medium"
             >
-              Camera
+              {world ? 'Draw on' : 'Camera'}
             </label>
             <select
               id="zones_camera"
@@ -258,7 +338,7 @@ export default function Zones() {
               value={camera?.id ?? ''}
               onChange={(e) => setPickedCameraId(e.target.value || null)}
             >
-              {cameraRows.map((row) => (
+              {pickable.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name}
                 </option>
@@ -277,6 +357,45 @@ export default function Zones() {
         onRetry={() => void cameras.refetch()}
         skeletonRows={3}
       >
+        {world && (
+          <Panel as="section" className="mb-3">
+            <PanelBody>
+              {others.length > 0 && (
+                <fieldset>
+                  <legend className="text-ink-3 tracked mb-2 text-[11px] font-medium">
+                    Also counted from
+                  </legend>
+                  <div className="flex flex-wrap gap-4">
+                    {others.map((other) => (
+                      <label key={other.id} className="text-ink-2 flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={extra.includes(other.name)}
+                          onChange={(e) =>
+                            setAlsoFrom((current) =>
+                              e.target.checked
+                                ? [...current, other.name]
+                                : current.filter((name) => name !== other.name),
+                            )
+                          }
+                        />
+                        {other.name}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+              <p
+                role="status"
+                className={`mt-2 text-sm leading-relaxed ${worldBlocker ? 'text-warn' : 'text-ink-3'}`}
+              >
+                {worldBlocker ??
+                  'Person tracking is running. Draw the area on this camera; it is converted onto the shared floor and counted from every camera ticked.'}
+              </p>
+            </PanelBody>
+          </Panel>
+        )}
+
         {camera && (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
             <Drawing
@@ -289,6 +408,7 @@ export default function Zones() {
               onUndo={() => setPoints((current) => current.slice(0, -1))}
               onClear={() => setPoints([])}
               onClose={() => setNaming(true)}
+              blocked={worldBlocker !== null}
             />
 
             <div className="space-y-3">
@@ -418,16 +538,20 @@ export default function Zones() {
               <Panel as="section">
                 <PanelBody>
                   <h2 className="text-ink text-sm font-semibold">How a zone is counted</h2>
-                  <p className="text-ink-2 mt-2 text-sm leading-relaxed">
-                    A person counts when their feet land inside the outline, checked against this
-                    camera's own detections. Nothing is measured in metres and no calibration is
-                    involved, so a zone here cannot disagree with another camera — it simply does
-                    not know about one.
-                  </p>
-                  <p className="text-ink-3 mt-2 text-xs leading-relaxed">
-                    Areas spanning several cameras need the site calibrated first, on the
-                    Calibration screen, and are not drawn here.
-                  </p>
+                  {world ? (
+                    <p className="text-ink-2 mt-2 text-sm leading-relaxed">
+                      The outline is converted onto the shared floor, and a person counts when the
+                      tracker places them inside it — from any of the cameras ticked, so someone one
+                      camera cannot see is still counted if another can.
+                    </p>
+                  ) : (
+                    <p className="text-ink-2 mt-2 text-sm leading-relaxed">
+                      A person counts when their feet land inside the outline, checked against this
+                      camera's own detections. Nothing is measured on the floor and no calibration
+                      is involved, so a zone here cannot disagree with another camera — it simply
+                      does not know about one.
+                    </p>
+                  )}
                 </PanelBody>
               </Panel>
             </div>
@@ -481,6 +605,7 @@ function Drawing({
   onUndo,
   onClear,
   onClose,
+  blocked = false,
 }: {
   camera: Camera
   points: Point[]
@@ -490,6 +615,8 @@ function Drawing({
   onUndo: () => void
   onClear: () => void
   onClose: () => void
+  /** A floor zone that could not be saved yet - drawing is fine, closing is not. */
+  blocked?: boolean
 }) {
   /* Plays until the first point of a polygon lands, then holds still: the
      points are in frame pixels, so a picture that kept moving would leave a
@@ -603,7 +730,12 @@ function Drawing({
           <Button size="sm" disabled={points.length === 0} onClick={onClear}>
             Clear
           </Button>
-          <Button size="sm" variant="primary" disabled={points.length < 3} onClick={onClose}>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={points.length < 3 || blocked}
+            onClick={onClose}
+          >
             Close zone
           </Button>
           {/* The polygon's state in words, for anyone not reading the

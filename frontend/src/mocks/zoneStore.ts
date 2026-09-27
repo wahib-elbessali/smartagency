@@ -1,5 +1,6 @@
 import type { CameraZoneCreate, CameraZoneEntry, CameraZoneSaved } from '@/api/types'
 import { ApiError } from '@/api/errors'
+import { applyH, type Matrix3 } from '@/geometry/homography'
 
 /**
  * A writable stand-in for the AI service's zone store, for mock mode.
@@ -109,14 +110,32 @@ export function listZones(): Record<string, CameraZoneEntry> {
 }
 
 /**
- * POST /zoning/zones, pixel mode only: fixture mode has no calibrated
- * cameras, so a multi-camera (world) zone is refused upstream in
- * fixtures/zones.ts exactly as the gateway refuses one while person
- * tracking is not running.
+ * POST /zoning/zones. One source is a `pixel` zone; two or more a `world`
+ * zone, whose outline is converted onto the shared floor through the
+ * drawn-on camera's matrix (`worldMatrix`, which fixtures/zones.ts only
+ * supplies once that camera is calibrated and aligned - the AI service's
+ * 422 otherwise).
  */
-export function createZone(body: CameraZoneCreate): CameraZoneSaved {
+export function createZone(body: CameraZoneCreate, worldMatrix?: Matrix3): CameraZoneSaved {
   if (!Array.isArray(body.polygon) || body.polygon.length < 3) {
     throw new ApiError('http', 'Une zone demande au moins 3 points', 422)
+  }
+  const pixels = body.polygon.map(([x, y]) => [Math.round(x), Math.round(y)] as [number, number])
+
+  if (Object.keys(body.sources).length > 1) {
+    if (!worldMatrix) throw new ApiError('http', 'world zone needs an aligned camera', 422)
+    const polygon_m = pixels.map((p) => applyH(worldMatrix, p))
+    const converted_from = { camera: body.camera, polygon_px: pixels }
+    seed()[body.name] = { mode: 'world', polygon_m, converted_from }
+    return {
+      name: body.name,
+      mode: 'world',
+      saved: 'ai/features/data/zones.json',
+      sources_known: Object.keys(body.sources).sort(),
+      warnings: [],
+      polygon_m,
+      converted_from,
+    }
   }
 
   seed()[body.name] = {

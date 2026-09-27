@@ -335,6 +335,21 @@ export function clearGates(): CalibrationGatesSaved {
   return { gates: [], n: 0, saved: 'ai/features/data/gates.json' }
 }
 
+/**
+ * The pixel -> floor matrix of a calibrated AND aligned camera, for the
+ * zone mock's world conversion; a reason string when it is neither.
+ */
+export function worldMatrixOf(camera: string): Matrix3 | string {
+  const entry = find(camera)
+  if (!entry) {
+    return `camera '${camera}' has no calibration in site_calibration.json -- a world zone is a FLOOR-metre polygon, so the camera it was drawn on must be calibrated first (POST /calibration/rect)`
+  }
+  if (entry.diagnostics.aligned !== true) {
+    return `camera '${camera}' is calibrated but NOT aligned to a shared frame -- converting through it would anchor this zone to camera ${camera}'s own invented coordinate frame, which looks valid but disagrees with every other camera`
+  }
+  return entry.Hinv
+}
+
 /** Tests only - module state would otherwise leak between them. */
 export function resetCalibrationStore(): void {
   calibrations = null

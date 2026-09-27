@@ -6,6 +6,7 @@ import {
   Cpu,
   Fan,
   Fingerprint,
+  Footprints,
   Grid3x3,
   IdCard,
   KeyRound,
@@ -40,6 +41,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   { to: '/climate', label: 'Climate', icon: Fan },
   { to: '/visitors', label: 'Visitor queue', icon: Users },
   { to: '/occupancy', label: 'Occupancy', icon: Grid3x3 },
+  { to: '/map', label: 'Live floor map', icon: Footprints },
   { to: '/zones', label: 'Zones', icon: Pentagon },
   /* Its own icon: presence and staffing measure different things (a badge
      at the door vs an occupied counter) and must not read as one screen. */

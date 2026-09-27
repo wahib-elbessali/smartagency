@@ -23,6 +23,7 @@ const Staffing = lazy(() => import('@/screens/Staffing'))
 const Calibration = lazy(() => import('@/screens/Calibration'))
 const Watchlist = lazy(() => import('@/screens/Watchlist'))
 const Faces = lazy(() => import('@/screens/Faces'))
+const PeopleMap = lazy(() => import('@/screens/PeopleMap'))
 const CameraView = lazy(() => import('@/screens/CameraView'))
 const ManualControls = lazy(() => import('@/screens/ManualControls'))
 const Employees = lazy(() => import('@/screens/Employees'))
@@ -89,6 +90,7 @@ export function App() {
           <Route path="calibration" element={<Calibration />} />
           <Route path="watchlist" element={<Watchlist />} />
           <Route path="faces" element={<Faces />} />
+          <Route path="map" element={<PeopleMap />} />
           <Route path="cameras/:id" element={<CameraView />} />
           <Route path="controls" element={<ManualControls />} />
           {/* An unknown path is not a reason to show someone a screen their

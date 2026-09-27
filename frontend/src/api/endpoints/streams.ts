@@ -8,9 +8,16 @@ import {
 import {
   createMockAlertStream,
   createMockOccupancyStream,
+  createMockPeopleStream,
   createMockWorkstationStream,
 } from '@/mocks/aiStreams'
-import type { AlertFeature, AlertFrame, OccupancyFrame, WorkstationFrame } from '../types'
+import type {
+  AlertFeature,
+  AlertFrame,
+  OccupancyFrame,
+  PeopleFrame,
+  WorkstationFrame,
+} from '../types'
 
 /**
  * The live AI feeds, every one proxied by the backend.
@@ -42,6 +49,10 @@ export const OCCUPANCY_STREAM_PATH = '/ws/occupancy'
    Relays the AI service's whole-site stream: not filtered by agency, no
    employee on a row - see Staffing.tsx for how that is handled. */
 export const WORKSTATION_STREAM_PATH = '/ws/employee-activity'
+
+/* PEOPLE_ROLES in ai_proxy.py: ADMIN, MANAGER, SECURITY. The whole site's
+   tracks, unfiltered - see screens/PeopleMap.tsx. Not in the contract yet. */
+export const PEOPLE_STREAM_PATH = '/ws/people/tracks'
 
 /**
  * Parses an alerts frame.
@@ -152,4 +163,32 @@ export function createWorkstationStream(
 ): SocketStream<WorkstationFrame> {
   if (USE_MOCKS) return createMockWorkstationStream()
   return createSocketStream(WORKSTATION_STREAM_PATH, parseWorkstationFrame, deps)
+}
+
+/**
+ * A person-tracking frame. Checked on the discriminant and the one field
+ * each kind is for: a snapshot's phase, a state's phase, a tracks frame's
+ * list. An unexpected extra field is still real data.
+ */
+export function parsePeopleFrame(data: unknown): PeopleFrame | null {
+  const frame = parseJsonFrame(data)
+  if (!frame) return null
+  if (frame.type === 'snapshot') {
+    if (typeof frame.state !== 'string' || !Array.isArray(frame.tracks)) return null
+    return frame as unknown as PeopleFrame
+  }
+  if (frame.type === 'state') {
+    if (typeof frame.phase !== 'string') return null
+    return frame as unknown as PeopleFrame
+  }
+  if (frame.type === 'tracks') {
+    if (!Array.isArray(frame.tracks)) return null
+    return { ...frame, boxes: frame.boxes ?? {} } as unknown as PeopleFrame
+  }
+  return null
+}
+
+export function createPeopleStream(deps: SocketStreamDeps = {}): SocketStream<PeopleFrame> {
+  if (USE_MOCKS) return createMockPeopleStream()
+  return createSocketStream(PEOPLE_STREAM_PATH, parsePeopleFrame, deps)
 }

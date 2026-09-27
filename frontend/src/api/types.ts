@@ -895,6 +895,10 @@ export interface CameraZoneSaved {
   saved: string
   sources_known: string[]
   warnings: string[]
+  /** `world` zones: the outline converted onto the shared floor. */
+  polygon_m?: Array<[number, number]>
+  /** `world` zones: the camera and pixel outline it was drawn as. */
+  converted_from?: { camera: string; polygon_px: Array<[number, number]> }
 }
 
 /**
@@ -1264,6 +1268,73 @@ export interface EmployeeFace {
   enrolled: boolean
   embeddings_count: number
 }
+
+/**
+ * Person tracking - the AI service's /people (ai/features/person_tracking),
+ * through backend/app/api/ai_people.py and the /ws/people/tracks proxy
+ * (PR #109). Not in contracts/api.md yet. Field names are the AI code's own:
+ * its GET /status returns the module's state dict, which differs from that
+ * file's docstring (no sources_known/calibrated/aligned lists).
+ *
+ * There is no "start": tracking bootstraps by itself once 2+ registered
+ * cameras exist and EVERY one of them is calibrated and aligned, runs a
+ * one-off ~30 s bootstrap, then tracks.
+ */
+export const PEOPLE_PHASES = ['idle', 'bootstrapping', 'running', 'error'] as const
+export type PeoplePhase = (typeof PEOPLE_PHASES)[number]
+
+/** The floor rectangle tracking covers, in the shared floor unit. */
+export interface PeopleRoom {
+  xmin: number
+  xmax: number
+  ymin: number
+  ymax: number
+}
+
+/** GET /api/agencies/{agency_id}/ai/people/status. */
+export interface PeopleStatus {
+  phase: PeoplePhase
+  /** e.g. "need >=2 registered cameras", "camera(s) X not yet calibrated+aligned". */
+  warnings: string[]
+  error: string | null
+  /** Typical person width on the floor, once bootstrapped. */
+  person_scale: number | null
+  room: PeopleRoom | null
+  fps: number | null
+  /** The cameras the running bootstrap was built from - cut to this agency's by the gateway. */
+  cams_bootstrapped: string[] | null
+  gates_loaded: number | null
+  /** null until running. */
+  active_tracks: number | null
+}
+
+/** One tracked person - a floor position, not a camera pixel. */
+export interface PersonTrack {
+  /** A number the tracker assigns; stable while the person is tracked. */
+  id: number
+  x: number
+  y: number
+  hits: number
+  misses: number
+}
+
+/**
+ * WS /ws/people/tracks frames, relayed from the AI service unchanged:
+ *   - `snapshot` on connect: the phase and current tracks;
+ *   - `state` on every phase change, carrying the status fields;
+ *   - `tracks` every cycle while running - the FULL set, not a diff (a
+ *     moving person changes position almost every cycle anyway). `boxes`
+ *     are per-camera PIXELS for a live-view overlay; the map plots `tracks`.
+ * Not filtered by agency: it is the whole site.
+ */
+export type PeopleFrame =
+  | { type: 'snapshot'; state: PeoplePhase; tracks: PersonTrack[] }
+  | ({ type: 'state' } & Omit<PeopleStatus, 'active_tracks'>)
+  | {
+      type: 'tracks'
+      tracks: PersonTrack[]
+      boxes: Record<string, Array<[number, number, number, number]>>
+    }
 
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
