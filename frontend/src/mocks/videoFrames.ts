@@ -57,8 +57,16 @@ function canUseVideo(): boolean {
   return typeof document !== 'undefined' && import.meta.env.MODE !== 'test'
 }
 
-function load(url: string): Promise<HTMLVideoElement | null> {
+/* How long a video gets to produce its first frame before the placard is
+   used instead. A tab in the background may never load media at all -
+   Chrome defers it - and without a limit every picture on the page waits
+   forever on "Waiting for the picture". */
+const LOAD_TIMEOUT_MS = 4_000
+const TIMED_OUT = Symbol('timed out')
+
+function load(url: string): Promise<HTMLVideoElement | null | typeof TIMED_OUT> {
   return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(TIMED_OUT), LOAD_TIMEOUT_MS)
     const video = document.createElement('video')
     video.src = url
     video.muted = true
@@ -73,11 +81,19 @@ function load(url: string): Promise<HTMLVideoElement | null> {
            anyway the element still holds frame 0, which is a still picture
            of the room - worse than live, better than a placard. */
         void video.play().catch(() => {})
+        clearTimeout(timer)
         resolve(video)
       },
       { once: true },
     )
-    video.addEventListener('error', () => resolve(null), { once: true })
+    video.addEventListener(
+      'error',
+      () => {
+        clearTimeout(timer)
+        resolve(null)
+      },
+      { once: true },
+    )
   })
 }
 
@@ -95,12 +111,22 @@ function playerFor(cameraName: string): Promise<HTMLVideoElement | null> {
 
   const attempt = (async () => {
     const own = await load(`/fixtures/${encodeURIComponent(cameraName)}.mp4`)
+    if (own === TIMED_OUT) return TIMED_OUT
     if (own) return own
     return load('/fixtures/default.mp4')
   })()
 
-  players.set(key, attempt)
-  return attempt
+  /* A missing file is cached as missing; a slow one is not - it is asked
+     again on a later frame, when the tab may be in front. */
+  const settled = attempt.then((result) => {
+    if (result === TIMED_OUT) {
+      players.delete(key)
+      return null
+    }
+    return result
+  })
+  players.set(key, settled)
+  return settled
 }
 
 /**
