@@ -1324,7 +1324,398 @@ receives a detection stream event.
 
 ---
 
-## 12. AI weapon alert threshold
+## 12. AI REST gateways
+
+The frontend must call these backend routes only. It must never call the AI
+service directly on port 8001. The backend validates the Bearer JWT, the user
+role, the agency scope and camera ownership before forwarding a request
+through ai_client.py.
+
+Typical statuses are 401 for a missing or invalid JWT, 403 for an unauthorized
+role or agency, 404 for an unknown resource, 422 for invalid configuration,
+502 for an invalid/internal AI response and 503 when AI cannot be reached.
+
+### GET /api/agencies/{agency_id}/ai/calibration
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their own agency  
+**Response body:**
+
+~~~json
+{
+  "camera-entrance": {
+    "Hinv": [[1, 0], [0, 1]],
+    "diagnostics": {}
+  }
+}
+~~~
+
+**Notes:** Returns only cameras belonging to the requested agency.
+
+### POST /api/agencies/{agency_id}/ai/calibration/rect
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their own agency  
+**Request body:**
+
+~~~json
+{
+  "camera": "camera-entrance",
+  "points": [[120, 430], [980, 410], [1010, 700], [95, 720]],
+  "img_w": 1920,
+  "img_h": 1080
+}
+~~~
+
+**Notes:** The camera must belong to the agency and have a configured stream.
+
+### POST /api/agencies/{agency_id}/ai/calibration/align
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their own agency  
+**Request body:**
+
+~~~json
+{
+  "points": [
+    {"camera-entrance": [512, 300], "camera-counter": [140, 290]}
+  ]
+}
+~~~
+
+**Notes:** All referenced cameras must belong to the agency.
+
+### POST /api/agencies/{agency_id}/ai/calibration/cross-check
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their own agency  
+**Request body:**
+
+~~~json
+{
+  "points": {
+    "camera-entrance": [512, 300],
+    "camera-counter": [140, 290]
+  }
+}
+~~~
+
+**Notes:** The backend forwards this request to AI as /calibration/cross_check.
+
+### GET /api/agencies/{agency_id}/ai/calibration/gates
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their own agency  
+**Response body:** AI gate configuration for authorized cameras.
+
+### POST /api/agencies/{agency_id}/ai/calibration/gates
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their own agency  
+**Request body:**
+
+~~~json
+{
+  "gates": [
+    {
+      "camera": "camera-entrance",
+      "points": [[120, 430], [140, 460]]
+    }
+  ]
+}
+~~~
+
+### DELETE /api/agencies/{agency_id}/ai/calibration/gates
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their own agency  
+**Success status:** 200 OK
+
+### GET /api/agencies/{agency_id}/ai/frame
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their own agency  
+**Query parameters:** camera, format (png or jpeg), quality (1 to 100)
+**Response:** Binary image returned by the backend.
+
+**Notes:** The camera must belong to the requested agency and have a stream.
+
+### GET /api/agencies/{agency_id}/ai/people/status
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER, SECURITY  
+**Response body:**
+
+~~~json
+{
+  "phase": "running",
+  "warnings": [],
+  "error": null,
+  "cams_bootstrapped": ["camera-entrance", "camera-counter"],
+  "active_tracks": 3
+}
+~~~
+
+**Notes:** Camera lists are filtered to the requested agency.
+
+### GET /api/agencies/{agency_id}/ai/zones
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER, SECURITY  
+**Response body:** AI zones associated with cameras of the requested agency.
+
+### POST /api/agencies/{agency_id}/ai/zones
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER  
+**Request body:**
+
+~~~json
+{
+  "name": "hall-principal",
+  "camera": "camera-entrance",
+  "polygon": [[100, 200], [500, 200], [500, 600], [100, 600]],
+  "sources": {
+    "camera-entrance": "rtsp://validated-by-backend"
+  }
+}
+~~~
+
+**Notes:** The backend ignores submitted stream URLs and uses the URLs stored
+in PostgreSQL. Multiple sources require Person Tracking to be running.
+
+### DELETE /api/agencies/{agency_id}/ai/zones/{zone_name}
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER  
+**Success status:** 204 No Content
+
+### GET /api/agencies/{agency_id}/workstations
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER, SECURITY  
+**Response body:**
+
+~~~json
+[
+  {
+    "name": "guichet-1",
+    "zone": "zone-guichet-1",
+    "employee_id": "EMPLOYEE_UUID",
+    "employee_name": "Ahmed Benali",
+    "status": "present",
+    "since": 1787600123.4,
+    "zone_known": true
+  }
+]
+~~~
+
+### POST /api/agencies/{agency_id}/workstations
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER  
+**Request body:**
+
+~~~json
+{
+  "name": "guichet-1",
+  "zone": "zone-guichet-1",
+  "employee_id": "EMPLOYEE_UUID"
+}
+~~~
+
+**Notes:** The zone must exist in AI. The employee, when supplied, must belong
+to the same agency.
+
+### DELETE /api/agencies/{agency_id}/workstations/{name}
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER  
+**Success status:** 204 No Content
+
+### POST /api/employees/{employee_id}/face
+
+**Owner:** Backend  
+**Type:** REST (multipart/form-data)  
+**Roles:** ADMIN, MANAGER for the employee's agency  
+**Form fields:** image  
+**Response body:**
+
+~~~json
+{
+  "employee_id": "EMPLOYEE_UUID",
+  "employee_name": "Ahmed Benali",
+  "enrolled": true,
+  "embeddings_count": 2
+}
+~~~
+
+**Notes:** The employee UUID is the stable AI name. Images and embeddings are
+not stored in PostgreSQL.
+
+### GET /api/employees/faces
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their agency scope  
+**Response body:**
+
+~~~json
+[
+  {
+    "employee_id": "EMPLOYEE_UUID",
+    "employee_name": "Ahmed Benali",
+    "agency_id": "AGENCY_UUID",
+    "enrolled": true,
+    "embeddings_count": 2
+  }
+]
+~~~
+
+**Notes:** Raw embeddings are never returned by the backend.
+
+### DELETE /api/employees/{employee_id}/face
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for the employee's agency  
+**Success status:** 204 No Content
+
+### POST /api/ai/face/scan
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER, SECURITY for the camera's agency  
+**Request body:**
+
+~~~json
+{
+  "camera_id": "CAMERA_UUID",
+  "timeout_seconds": 15
+}
+~~~
+
+**Response body:**
+
+~~~json
+{
+  "recognized": true,
+  "employee_id": "EMPLOYEE_UUID",
+  "employee_name": "Ahmed Benali",
+  "score": 0.735,
+  "timed_out": false,
+  "error": null
+}
+~~~
+
+**Notes:** The camera must belong to the user's agency and have a stream.
+
+### POST /api/ai/face/capture
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER  
+**Request body:** Same as /api/ai/face/scan.
+
+**Notes:** The response may contain a temporary image and embedding. Neither
+value is persisted by the backend.
+
+### POST /api/ai/watchlist
+
+**Owner:** Backend  
+**Type:** REST (multipart/form-data)  
+**Roles:** ADMIN, MANAGER  
+**Form fields:** name, image, optional agency_id for ADMIN  
+**Response body:**
+
+~~~json
+{
+  "id": "WANTED_UUID",
+  "agency_id": "AGENCY_UUID",
+  "name": "PERSON-001",
+  "embeddings_count": 1,
+  "created_at": "2026-09-27T10:00:00Z"
+}
+~~~
+
+**Notes:** The AI watchlist is global in the current architecture, therefore a
+name is unique across agencies. Images and embeddings remain inside AI.
+
+### GET /api/ai/watchlist
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER, SECURITY  
+**Response body:** Watchlist metadata only. No images or embeddings are
+returned. Non-ADMIN users receive only their agency's entries.
+
+### DELETE /api/ai/watchlist/{person_name}
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER for their agency  
+**Response body:**
+
+~~~json
+{
+  "name": "PERSON-001",
+  "agency_id": "AGENCY_UUID",
+  "embeddings_removed": 1
+}
+~~~
+
+### GET /api/ai/watchlist/threshold
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER, SECURITY  
+**Response body:** AI wanted-threshold metadata without embeddings.
+
+### PUT /api/ai/watchlist/threshold
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** ADMIN, MANAGER  
+**Request body:**
+
+~~~json
+{
+  "threshold": 0.58,
+  "min_face_px": 30
+}
+~~~
+
+**Notes:** At least one field is required. The update is applied through AI
+and the threshold value is persisted by the backend. A wanted match is only
+evidence for human review and never triggers an automatic action.
+
+### REST gateway security rules
+
+- Frontend code calls the /api/... routes above, never port 8001.
+- AI source registration is internal and is performed by camera
+  synchronization; there is no public frontend route for /{feature}/sources.
+- Camera names and ownership are checked against PostgreSQL before AI calls.
+- Face and wanted operations write metadata to audit_logs; biometric data is
+  never written to those logs.
+
+---
+
+## 13. AI weapon alert threshold
 
 ### GET /api/ai-alerts/thresholds/weapon
 
@@ -1374,7 +1765,7 @@ camera and agency.
 
 ---
 
-## 13. Live AI streams
+## 14. Live AI streams
 
 The frontend connects to these streams through the backend. It must use the
 access token as the `token` query parameter:
@@ -1384,9 +1775,12 @@ wss://backend.example/ws/alerts/weapon?token=JWT_ACCESS_TOKEN
 ```
 
 The backend validates the token and role, then relays frames from the AI
-service. The JWT is never forwarded to the AI service. Missing/invalid tokens
+service. The active user and current role are revalidated in PostgreSQL, so a
+stale token cannot keep access after an account is disabled or its role is
+changed. The JWT is never forwarded to the AI service. Missing/invalid tokens
 or unauthorized roles close the socket with WebSocket code `1008`. If the AI
-service is unavailable, the backend closes the socket with code `1013`.
+service is unavailable, or the connection limit is reached, the backend closes
+the socket with code `1013`.
 
 ### WS /ws/alerts/weapon
 
@@ -1499,7 +1893,8 @@ the camera is currently clear.
 
 **Notes:** The `snapshot` field may contain a base64 JPEG for the highest-
 confidence match. This stream is protected by the backend because it can carry
-biometric information.
+biometric information. Non-admin users receive only cameras belonging to their
+agency; the backend removes foreign cameras before relaying each frame.
 
 ### WS /ws/occupancy
 
@@ -1540,11 +1935,48 @@ or an update:
 JWT query parameter. The stream is change-triggered, not a fixed heartbeat.
 For a world zone, `people_tracking_ready: false` means that person tracking is
 not ready yet; a `count` of `0` must not be interpreted as a confirmed empty
-zone in that state.
+zone in that state. Non-admin users receive only zones belonging to their
+agency.
+
+### WS /ws/people/tracks
+
+**Owner:** Backend  
+**Type:** WebSocket  
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`  
+**AI upstream:** `/people/tracks/stream`
+
+**Notes:** Camera-specific `boxes` are filtered to the user's agency. Because
+the current AI world-track payload has no agency identifier, non-admin access
+is refused with `1008` when more than one active agency exists. This prevents a
+global AI process from leaking tracks across agencies. `ADMIN` can access the
+global stream.
+
+### WS /ws/employee-activity
+
+**Owner:** Backend  
+**Type:** WebSocket  
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`  
+**AI upstream:** `/employee_activity/status/stream`
+
+**Notes:** Snapshot and update frames are filtered to workstations belonging
+to the user's agency. The backend does not forward the JWT to AI.
+
+### AI WebSocket security rules
+
+- Non-admin alert frames are filtered by registered `Camera.name`.
+- Occupancy frames are filtered by agency-owned zone names.
+- Employee activity frames are filtered by agency-owned workstation names.
+- Sensitive streams (`wanted`, people tracking and alerts) are limited to
+  `ADMIN`, `MANAGER` and `SECURITY`; `AGENT` and `TECHNICIAN` are refused.
+- `AI_WS_MAX_CONNECTIONS` limits all AI sockets in one backend process and
+  `AI_WS_MAX_CONNECTIONS_PER_USER` limits sockets opened by one user.
+- Only the documented occupancy `threshold` query parameter may be forwarded
+  upstream. JWT, `agency_id` and arbitrary browser query parameters are never
+  sent to AI.
 
 ---
 
-## 14. System
+## 15. System
 
 ### GET /health
 
