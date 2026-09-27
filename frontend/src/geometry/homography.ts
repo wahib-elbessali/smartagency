@@ -336,3 +336,16 @@ export function niceStep(span: number, lines = 10): number {
   }
   return 10 * magnitude
 }
+
+/**
+ * The same homography, signed so the frame's centre has a POSITIVE
+ * denominator. A homography times -1 maps every point identically, so this
+ * changes nothing mathematically - but CSS does not see it that way: a
+ * matrix3d point with w < 0 counts as behind the viewer and is not drawn.
+ * Found in the browser, where a camera whose Hinv came out negative vanished
+ * from the bird's-eye view entirely.
+ */
+export function withPositiveW(H: Matrix3, w: number, h: number): Matrix3 {
+  const centre = H[2][0] * (w / 2) + H[2][1] * (h / 2) + H[2][2]
+  return centre < 0 ? H.map((row) => row.map((v) => -v)) : H
+}

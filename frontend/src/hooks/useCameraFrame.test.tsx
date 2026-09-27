@@ -69,4 +69,25 @@ describe('useCameraFrame', () => {
 
     await waitFor(() => expect(result.current.src).not.toBeNull())
   })
+
+  /* Found in the browser: a frame already in flight when the hold began
+     landed afterwards and swapped the picture under a placed point. */
+  it('keeps the held picture even when a newer frame lands', async () => {
+    const lobby = getCamera(CAMERA_ID_LOBBY)
+    const { result, rerender } = renderHook(({ hold }) => useCameraFrame(lobby, { hold }), {
+      wrapper,
+      initialProps: { hold: false },
+    })
+    await waitFor(() => expect(result.current.src).not.toBeNull())
+    rerender({ hold: true })
+    const held = result.current.src
+
+    /* A refetch now resolves with a new blob; the screen must not follow it. */
+    result.current.refetch()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(result.current.src).toBe(held)
+
+    rerender({ hold: false })
+    await waitFor(() => expect(result.current.src).not.toBe(held))
+  })
 })

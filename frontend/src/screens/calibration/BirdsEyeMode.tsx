@@ -13,6 +13,7 @@ import {
   multiply,
   niceStep,
   toMatrix3d,
+  withPositiveW,
   type Bounds,
   type Footprint,
   type Matrix3,
@@ -313,7 +314,8 @@ function BevLayer({
   const frame = useCameraFrame(camera, { hold })
   const [w, h] = entry.diagnostics.calib_res as [number, number]
   if (!frame.src || fp.pixels.length < 3) return null
-  const M = multiply(S, entry.Hinv as Matrix3)
+  /* Signed so the floor side has w > 0 - CSS drops anything with w < 0. */
+  const M = withPositiveW(multiply(S, entry.Hinv as Matrix3), w, h)
   return (
     <img
       src={frame.src}

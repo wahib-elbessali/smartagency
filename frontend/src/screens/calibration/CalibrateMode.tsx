@@ -44,8 +44,11 @@ export function CalibrateMode({
   const camera = cameras.find((c) => c.id === pickedId) ?? cameras[0] ?? null
 
   const [points, setPoints] = useState<Point[]>([])
-  const [guessed, setGuessed] = useState(false)
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  /* Still a guess while the 4th corner sits exactly where it was placed. */
+  const guessed =
+    points.length === 4 &&
+    samePoint(points[3], completeParallelogram(points[0], points[1], points[2]))
 
   const save = useMutation({
     mutationFn: (corners: Point[]) =>
@@ -61,22 +64,21 @@ export function CalibrateMode({
   function pickCamera(id: string | null) {
     setPickedId(id)
     setPoints([])
-    setGuessed(false)
     save.reset()
   }
 
+  /* Built from the latest points, not the ones this render saw: clicks that
+     arrive faster than a render would otherwise each overwrite the last. */
   function addPoint(point: Point) {
-    const next = [...points, point]
-    if (next.length === 3) {
-      next.push(completeParallelogram(next[0], next[1], next[2]))
-      setGuessed(true)
-    }
-    setPoints(next)
+    setPoints((current) => {
+      if (current.length >= 3) return current
+      const next = [...current, point]
+      if (next.length === 3) next.push(completeParallelogram(next[0], next[1], next[2]))
+      return next
+    })
   }
-
   function moveCorner(point: Point) {
     setPoints((current) => [...current.slice(0, 3), point])
-    setGuessed(false)
   }
 
   function dropCorner(point: Point) {
@@ -137,10 +139,7 @@ export function CalibrateMode({
                 <Button
                   size="sm"
                   disabled={points.length === 0}
-                  onClick={() => {
-                    setPoints((current) => current.slice(0, -1))
-                    setGuessed(false)
-                  }}
+                  onClick={() => setPoints((current) => current.slice(0, -1))}
                 >
                   <Undo2 className="size-3.5" aria-hidden />
                   Undo last point
@@ -150,7 +149,6 @@ export function CalibrateMode({
                   disabled={points.length === 0}
                   onClick={() => {
                     setPoints([])
-                    setGuessed(false)
                     save.reset()
                   }}
                 >
@@ -302,4 +300,8 @@ function Row({ label, value }: { label: string; value: string }) {
       <dd className="text-ink tabular text-sm">{value}</dd>
     </div>
   )
+}
+
+function samePoint(a: Point, b: Point): boolean {
+  return a[0] === b[0] && a[1] === b[1]
 }

@@ -6,6 +6,7 @@ import {
   footprint,
   niceStep,
   toMatrix3d,
+  withPositiveW,
   completeParallelogram,
   invert,
   lineDiagnostics,
@@ -218,5 +219,15 @@ describe("bird's-eye geometry", () => {
     expect(niceStep(1000)).toBe(100)
     expect(niceStep(730)).toBe(100)
     expect(niceStep(37)).toBe(5)
+  })
+})
+
+describe('withPositiveW', () => {
+  it('flips a homography whose frame centre has a negative denominator, without moving any point', () => {
+    const negative: Matrix3 = SCALE_SHIFT.map((row) => row.map((v) => -v))
+    const fixed = withPositiveW(negative, 100, 50)
+    expect(fixed[2][2]).toBeGreaterThan(0)
+    expect(applyH(fixed, [3, 4])).toEqual(applyH(negative, [3, 4]))
+    expect(withPositiveW(SCALE_SHIFT, 100, 50)).toBe(SCALE_SHIFT)
   })
 })

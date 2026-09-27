@@ -228,9 +228,11 @@ export function AlignMode({
                   {check.isPending ? 'Checking…' : 'Cross-check this spot'}
                 </Button>
                 <p role="status" aria-live="polite" className="text-ink-3 text-xs">
-                  {pendingCount > 0
-                    ? `This spot is marked in ${pendingCount} camera${pendingCount === 1 ? '' : 's'} — 2 needed to record or cross-check it.`
-                    : 'Click the same spot in two or more cameras.'}
+                  {pendingCount === 0
+                    ? 'Click the same spot in two or more cameras.'
+                    : pendingCount === 1
+                      ? 'This spot is marked in 1 camera — mark it in another to record or cross-check it.'
+                      : `This spot is marked in ${pendingCount} cameras — ready to record or cross-check.`}
                   {pendingCount >= 2 &&
                     pendingUnaligned.length > 0 &&
                     ` Cross-check waits until ${pendingUnaligned.join(', ')} ${pendingUnaligned.length === 1 ? 'is' : 'are'} aligned.`}

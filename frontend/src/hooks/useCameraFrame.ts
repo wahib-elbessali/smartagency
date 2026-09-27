@@ -34,8 +34,12 @@ export interface CameraFrame {
  * hand, so a switch clears them in the same render.
  *
  * `hold` stops the polling (a half-drawn polygon or placed calibration
- * corners must not have the room move under them). A 403 stops it too: a
- * permission will still be one in two seconds.
+ * corners must not have the room move under them) AND freezes the picture
+ * already on screen: a request that was in flight when the hold began still
+ * lands, and without this it would swap the picture - possibly for one of
+ * another size - under points already placed on the old one. Found in the
+ * browser, where a frame arriving just after the first click moved it. A 403
+ * stops the polling too: a permission will still be one in two seconds.
  */
 export function useCameraFrame(
   camera: Pick<Camera, 'id' | 'agency_id' | 'name'>,
@@ -68,12 +72,21 @@ export function useCameraFrame(
      blob is only trusted if it was fetched for THIS camera - placeholderData
      would otherwise hand over the previous camera's last picture. */
   const blob = frame.isPlaceholderData ? null : frame.data
+  /* The blob on screen when the hold began, and whose it is; anything newer
+     waits. Tagged with the camera, so a switch never re-labels one camera's
+     held picture as another's. */
+  const [held, setHeld] = useState<{ cameraId: string; blob: Blob } | null>(null)
+  const heldHere = held?.cameraId === camera.id ? held.blob : null
+  if (hold && heldHere === null && blob) setHeld({ cameraId: camera.id, blob })
+  if (!hold && held !== null) setHeld(null)
+  const shown = hold && heldHere ? heldHere : blob
+
   useEffect(() => {
-    if (!blob) return
-    const url = URL.createObjectURL(blob)
+    if (!shown) return
+    const url = URL.createObjectURL(shown)
     setLoaded({ cameraId: camera.id, src: url })
     return () => URL.revokeObjectURL(url)
-  }, [blob, camera.id])
+  }, [shown, camera.id])
 
   const onLoad = useCallback(
     (event: SyntheticEvent<HTMLImageElement>) => {
