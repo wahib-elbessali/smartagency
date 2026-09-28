@@ -218,6 +218,7 @@ def list_watchlist(
         db.scalars(
             _scope_query(select(WantedPerson).order_by(WantedPerson.name), current_user)
         ).all()
+    )
     for person in people:
         person.embeddings_count = counts.get(person.name, 0)
     _audit(

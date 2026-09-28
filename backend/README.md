@@ -159,6 +159,11 @@ Configuration backend correspondante dans `.env` :
 ```env
 AI_SERVICE_URL=http://127.0.0.1:8001
 AI_ALERTS_ENABLED=true
+AI_REQUEST_TIMEOUT_SECONDS=5
+AI_RECONNECT_DELAY_SECONDS=5
+AI_SOURCE_SYNC_INTERVAL_SECONDS=15
+AI_WS_MAX_CONNECTIONS=50
+AI_WS_MAX_CONNECTIONS_PER_USER=5
 ```
 
 Seuil métier global pour les armes :

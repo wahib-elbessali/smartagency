@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     ai_request_timeout_seconds: float = Field(default=5.0, gt=0)
     ai_reconnect_delay_seconds: float = 5.0
     ai_source_sync_interval_seconds: float = 15.0
+    ai_ws_max_connections: int = Field(default=50, gt=0)
+    ai_ws_max_connections_per_user: int = Field(default=5, gt=0)
     mq2_raw_to_ppm_enabled: bool = False
     mq2_raw_baseline: float = 0.0
     mq2_raw_ppm_scale: float = Field(default=1.0, gt=0)

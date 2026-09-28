@@ -26,7 +26,9 @@ ai_router = APIRouter(prefix="/ai/face", tags=["Face recognition"])
 ENROLL_ROLES = [Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER))]
 FACE_READ_ROLES = [Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER))]
 SCAN_ROLES = [Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER, RoleName.SECURITY))]
-CAPTURE_ROLES = [Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER, RoleName.AGENT))]
+# Capture can return a temporary image and an embedding, so it is restricted
+# to the same trusted roles as biometric enrollment.
+CAPTURE_ROLES = [Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER))]
 
 MAX_FACE_IMAGE_BYTES = 10 * 1024 * 1024
 
