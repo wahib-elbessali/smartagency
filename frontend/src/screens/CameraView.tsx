@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 import { ArrowLeft, Camera as CameraIcon, ImageOff } from 'lucide-react'
+import { USE_MOCKS } from '@/api/config'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchCameras } from '@/api/endpoints/cameras'
 import { createAlertStream } from '@/api/endpoints/streams'
@@ -186,7 +187,12 @@ function LiveView({ camera }: { camera: Camera }) {
               </div>
             )}
             {size && detections.length > 0 && (
-              <DetectionOverlay width={size.w} height={size.h} detections={detections} />
+              <DetectionOverlay
+                width={size.w}
+                height={size.h}
+                detections={detections}
+                sample={USE_MOCKS}
+              />
             )}
           </div>
         </PanelBody>
@@ -198,6 +204,11 @@ function LiveView({ camera }: { camera: Camera }) {
           <p className="text-ink-3 mt-1 text-xs">
             Weapons, from the live alert stream. Empty is the normal state.
           </p>
+          {USE_MOCKS && (
+            <p className="text-warn mt-1 text-xs">
+              Mock data: these are scripted samples drawn over the footage, not real detections.
+            </p>
+          )}
         </PanelHeader>
         <PanelBody>
           {detections.length === 0 ? (
@@ -229,15 +240,21 @@ function LiveView({ camera }: { camera: Camera }) {
  * so a box at [100, 50, 300, 250] lands on the same part of the picture at
  * every window size. Labels sit above the box unless the box starts at the
  * top edge, where they drop inside so they are not clipped.
+ *
+ * In mock mode the boxes are a script, not a model: on real footage a solid
+ * red "pistol 83%" reads as a false alarm. So they are dashed and labelled
+ * "sample" - still drawn, because drawing them is what is being checked.
  */
 function DetectionOverlay({
   width,
   height,
   detections,
+  sample,
 }: {
   width: number
   height: number
   detections: AlertDetection[]
+  sample: boolean
 }) {
   const stroke = Math.max(2, Math.round(width / 320))
   const font = Math.max(12, Math.round(width / 40))
@@ -250,7 +267,7 @@ function DetectionOverlay({
     >
       {detections.map((d, i) => {
         const [x1, y1, x2, y2] = d.bbox
-        const label = `${d.class} ${Math.round(d.confidence * 100)}%`
+        const label = `${d.class} ${Math.round(d.confidence * 100)}%${sample ? ' · sample' : ''}`
         const labelY = y1 < font * 1.5 ? y1 + font * 1.2 : y1 - font * 0.4
         return (
           <g key={`${d.class}-${i}`}>
@@ -262,6 +279,7 @@ function DetectionOverlay({
               fill="none"
               stroke="#ff4d4f"
               strokeWidth={stroke}
+              strokeDasharray={sample ? `${stroke * 4} ${stroke * 3}` : undefined}
             />
             <text
               x={x1 + stroke}

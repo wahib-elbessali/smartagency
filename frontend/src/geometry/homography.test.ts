@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyH,
   canvasTransform,
+  clipFootprint,
   coverageCheck,
   footprint,
   niceStep,
@@ -193,6 +194,23 @@ describe("bird's-eye geometry", () => {
     const fp = footprint(horizon, 100, 50)
     expect(fp.horizonFrac).toBeCloseTo(0.4, 2)
     expect(fp.pixels.every(([, y]) => y >= 20)).toBe(true)
+  })
+
+  it('cuts a footprint to a floor box, back in the frame pixels', () => {
+    /* Floor = 2 * pixel + (10, 20): the box x 10..110, y 20..70 is pixels 0..50 x 0..25. */
+    const fp = footprint(SCALE_SHIFT, 100, 50)
+    const pixels = clipFootprint(fp, SCALE_SHIFT, { xmin: 10, xmax: 110, ymin: 20, ymax: 70 })
+    const xs = pixels.map(([x]) => x)
+    const ys = pixels.map(([, y]) => y)
+    expect(Math.min(...xs)).toBeCloseTo(0)
+    expect(Math.max(...xs)).toBeCloseTo(50)
+    expect(Math.min(...ys)).toBeCloseTo(0)
+    expect(Math.max(...ys)).toBeCloseTo(25)
+  })
+
+  it('cuts to nothing when the footprint misses the box', () => {
+    const fp = footprint(SCALE_SHIFT, 100, 50)
+    expect(clipFootprint(fp, SCALE_SHIFT, { xmin: 500, xmax: 600, ymin: 0, ymax: 100 })).toEqual([])
   })
 
   it('flags a footprint wildly off the median, and sets aside unbounded ones', () => {

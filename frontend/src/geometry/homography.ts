@@ -260,6 +260,45 @@ export function footprint(Hinv: Matrix3, w: number, h: number): Footprint {
   }
 }
 
+/**
+ * The part of a footprint that lies inside a floor box, back in the frame's
+ * pixels - for drawing only the floor near a camera. Near the horizon a few
+ * pixels cover metres of floor, and anything standing up (people, walls,
+ * desks) is smeared out along it; cutting at a sane distance keeps the
+ * bird's-eye view about the floor. The footprint's world polygon is convex
+ * (a convex frame, clipped to one side of the horizon, under a projective
+ * map), so Sutherland-Hodgman against the box's four sides is exact. Empty
+ * when the footprint misses the box or Hinv cannot be inverted.
+ */
+export function clipFootprint(fp: Footprint, Hinv: Matrix3, box: Bounds): Point[] {
+  const H = invert(Hinv)
+  if (!H || fp.world.length < 3) return []
+  const sides: Array<(p: Point) => number> = [
+    (p) => p[0] - box.xmin,
+    (p) => box.xmax - p[0],
+    (p) => p[1] - box.ymin,
+    (p) => box.ymax - p[1],
+  ]
+  let poly = fp.world
+  for (const inside of sides) {
+    const out: Point[] = []
+    for (let i = 0; i < poly.length; i += 1) {
+      const cur = poly[i]
+      const next = poly[(i + 1) % poly.length]
+      const fc = inside(cur)
+      const fn = inside(next)
+      if (fc >= 0) out.push(cur)
+      if (fc >= 0 !== fn >= 0) {
+        const t = fc / (fc - fn)
+        out.push([cur[0] + t * (next[0] - cur[0]), cur[1] + t * (next[1] - cur[1])])
+      }
+    }
+    poly = out
+    if (poly.length < 3) return []
+  }
+  return poly.map((p) => applyH(H, p))
+}
+
 export interface CoverageCheck {
   areas: Record<string, number>
   median: number | null

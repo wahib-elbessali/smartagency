@@ -8,6 +8,7 @@ import { controlClass } from '@/components/ui/control'
 import {
   applyH,
   canvasTransform,
+  clipFootprint,
   coverageCheck,
   footprint,
   multiply,
@@ -23,6 +24,9 @@ import { useCameraFrame } from '@/hooks/useCameraFrame'
 
 /** The logical canvas, in CSS pixels before zoom - the reference's 700. */
 const CANVAS = 700
+
+/** How far past its near floor a camera is drawn, in multiples of that span. */
+const NEAR_REACH = 1
 
 /**
  * Step 4: the bird's-eye check - every camera's picture laid onto one
@@ -54,6 +58,11 @@ const CANVAS = 700
  * span - a camera that sees past the horizon would otherwise zoom the room
  * down to a dot.
  *
+ * FAR FLOOR IS HIDDEN BY DEFAULT. The warp treats every pixel as floor, so
+ * people, walls and desks come out as long streaks, worst near the horizon
+ * where a few pixels span metres. Each layer is cut to its near floor plus
+ * one span of margin (nearBox); the checkbox brings the whole footprint back.
+ *
  * PAN AND ZOOM are a CSS transform on the finished canvas, never a re-warp:
  * the wheel zooms around the cursor, dragging pans, Reset fits it again. They
  * survive a new frame, so you can stay on one tile seam while frames refresh.
@@ -84,6 +93,7 @@ export function BirdsEyeMode({
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [solo, setSolo] = useState<string>('')
   const [grid, setGrid] = useState(true)
+  const [hideFar, setHideFar] = useState(true)
   const [hold, setHold] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -100,12 +110,29 @@ export function BirdsEyeMode({
     return out
   }, [usable, byCamera])
 
+  /* What is actually drawn: the whole footprint, or only its near floor.
+     The coverage panel below still reads the whole footprints - it is
+     judging the calibration, not the picture. */
+  const drawn = useMemo(() => {
+    if (!hideFar) return footprints
+    const out: Record<string, Footprint> = {}
+    for (const camera of usable) {
+      const entry = byCamera.get(camera.name) as CameraCalibration
+      const Hinv = entry.Hinv as Matrix3
+      const box = nearBox(entry)
+      const pixels = box ? clipFootprint(footprints[camera.name], Hinv, box) : []
+      out[camera.name] = {
+        ...footprints[camera.name],
+        pixels,
+        world: pixels.map((p) => applyH(Hinv, p)),
+      }
+    }
+    return out
+  }, [hideFar, usable, byCamera, footprints])
+
   /* The canvas is framed on the INCLUDED cameras - the same S whether one is
      soloed or all are blended, so switching views does not move the floor. */
-  const bounds = useMemo(
-    () => floorBounds(included, byCamera, footprints),
-    [included, byCamera, footprints],
-  )
+  const bounds = useMemo(() => floorBounds(included, byCamera, drawn), [included, byCamera, drawn])
   const S = useMemo(() => (bounds ? canvasTransform(bounds, CANVAS) : null), [bounds])
 
   const coverage = useMemo(
@@ -151,7 +178,7 @@ export function BirdsEyeMode({
                   camera={camera}
                   entry={byCamera.get(camera.name) as CameraCalibration}
                   S={S}
-                  footprint={footprints[camera.name]}
+                  footprint={drawn[camera.name]}
                   opacity={1 / Math.max(shown.length, 1)}
                   hold={hold}
                 />
@@ -221,6 +248,14 @@ export function BirdsEyeMode({
               <input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} />
               Floor grid
             </label>
+            <label className="text-ink-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={hideFar}
+                onChange={(e) => setHideFar(e.target.checked)}
+              />
+              Hide far floor
+            </label>
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-ink-2 flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={hold} onChange={(e) => setHold(e.target.checked)} />
@@ -236,6 +271,10 @@ export function BirdsEyeMode({
             <p className="text-ink-3 text-xs leading-relaxed">
               Straight grid lines should stay straight under each camera alone — if they bend, that
               camera's own calibration is off, whatever the others say.
+            </p>
+            <p className="text-ink-3 text-xs leading-relaxed">
+              Only the floor is meant to look right. People, walls and desks are laid flat too, so
+              they stretch away from the camera — judge the floor marks, not them.
             </p>
           </PanelBody>
         </Panel>
@@ -256,24 +295,9 @@ function floorBounds(
   byCamera: Map<string, CameraCalibration>,
   footprints: Record<string, Footprint>,
 ): Bounds | null {
-  const anchors: Point[] = []
-  for (const camera of cameras) {
-    const entry = byCamera.get(camera.name) as CameraCalibration
-    const [w, h] = entry.diagnostics.calib_res as [number, number]
-    const Hinv = entry.Hinv as Matrix3
-    for (const fx of [0.1, 0.5, 0.9]) {
-      for (const fy of [0.7, 0.85, 1]) {
-        const p: Point = [w * fx, h * fy]
-        const denominator = Hinv[2][0] * p[0] + Hinv[2][1] * p[1] + Hinv[2][2]
-        const centre = Hinv[2][0] * (w / 2) + Hinv[2][1] * (h / 2) + Hinv[2][2]
-        /* Same side of the horizon as the frame's centre: in front of the camera. */
-        if (Math.sign(denominator) === Math.sign(centre || 1) && Math.abs(denominator) > 1e-9) {
-          const world = applyH(Hinv, p)
-          if (Number.isFinite(world[0]) && Number.isFinite(world[1])) anchors.push(world)
-        }
-      }
-    }
-  }
+  const anchors = cameras.flatMap((camera) =>
+    nearAnchors(byCamera.get(camera.name) as CameraCalibration),
+  )
   if (anchors.length === 0) return null
   const ax = anchors.map((p) => p[0])
   const ay = anchors.map((p) => p[1])
@@ -293,6 +317,47 @@ function floorBounds(
     ymin: Math.min(...all.map((p) => p[1])),
     ymax: Math.max(...all.map((p) => p[1])),
   }
+}
+
+/** Floor points right in front of a camera: the lower third of its frame. */
+function nearAnchors(entry: CameraCalibration): Point[] {
+  const [w, h] = entry.diagnostics.calib_res as [number, number]
+  const Hinv = entry.Hinv as Matrix3
+  const anchors: Point[] = []
+  for (const fx of [0.1, 0.5, 0.9]) {
+    for (const fy of [0.7, 0.85, 1]) {
+      const p: Point = [w * fx, h * fy]
+      const denominator = Hinv[2][0] * p[0] + Hinv[2][1] * p[1] + Hinv[2][2]
+      const centre = Hinv[2][0] * (w / 2) + Hinv[2][1] * (h / 2) + Hinv[2][2]
+      /* Same side of the horizon as the frame's centre: in front of the camera. */
+      if (Math.sign(denominator) === Math.sign(centre || 1) && Math.abs(denominator) > 1e-9) {
+        const world = applyH(Hinv, p)
+        if (Number.isFinite(world[0]) && Number.isFinite(world[1])) anchors.push(world)
+      }
+    }
+  }
+  return anchors
+}
+
+/**
+ * The floor a camera is trusted to show: its near floor, widened by
+ * NEAR_REACH times that span on every side. Past it, pixels are few and
+ * metres are many, and anything standing up is a streak - so "Hide far
+ * floor" stops drawing there. Null when the camera has no near floor.
+ */
+function nearBox(entry: CameraCalibration): Bounds | null {
+  const anchors = nearAnchors(entry)
+  if (anchors.length === 0) return null
+  const xs = anchors.map((p) => p[0])
+  const ys = anchors.map((p) => p[1])
+  const [xmin, xmax, ymin, ymax] = [
+    Math.min(...xs),
+    Math.max(...xs),
+    Math.min(...ys),
+    Math.max(...ys),
+  ]
+  const margin = NEAR_REACH * Math.max(xmax - xmin, ymax - ymin, 1e-6)
+  return { xmin: xmin - margin, xmax: xmax + margin, ymin: ymin - margin, ymax: ymax + margin }
 }
 
 /** One camera's picture, warped onto the canvas by M = S * Hinv. */
