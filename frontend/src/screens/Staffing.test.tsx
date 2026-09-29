@@ -143,7 +143,14 @@ describe('Staffing', () => {
     await user.type(within(dialog).getByLabelText(/^name/i), 'guichet-1')
     await user.selectOptions(zonePicker, 'lobby')
     const first = listEmployees().find((employee) => employee.agency_id === AGENCY_ID)
-    await user.selectOptions(within(dialog).getByLabelText(/^employee/i), first?.id ?? '')
+    /* The employee list is its own query. On a slow runner the dialog opens
+       before it lands, and selecting then finds no such option. */
+    const employeePicker = within(dialog).getByLabelText(/^employee/i)
+    await waitFor(
+      () => expect(employeePicker.querySelector(`option[value="${first?.id}"]`)).not.toBeNull(),
+      WAIT,
+    )
+    await user.selectOptions(employeePicker, first?.id ?? '')
     await user.click(within(dialog).getByRole('button', { name: /add workstation/i }))
 
     expect(await screen.findByRole('heading', { name: 'guichet-1' }, WAIT)).toBeInTheDocument()
