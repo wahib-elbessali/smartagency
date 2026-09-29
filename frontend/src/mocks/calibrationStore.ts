@@ -58,6 +58,62 @@ function state(): StoredCalibration[] {
   return calibrations
 }
 
+/**
+ * A REAL calibration to start from, when one is dropped in beside the
+ * footage: frontend/public/fixtures/site_calibration.json, in the AI
+ * service's own site_calibration.json format, keyed by mock camera name,
+ * each entry's `diagnostics.calib_res` set to the VIDEO's size.
+ *
+ * WHY. The geometry above is crude on purpose, so the bird's-eye check can
+ * never look clean on it - and then nobody can tell a bad screen from bad
+ * maths. With the real solve for the same footage loaded, a clean overlay
+ * proves the screen and a messy one is our bug.
+ *
+ * The frames served in mock mode are the video letterboxed into 1920x1080
+ * (videoFrames.ts), so each Hinv is re-expressed in those pixels:
+ * Hinv' = Hinv * T^-1, where T is that letterbox's scale and shift.
+ *
+ * Loaded once, on the first read, and only in a browser; no file, or a bad
+ * one, leaves the store empty as before. Gitignored with the videos.
+ */
+const FRAME_W = 1920
+const FRAME_H = 1080
+let seeded: Promise<void> | null = null
+
+export function loadSiteCalibration(): Promise<void> {
+  if (import.meta.env.MODE === 'test' || typeof fetch === 'undefined') return Promise.resolve()
+  seeded ??= (async () => {
+    try {
+      const response = await fetch('/fixtures/site_calibration.json')
+      if (!response.ok) return
+      const file = (await response.json()) as {
+        cameras?: Record<string, { Hinv: Matrix3; diagnostics: CalibrationDiagnostics }>
+      }
+      const list = state()
+      for (const [camera, entry] of Object.entries(file.cameras ?? {})) {
+        const [w, h] = entry.diagnostics.calib_res ?? [FRAME_W, FRAME_H]
+        const scale = Math.min(FRAME_W / w, FRAME_H / h)
+        const dx = (FRAME_W - w * scale) / 2
+        const dy = (FRAME_H - h * scale) / 2
+        const unletterbox: Matrix3 = [
+          [1 / scale, 0, -dx / scale],
+          [0, 1 / scale, -dy / scale],
+          [0, 0, 1],
+        ]
+        if (list.some((existing) => existing.camera === camera)) continue
+        list.push({
+          camera,
+          Hinv: multiply(entry.Hinv, unletterbox),
+          diagnostics: { ...entry.diagnostics, calib_res: [FRAME_W, FRAME_H] },
+        })
+      }
+    } catch {
+      /* A missing or malformed file is the normal case: start empty. */
+    }
+  })()
+  return seeded
+}
+
 /** GET /calibration: the whole site's map, `{}` before anything is calibrated. */
 export function listCalibration(): Record<string, CalibrationEntry> {
   return Object.fromEntries(
@@ -354,4 +410,5 @@ export function worldMatrixOf(camera: string): Matrix3 | string {
 export function resetCalibrationStore(): void {
   calibrations = null
   gates = []
+  seeded = null
 }

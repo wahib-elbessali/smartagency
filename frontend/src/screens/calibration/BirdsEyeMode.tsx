@@ -404,12 +404,14 @@ function BevLayer({
 /** Evenly spaced floor lines, drawn through S (a similarity - no divide needed). */
 function Grid({ S, bounds }: { S: Matrix3; bounds: Bounds }) {
   const step = niceStep(Math.max(bounds.xmax - bounds.xmin, bounds.ymax - bounds.ymin))
+  /* Floors in metres step by 0.5 or 0.2 - whole-number labels would repeat. */
+  const decimals = Math.max(0, -Math.floor(Math.log10(step)))
   const lines: Array<{ a: Point; b: Point; label: string; vertical: boolean }> = []
   for (let x = Math.floor(bounds.xmin / step) * step; x <= bounds.xmax + step; x += step) {
     lines.push({
       a: applyH(S, [x, bounds.ymin]),
       b: applyH(S, [x, bounds.ymax]),
-      label: x.toFixed(0),
+      label: x.toFixed(decimals),
       vertical: true,
     })
   }
@@ -417,7 +419,7 @@ function Grid({ S, bounds }: { S: Matrix3; bounds: Bounds }) {
     lines.push({
       a: applyH(S, [bounds.xmin, y]),
       b: applyH(S, [bounds.xmax, y]),
-      label: y.toFixed(0),
+      label: y.toFixed(decimals),
       vertical: false,
     })
   }

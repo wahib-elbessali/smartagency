@@ -21,9 +21,10 @@ import * as store from '../calibrationStore'
  * underneath: it re-solves every calibrated camera the AI service knows.
  */
 
-function visible(path: string): Record<string, CalibrationEntry> {
+async function visible(path: string): Promise<Record<string, CalibrationEntry>> {
   const agencyId = agencyIdFromPath(path)
   ensureAgencyScope(agencyId)
+  await store.loadSiteCalibration()
   const names = new Set(listCameras(agencyId).map((camera) => camera.name))
   return Object.fromEntries(
     Object.entries(store.listCalibration()).filter(([name]) => names.has(name)),

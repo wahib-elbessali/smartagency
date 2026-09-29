@@ -57,3 +57,18 @@ Anything overhead-ish with a visible floor works. A phone video of a room, a
 corridor, a shop — filmed from two corners if you want to try alignment. The
 detectors are not run in fixture mode, so nothing needs to be a real branch
 office and nobody needs to be in shot.
+
+## A real calibration to start from (optional)
+
+If your footage came with a calibration from the AI service's tool, drop it
+here as `site_calibration.json` and the Calibration screen starts from it
+instead of empty. That is the way to judge the bird's-eye check: the mock's
+own geometry is deliberately crude, so only a real solve can show whether
+the screen draws a good alignment cleanly.
+
+- Same format as the AI service's `site_calibration.json`, but keyed by the
+  **mock camera names** (`cam-lobby`, `cam-counter`, `cam-store`).
+- Add each camera's **video size** as `diagnostics.calib_res`, e.g.
+  `[384, 288]`. The loader re-expresses the matrices in the 1920×1080
+  letterboxed frame on its own.
+- Loaded once per page load. Refresh to get it back after re-calibrating.
