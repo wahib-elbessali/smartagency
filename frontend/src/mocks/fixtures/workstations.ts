@@ -1,76 +1,46 @@
 import { registerMock, registerMockWriter } from '../registry'
 import type { Workstation, WorkstationCreate } from '@/api/types'
-import { ApiError } from '@/api/errors'
-import * as cameras from '../cameraStore'
+import { agencyIdFromPath, ensureAgencyScope, nameFromPath } from '../aiGateway'
 import * as store from '../workstationStore'
-import { listZones } from '../zoneStore'
-import { requestUser } from '../currentUser'
 
 /**
- * PROPOSED - GET/POST /api/workstations and DELETE /api/workstations/{name},
- * see api/endpoints/workstations.ts. Field names from
- * contracts/ai-service.md §/employee_activity.
+ * GET/POST /api/agencies/{id}/workstations and DELETE .../workstations/{name}
+ * - backend/app/api/employee_activity.py, reproduced check for check.
  *
- * SCOPING RUNS DOWN THE CHAIN, one link longer than the zones fixture's.
- *
- * A workstation names a zone, a zone names a camera, and the camera is the
- * only thing that knows which branch any of this belongs to - the AI service
- * has no notion of an agency at all. So a MANAGER sees the workstations whose
- * zone sits on one of their own cameras, and a write against another branch's
- * zone is the 403 cameras.py already answers.
- *
- * A workstation bound to a zone that no longer exists is kept rather than
- * hidden: deleting the zone out from under it is exactly the misconfiguration
- * worth seeing, and only an ADMIN can see across every branch anyway. The
- * screen renders it with the zone named, so it is fixable.
+ * Scoping is by the agency in the path, because the rows are ours and carry
+ * an agency_id. Worth knowing what backend does NOT check: that the zone a
+ * workstation is bound to is drawn on one of this agency's cameras. Any
+ * zone that exists anywhere on the site is accepted, and so is it here - a
+ * fixture stricter than the route would hide that from whoever builds the
+ * screen.
  */
 
-function agencyOfZone(zoneName: string): string | null {
-  const zone = listZones().find((candidate) => candidate.name === zoneName)
-  if (!zone || zone.camera_id === null) return null
-  try {
-    return cameras.getCamera(zone.camera_id).agency_id
-  } catch {
-    return null
-  }
-}
-
-function ensureZoneScope(zoneName: string): void {
-  const user = requestUser()
-  if (!user || user.role === 'ADMIN') return
-  const agencyId = agencyOfZone(zoneName)
-  /* An unattachable zone belongs to no branch, so nobody but an ADMIN may
-     write against it - the same call the zones fixture makes. */
-  if (agencyId === null || user.agency_id !== agencyId) {
-    throw new ApiError('http', 'Acces limite a votre agence', 403)
-  }
-}
-
-function visibleWorkstations(): Workstation[] {
-  const user = requestUser()
-  const all = store.listWorkstations()
-  if (!user || user.role === 'ADMIN') return all
-  return all.filter((station) => agencyOfZone(station.zone) === user.agency_id)
-}
-
-registerMock<Workstation[]>('GET /api/workstations', {
-  normal: visibleWorkstations,
-  empty: () => [],
-  large: visibleWorkstations,
+registerMock<Workstation[]>('GET /api/agencies/{id}/workstations', {
+  normal: (path) => {
+    const agencyId = agencyIdFromPath(path)
+    ensureAgencyScope(agencyId)
+    return store.listWorkstations(agencyId)
+  },
+  empty: (path) => {
+    ensureAgencyScope(agencyIdFromPath(path))
+    return []
+  },
+  large: (path) => {
+    const agencyId = agencyIdFromPath(path)
+    ensureAgencyScope(agencyId)
+    return store.listWorkstations(agencyId)
+  },
 })
 
-registerMockWriter('POST /api/workstations', (body) => {
-  const payload = body as WorkstationCreate
-  ensureZoneScope(payload.zone)
-  return store.createWorkstation(payload)
+registerMockWriter('POST /api/agencies/{id}/workstations', (body, path) => {
+  const agencyId = agencyIdFromPath(path)
+  ensureAgencyScope(agencyId)
+  return store.createWorkstation(agencyId, body as WorkstationCreate)
 })
 
-registerMockWriter('DELETE /api/workstations/{name}', (_body, path) => {
-  const parts = path.split('/').filter(Boolean)
-  const name = decodeURIComponent(parts[parts.length - 1] ?? '')
-  const station = store.listWorkstations().find((candidate) => candidate.name === name)
-  if (!station) throw new ApiError('http', 'Poste introuvable', 404)
-  ensureZoneScope(station.zone)
-  store.deleteWorkstation(name)
+registerMockWriter('DELETE /api/agencies/{id}/workstations/{name}', (_body, path) => {
+  const agencyId = agencyIdFromPath(path)
+  ensureAgencyScope(agencyId)
+  store.deleteWorkstation(agencyId, nameFromPath(path))
   return undefined
 })

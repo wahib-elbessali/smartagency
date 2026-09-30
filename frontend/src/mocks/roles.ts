@@ -38,6 +38,13 @@ import { requestUser } from './currentUser'
  *   cameras      ADMIN, MANAGER, SECURITY;              (CAMERA_ROLES; delete
  *                delete is ADMIN, MANAGER only            is its own dependency)
  *   ai-alerts    ADMIN, MANAGER, SECURITY               (AI_ALERT_ROLES)
+ *   assignments  AGENT for /agents/me; ADMIN, MANAGER    (assignments.py,
+ *                for the rest                             contracts/api.md §5)
+ *   ai zones     ADMIN, MANAGER, SECURITY to read;      (ZONE_READ_ROLES,
+ *                ADMIN, MANAGER to write                 ZONE_WRITE_ROLES)
+ *   calibration  ADMIN, MANAGER, the frame included     (CALIBRATION_ROLES)
+ *   workstations ADMIN, MANAGER, SECURITY to read;      (WORKSTATION_READ_ROLES,
+ *                ADMIN, MANAGER to write                 WORKSTATION_WRITE_ROLES)
  */
 
 /**
@@ -54,13 +61,9 @@ export function rolesFor(key: string): Role[] | null {
 
   if (path.startsWith('/api/users')) return ['ADMIN']
 
-  /* PROPOSED, not in the real backend - api/endpoints/assignments.ts. Kept
-     out of the "transcribed from backend" table above so nobody mistakes it
-     for something verified against backend source; checked separately here
-     only so a role this was never built for can't accidentally read it.
-     /me is an agent reading their own assignment; everything else under this
-     prefix (PATCH .../assignment) is a MANAGER or ADMIN setting one - checked
-     first because it's the more specific path. */
+  /* /me is an agent reading their own assignment; everything else under
+     this prefix (PATCH .../assignment) is a MANAGER or ADMIN setting one -
+     checked first because it's the more specific path. */
   if (path.startsWith('/api/agents/me')) return ['AGENT']
   if (path.startsWith('/api/agents')) return ['ADMIN', 'MANAGER']
 
@@ -85,25 +88,18 @@ export function rolesFor(key: string): Role[] | null {
   }
   if (path.startsWith('/api/ai-alerts')) return ['ADMIN', 'MANAGER', 'SECURITY']
 
-  /* PROPOSED, not in the real backend - api/endpoints/zones.ts. Drawing the
-     floor geometry the counts are computed from is not the same act as
-     registering a camera, so this drops SECURITY where /api/cameras keeps
-     it. Flagged for confirmation in BACKEND-ASKS.md §8, not transcribed
-     from backend source, which is why it sits apart from the table above.
-     The per-branch half of the rule is in fixtures/zones.ts, since it
-     depends on which camera the zone hangs off. */
-  if (path.startsWith('/api/zones')) return ['ADMIN', 'MANAGER']
-
-  /* PROPOSED too - api/endpoints/workstations.ts. Same roles as the zones a
-     workstation is bound to, for the same reason: this is configuration of
-     what the site measures, not a monitoring view. The per-branch half is in
-     fixtures/workstations.ts, which walks workstation -> zone -> camera. */
-  if (path.startsWith('/api/workstations')) return ['ADMIN', 'MANAGER']
-
-  /* PROPOSED - api/endpoints/calibration.ts. The floor geometry every
-     world-mode zone and the person tracker are computed against, so it sits
-     with the other two rather than with the monitoring screens. */
-  if (path.startsWith('/api/calibration')) return ['ADMIN', 'MANAGER']
+  /* The AI gateway (PR #109) hangs off /api/agencies/{id}/..., so it is
+     checked ahead of the agencies rule below, which would otherwise give
+     every write to ADMIN alone. Reads of zones and workstations admit
+     SECURITY; writing them, and everything about calibration including the
+     camera frame, is ADMIN and MANAGER. The per-agency half of each rule is
+     in mocks/aiGateway.ts. */
+  if (path.includes('/ai/calibration') || path.includes('/ai/frame')) {
+    return ['ADMIN', 'MANAGER']
+  }
+  if (path.includes('/ai/zones') || path.includes('/workstations')) {
+    return method === 'GET' ? ['ADMIN', 'MANAGER', 'SECURITY'] : ['ADMIN', 'MANAGER']
+  }
 
   if (path.startsWith('/api/agencies')) {
     /* The one split router. Reading is ADMIN and MANAGER, and a MANAGER's list

@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
-import { AlertTriangle, ImageOff, Ruler, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, ImageOff, Ruler, Undo2 } from 'lucide-react'
 import { fetchAgencies } from '@/api/endpoints/agencies'
-import {
-  alignCameras,
-  calibrateRect,
-  deleteCalibration,
-  fetchCalibration,
-} from '@/api/endpoints/calibration'
-import { fetchCameras, fetchNativeFrame } from '@/api/endpoints/cameras'
+import { alignCameras, calibrateRect, fetchCalibration } from '@/api/endpoints/calibration'
+import { fetchCameraFrame, fetchCameras } from '@/api/endpoints/cameras'
 import { ApiError, describeApiError } from '@/api/errors'
 import type { AlignResult, Camera, CameraCalibration, SharedPoint } from '@/api/types'
 import { useScope } from '@/agency/ScopeContext'
@@ -24,8 +19,9 @@ import { Screen } from './Screen'
 /**
  * Site calibration: teaching the cameras where the floor is. Added
  * 2026-09-20, from ai/reference_ui/calibration rebuilt on this side of the
- * backend (contracts/ai-service.md §/calibration, proxies in
- * BACKEND-ASKS.md §8b).
+ * backend (contracts/ai-service.md §/calibration), through the backend's
+ * gateway (backend/app/api/ai_calibration.py, see api/endpoints/calibration.ts).
+ * Every camera is addressed by NAME, which is how the AI service knows it.
  *
  * WHAT IT IS FOR, since nothing on this screen is visible in the product:
  * a pixel is not a place. One camera's "that person is at (410, 620)" means
@@ -57,6 +53,9 @@ import { Screen } from './Screen'
  * gates, alignment by shared LINES, and cross-check. The first two are not
  * read by anything in this dashboard; cross-check is verification of an
  * alignment and belongs with the BEV view that makes a bad one visible.
+ * Also missing, and not by choice: forgetting one camera's calibration. The
+ * gateway does not proxy the AI service's DELETE for it, so there is no
+ * button; re-calibrating a camera replaces its fit.
  *
  * KEYBOARD: placing a point is a pointer act, as on the Zones screen. Every
  * control around it is reachable, and a live region reads out each point as
@@ -95,8 +94,9 @@ export default function Calibration() {
   })
 
   const calibration = useQuery({
-    queryKey: ['calibration'],
-    queryFn: ({ signal }) => fetchCalibration(signal),
+    queryKey: ['calibration', agencyId],
+    queryFn: ({ signal }) => fetchCalibration(agencyId as string, signal),
+    enabled: agencyId !== null,
   })
 
   const cameraRows = useMemo(
@@ -104,7 +104,7 @@ export default function Calibration() {
     [cameras.data],
   )
   const byCamera = useMemo(
-    () => new Map((calibration.data ?? []).map((entry) => [entry.camera_id, entry])),
+    () => new Map((calibration.data ?? []).map((entry) => [entry.camera, entry])),
     [calibration.data],
   )
 
@@ -168,12 +168,14 @@ export default function Calibration() {
       >
         {mode === 'calibrate' ? (
           <CalibrateMode
+            agencyId={agencyId as string}
             cameras={cameraRows}
             byCamera={byCamera}
             onSaved={() => void queryClient.invalidateQueries({ queryKey: ['calibration'] })}
           />
         ) : (
           <AlignMode
+            agencyId={agencyId as string}
             cameras={cameraRows}
             byCamera={byCamera}
             onAligned={() => void queryClient.invalidateQueries({ queryKey: ['calibration'] })}
@@ -197,15 +199,16 @@ export default function Calibration() {
 /* ---------------------------------------------------------------- step 1 */
 
 function CalibrateMode({
+  agencyId,
   cameras,
   byCamera,
   onSaved,
 }: {
+  agencyId: string
   cameras: Camera[]
   byCamera: Map<string, CameraCalibration>
   onSaved: () => void
 }) {
-  const queryClient = useQueryClient()
   const [pickedId, setPickedId] = useState<string | null>(null)
   const camera = cameras.find((c) => c.id === pickedId) ?? cameras[0] ?? null
 
@@ -217,8 +220,8 @@ function CalibrateMode({
 
   const save = useMutation({
     mutationFn: () =>
-      calibrateRect({
-        camera_id: camera?.id as string,
+      calibrateRect(agencyId, {
+        camera: (camera as Camera).name,
         points,
         img_w: size?.w as number,
         img_h: size?.h as number,
@@ -229,14 +232,7 @@ function CalibrateMode({
     },
   })
 
-  const forget = useMutation({
-    mutationFn: (cameraId: string) => deleteCalibration(cameraId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['calibration'] })
-    },
-  })
-
-  const current = camera ? byCamera.get(camera.id) : undefined
+  const current = camera ? byCamera.get(camera.name) : undefined
 
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
@@ -328,7 +324,8 @@ function CalibrateMode({
           <PanelBody>
             <ul className="space-y-2">
               {cameras.map((row) => {
-                const entry = byCamera.get(row.id)
+                const entry = byCamera.get(row.name)
+                const aligned = entry?.diagnostics.aligned === true
                 return (
                   <li
                     key={row.id}
@@ -336,20 +333,9 @@ function CalibrateMode({
                   >
                     <span className="text-ink min-w-0 flex-1 truncate text-sm">{row.name}</span>
                     {entry ? (
-                      <>
-                        <Badge tone={entry.aligned ? 'ok' : 'warn'}>
-                          {entry.aligned ? 'aligned' : 'not aligned'}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`Forget calibration for ${row.name}`}
-                          disabled={forget.isPending}
-                          onClick={() => forget.mutate(row.id)}
-                        >
-                          <Trash2 className="size-3.5" aria-hidden />
-                        </Button>
-                      </>
+                      <Badge tone={aligned ? 'ok' : 'warn'}>
+                        {aligned ? 'aligned' : 'not aligned'}
+                      </Badge>
                     ) : (
                       <Badge tone="neutral">not calibrated</Badge>
                     )}
@@ -424,7 +410,7 @@ function Diagnostics({ entry }: { entry: CameraCalibration }) {
             <Row label="Proportions" value={`${d.inferred_aspect} : 1`} />
           )}
           {d.calib_res && <Row label="Measured at" value={`${d.calib_res[0]}×${d.calib_res[1]}`} />}
-          <Row label="Aligned" value={entry.aligned ? 'yes' : 'not yet'} />
+          <Row label="Aligned" value={d.aligned ? 'yes' : 'not yet'} />
           {d.fit && <Row label="Aligned by" value={d.fit} />}
           {d.aligned_with_n_points !== undefined && (
             <Row label="Shared points used" value={String(d.aligned_with_n_points)} />
@@ -456,16 +442,18 @@ function Row({ label, value }: { label: string; value: string }) {
  * read per camera rather than assumed from the status code.
  */
 function AlignMode({
+  agencyId,
   cameras,
   byCamera,
   onAligned,
 }: {
+  agencyId: string
   cameras: Camera[]
   byCamera: Map<string, CameraCalibration>
   onAligned: () => void
 }) {
   const calibrated = useMemo(
-    () => cameras.filter((camera) => byCamera.has(camera.id)),
+    () => cameras.filter((camera) => byCamera.has(camera.name)),
     [cameras, byCamera],
   )
 
@@ -473,7 +461,7 @@ function AlignMode({
   const [recorded, setRecorded] = useState<SharedPoint[]>([])
 
   const run = useMutation({
-    mutationFn: () => alignCameras(recorded),
+    mutationFn: () => alignCameras(agencyId, recorded),
     onSuccess: () => onAligned(),
   })
 
@@ -591,7 +579,7 @@ function AlignMode({
             <ul className="mt-2 space-y-1">
               {calibrated.flatMap((a, i) =>
                 calibrated.slice(i + 1).map((b) => {
-                  const key = [a.id, b.id].sort().join('|')
+                  const key = [a.name, b.name].sort().join('|')
                   const count = pairCounts.get(key) ?? 0
                   return (
                     <li key={key} className="flex items-center gap-2 text-sm">
@@ -615,9 +603,9 @@ function AlignMode({
           <FrameCanvas
             key={camera.id}
             camera={camera}
-            points={pending[camera.id] ? [pending[camera.id]] : []}
+            points={pending[camera.name] ? [pending[camera.name]] : []}
             maxPoints={1}
-            onAddPoint={(point) => setPending((current) => ({ ...current, [camera.id]: point }))}
+            onAddPoint={(point) => setPending((current) => ({ ...current, [camera.name]: point }))}
             hint="Click the same real spot you clicked in the other cameras."
           />
         ))}
@@ -634,13 +622,14 @@ function AlignMode({
         </p>
       )}
 
-      {run.data && <AlignReport result={run.data} cameras={cameras} />}
+      {run.data && <AlignReport result={run.data} />}
     </div>
   )
 }
 
-function AlignReport({ result, cameras }: { result: AlignResult; cameras: Camera[] }) {
-  const nameOf = (id: string) => cameras.find((camera) => camera.id === id)?.name ?? id
+function AlignReport({ result }: { result: AlignResult }) {
+  /* Results are keyed by camera name already - the AI service's own key. */
+  const nameOf = (name: string) => name
   const entries = Object.entries(result.results)
   const failed = entries.filter(([, value]) => !value.aligned)
   /* The contract calls this `results_warning`; the service emits
@@ -661,14 +650,14 @@ function AlignReport({ result, cameras }: { result: AlignResult; cameras: Camera
       </PanelHeader>
       <PanelBody>
         <ul className="space-y-2">
-          {entries.map(([cameraId, value]) => (
+          {entries.map(([cameraName, value]) => (
             <li
-              key={cameraId}
+              key={cameraName}
               className="border-line bg-panel-2 rounded-lg border px-3 py-2 text-sm"
             >
               <div className="flex items-center gap-2">
                 <span className="text-ink min-w-0 flex-1 truncate font-medium">
-                  {nameOf(cameraId)}
+                  {nameOf(cameraName)}
                 </span>
                 {value.reference && <Badge tone="info">reference</Badge>}
                 <Badge tone={value.aligned ? 'ok' : 'warn'}>
@@ -722,14 +711,11 @@ function AlignReport({ result, cameras }: { result: AlignResult; cameras: Camera
 /**
  * A camera's picture with clickable points on it.
  *
- * The frame is NATIVE resolution here, not the detector-scaled one the live
- * view uses: the clicked points are sent with `img_w`/`img_h` and the
- * service assumes the image centre is the principal point, so points
- * measured on a resized frame describe a camera that does not exist.
- *
- * Fetched once and never refetched - the picture is the thing being
- * measured, and swapping it under placed points would silently move them to
- * a different room.
+ * The same detector-scaled frame the live view shows - the gateway offers
+ * no other. That is sound as long as `img_w`/`img_h` are THIS frame's size,
+ * which they are (read from the loaded image): the service assumes the image
+ * centre is the principal point, which scaling does not move, and records
+ * the size as `calib_res` so the fit can be rescaled later.
  */
 function FrameCanvas({
   camera,
@@ -760,8 +746,8 @@ function FrameCanvas({
    */
   const frozen = points.length > 0
   const frame = useQuery({
-    queryKey: ['nativeFrame', camera.id],
-    queryFn: ({ signal }) => fetchNativeFrame(camera.id, signal),
+    queryKey: ['calibrationFrame', camera.id],
+    queryFn: ({ signal }) => fetchCameraFrame(camera, signal),
     retry: false,
     refetchInterval: frozen ? false : FRAME_MS,
     /* Keeps the last picture up while the next arrives, so the preview does
@@ -782,10 +768,13 @@ function FrameCanvas({
   const svgRef = useRef<SVGSVGElement | null>(null)
 
   const noFrame = frame.isError
-  const unavailable =
-    frame.error instanceof ApiError && frame.error.status === 404
+  const unavailable = !(frame.error instanceof ApiError)
+    ? 'Could not fetch a picture from this camera.'
+    : frame.error.status === 404
       ? `The detector cannot open ${camera.name}’s stream, so there is nothing to measure.`
-      : 'Could not fetch a picture from this camera.'
+      : frame.error.status === 422
+        ? `${camera.name} has no stream address, so there is nothing to measure.`
+        : describeApiError(frame.error)
 
   function handleClick(event: React.MouseEvent<SVGSVGElement>) {
     if (points.length >= maxPoints) return

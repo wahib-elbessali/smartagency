@@ -72,23 +72,23 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/devices': ['ADMIN', 'MANAGER', 'TECHNICIAN'],
   '/users': ['ADMIN'],
   '/visitors': ['ADMIN', 'MANAGER', 'AGENT'],
+  /* OCCUPANCY_ROLES in backend/app/websocket/ai_proxy.py, and
+     contracts/api.md §13. */
   '/occupancy': ['ADMIN', 'MANAGER'],
-  /* PROPOSED routes, not transcribed from backend source: the zone-drawing
-     screen writes to the AI service's /zoning through proxies that do not
-     exist yet (api/endpoints/zones.ts, BACKEND-ASKS.md §8). Narrower than
-     /cameras on purpose - a guard registers the cameras they watch, but the
-     floor geometry every count is computed from is administration, not
-     monitoring. Confirm with backend before it ships. */
+  /* The three AI setup screens, on the backend's AI gateway (PR #109). The
+     gateway lets SECURITY READ zones and workstations; these screens exist
+     to draw and bind them, which is ADMIN and MANAGER, so the route is. The
+     picture both draw on (GET .../ai/frame) is ADMIN and MANAGER anyway. */
   '/zones': ['ADMIN', 'MANAGER'],
-  /* Same rule and the same PROPOSED caveat as /zones - a workstation is a
-     name bound to one of those zones, so it cannot be read by anyone who
-     cannot see the zone behind it. Not AGENT: this reports on whether the
-     counters are manned, which is a thing said ABOUT agents. */
+  /* Not AGENT: this reports on whether the counters are manned, which is a
+     thing said ABOUT agents. */
   '/staffing': ['ADMIN', 'MANAGER'],
-  /* The site's floor geometry - the thing world-mode zones and person
-     tracking are computed against. Same roles and the same PROPOSED caveat
-     as the two above. */
+  /* CALIBRATION_ROLES in backend/app/api/ai_calibration.py. */
   '/calibration': ['ADMIN', 'MANAGER'],
+  /* ALERT_ROLES - contracts/api.md §13 puts all four alert streams behind
+     ADMIN, MANAGER and SECURITY, and closes anyone else with 1008. Before
+     that entry existed this route was open to every role. */
+  '/alerts': ['ADMIN', 'MANAGER', 'SECURITY'],
   /* Transcribed from CAMERA_ROLES / AI_ALERT_ROLES (cameras.py, ai_alerts.py),
      added 2026-09-12. The one screen a guard can write to: they register the
      cameras they watch and set how sure the detector has to be before an
@@ -96,9 +96,8 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
      screen hides that button for SECURITY; the route stays open to them
      because everything else on it is theirs. */
   '/cameras': ['ADMIN', 'MANAGER', 'SECURITY'],
-  /* No entry means every signed-in role. The two below read no role-guarded
-     endpoint at all: controls is still <ContractPending>, and alerts reads an
-     AI stream the backend proxies without a role check of its own. */
+  /* No entry means every signed-in role. /controls reads no role-guarded
+     endpoint at all: it is still <ContractPending>. */
 }
 
 /**

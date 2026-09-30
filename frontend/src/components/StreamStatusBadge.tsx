@@ -8,6 +8,8 @@ const PRESENTATION: Record<StreamStatus, { label: string; tone: Tone; live: bool
   connecting: { label: 'Connecting…', tone: 'info', live: false },
   open: { label: 'Live', tone: 'ok', live: true },
   reconnecting: { label: 'Reconnecting…', tone: 'warn', live: false },
+  unavailable: { label: 'Source unavailable', tone: 'warn', live: false },
+  refused: { label: 'Not allowed', tone: 'danger', live: false },
   closed: { label: 'Not connected', tone: 'warn', live: false },
 }
 

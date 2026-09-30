@@ -22,9 +22,9 @@ import { Screen } from './Screen'
  *
  * WHAT IS LIVE AND WHAT IS NOT
  *
- * The picture is a still, refetched every two seconds - PROPOSED
- * GET /api/cameras/{id}/frame (api/endpoints/cameras.ts), which the backend
- * forwards from the AI service's own GET /frame. Not video: `stream_url` is
+ * The picture is a still, refetched every two seconds - the backend's
+ * GET /api/agencies/{id}/ai/frame (api/endpoints/cameras.ts), which forwards
+ * the AI service's own GET /frame. Not video: `stream_url` is
  * RTSP, which no browser plays, and the AI service has no video route to
  * proxy either. Two seconds matches the detectors' update_interval
  * (ai-service.md GET /config), so a faster poll would show the same frame
@@ -42,13 +42,19 @@ import { Screen } from './Screen'
  * camera breaks this until the backend re-syncs its sources, since the
  * stream speaks the old name; the Cameras screen says so.
  *
+ * SECURITY SEES THE BOXES, NOT ALWAYS THE PICTURE
+ *
+ * The frame route shares the calibration gateway's roles, ADMIN and MANAGER,
+ * while the weapon stream (contracts/api.md §13) also admits SECURITY. So a
+ * security guard on this screen gets a 403 for the picture and live boxes
+ * over an empty frame. That is said on screen as a permission, not dressed
+ * up as a broken camera, and it is raised with backend.
+ *
  * WEAPON ONLY, FOR NOW
  *
- * The backend consumes exactly one of the AI service's four alert streams
- * (app/ai_alerts/consumer.py), and it is the one with a threshold and a
- * camera table behind it. The other three exist in endpoints/streams.ts as
- * PROPOSED and will drop in here as a switcher, the way Alerts.tsx has one,
- * when backend wires them (Wahib's list, 2026-09).
+ * All four alert streams are contract routes now (contracts/api.md §13), and
+ * Alerts.tsx already switches between them. This view still draws the weapon
+ * stream only: it is the one with a threshold panel beside it.
  *
  * FINDING THE CAMERA
  *
@@ -126,8 +132,11 @@ export default function CameraView() {
 function LiveView({ camera }: { camera: Camera }) {
   const frame = useQuery({
     queryKey: ['cameraFrame', camera.id],
-    queryFn: ({ signal }) => fetchCameraFrame(camera.id, signal),
-    refetchInterval: FRAME_MS,
+    queryFn: ({ signal }) => fetchCameraFrame(camera, signal),
+    /* A 403 is a permission and will be one again in two seconds; stop
+       asking. Every other failure is worth the next poll. */
+    refetchInterval: (query) =>
+      query.state.error instanceof ApiError && query.state.error.status === 403 ? false : FRAME_MS,
     /* A 404 is the AI service saying it cannot open the stream; asking again
        in two seconds is the retry, and a backoff would only make the picture
        come back later than the camera did. */
@@ -160,10 +169,15 @@ function LiveView({ camera }: { camera: Camera }) {
   const detections = alerts[camera.name] ?? []
 
   const noFrame = frame.isError
-  const unavailable =
-    frame.error instanceof ApiError && frame.error.status === 404
-      ? 'The detector cannot open this camera’s stream right now.'
-      : 'Could not fetch a picture from this camera.'
+  const unavailable = !(frame.error instanceof ApiError)
+    ? 'Could not fetch a picture from this camera.'
+    : frame.error.status === 403
+      ? 'Your role can see this camera’s detections but not its picture.'
+      : frame.error.status === 404
+        ? 'The detector cannot open this camera’s stream right now.'
+        : frame.error.status === 422
+          ? 'This camera has no stream address, so there is no picture to fetch.'
+          : 'Could not fetch a picture from this camera.'
 
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">

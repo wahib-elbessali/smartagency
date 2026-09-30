@@ -5,12 +5,12 @@ import { COUNTERS } from './ticketStore'
 import { listUsers } from './userStore'
 
 /**
- * PROPOSED, mock-only: which counter each agent has been put on by their
- * manager. Nothing on the real backend stores this yet - checked
- * backend/app/models/entities.py, neither User nor Employee carries a
- * service or counter - so this stands in for it until a real endpoint exists.
- * See api/types.ts's AgentAssignment/AgentSummary and
- * api/endpoints/assignments.ts for the shape this is built against.
+ * Mock of the agent-assignment routes (contracts/api.md §5): which counter
+ * each agent has been put on by their manager. Refuses the way
+ * backend/app/api/assignments.py does, detail strings included, so the
+ * board's error states can be exercised without a backend. The one refusal
+ * it can't reproduce is the 422 agency mismatch - fixture counters carry no
+ * agency.
  *
  * Keyed by user id, not employee id: the assignment is about the account
  * calling tickets, not the person behind it.
@@ -31,7 +31,10 @@ export function getMyAssignment(userId: string): AgentAssignment | null {
   const counter = COUNTERS.find((c) => c.id === counterId)
   if (!counter || !counter.service_id) return null
 
+  /* The contract only reports an assignment whose point has an ACTIVE
+     service - a deactivated one reads as unassigned. */
   const service = getService(counter.service_id)
+  if (!service.is_active) return null
   return {
     counter_id: counter.id,
     counter_name: counter.name,
@@ -56,9 +59,23 @@ export function listAgentSummaries(agencyId: string): AgentSummary[] {
 
 /** `counterId: null` clears the assignment. */
 export function assignAgent(userId: string, counterId: string | null): AgentAssignment | null {
-  if (counterId !== null && !COUNTERS.some((c) => c.id === counterId)) {
-    throw new ApiError('http', 'Guichet introuvable', 404)
+  const user = listUsers().find((u) => u.id === userId)
+  if (!user) throw new ApiError('http', 'Utilisateur introuvable', 404)
+  if (user.role !== 'AGENT') {
+    throw new ApiError('http', 'L utilisateur doit avoir le role AGENT', 422)
   }
+
+  if (counterId !== null) {
+    const counter = COUNTERS.find((c) => c.id === counterId)
+    if (!counter) throw new ApiError('http', 'Guichet ou bureau introuvable', 404)
+    if (!counter.service_id) {
+      throw new ApiError('http', 'Ce guichet n est affecte a aucun service', 409)
+    }
+    if (!getService(counter.service_id).is_active) {
+      throw new ApiError('http', 'Le service du guichet est inactif', 409)
+    }
+  }
+
   assignments[userId] = counterId
   return getMyAssignment(userId)
 }

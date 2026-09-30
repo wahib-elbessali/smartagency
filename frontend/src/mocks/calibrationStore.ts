@@ -1,14 +1,17 @@
 import type {
   AlignResult,
+  CalibrationDiagnostics,
+  CalibrationEntry,
   CalibrationRectRequest,
   CalibrationRectResult,
-  CameraCalibration,
   SharedPoint,
 } from '@/api/types'
 import { ApiError } from '@/api/errors'
 
 /**
- * Calibration state for mock mode.
+ * The AI service's calibration state, for mock mode - the whole site's,
+ * keyed by camera NAME as the AI service keys it. The gateway's own checks
+ * (agency scope, camera names in this agency) are in fixtures/calibration.ts.
  *
  * WHAT THIS DOES NOT DO, said plainly so nobody reads the numbers as real:
  * there is no homography here, no vanishing-point inference, no BFS over
@@ -33,9 +36,8 @@ import { ApiError } from '@/api/errors'
  */
 
 interface StoredCalibration {
-  camera_id: string
-  aligned: boolean
-  diagnostics: CameraCalibration['diagnostics']
+  camera: string
+  diagnostics: CalibrationDiagnostics
 }
 
 let calibrations: StoredCalibration[] | null = null
@@ -45,12 +47,23 @@ function state(): StoredCalibration[] {
   return calibrations
 }
 
-export function listCalibration(): CameraCalibration[] {
-  return state().map((entry) => ({
-    camera_id: entry.camera_id,
-    aligned: entry.aligned,
-    diagnostics: { ...entry.diagnostics },
-  }))
+/* No homography is solved here, so the matrix is the identity - present
+   because the AI service always sends one, meaningless because nothing
+   computed it. */
+const IDENTITY = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+]
+
+/** GET /calibration: the whole site's map, `{}` before anything is calibrated. */
+export function listCalibration(): Record<string, CalibrationEntry> {
+  return Object.fromEntries(
+    state().map((entry) => [
+      entry.camera,
+      { Hinv: IDENTITY.map((row) => [...row]), diagnostics: { ...entry.diagnostics } },
+    ]),
+  )
 }
 
 function sideLength(a: [number, number], b: [number, number]): number {
@@ -77,7 +90,7 @@ export function calibrateRect(body: CalibrationRectRequest): CalibrationRectResu
   const aspect = Number((top / side).toFixed(3))
   const confident = aspect > 0.2 && aspect < 5
 
-  const diagnostics: CameraCalibration['diagnostics'] = {
+  const diagnostics: CalibrationDiagnostics = {
     n_points: 4,
     /* ~0 by construction, exactly as the real fit reports - kept so the
        screen has the misleading number to NOT present as accuracy. */
@@ -90,13 +103,14 @@ export function calibrateRect(body: CalibrationRectRequest): CalibrationRectResu
     aspect_stability_std: confident ? 0.02 : 0.41,
     aspect_confident: confident,
     calib_res: [body.img_w, body.img_h],
+    aligned: false,
   }
 
   const list = state()
-  const existing = list.findIndex((entry) => entry.camera_id === body.camera_id)
+  const existing = list.findIndex((entry) => entry.camera === body.camera)
   /* Re-calibrating drops alignment: the camera's floor frame just changed,
      so whatever it was reconciled with no longer holds. */
-  const entry: StoredCalibration = { camera_id: body.camera_id, aligned: false, diagnostics }
+  const entry: StoredCalibration = { camera: body.camera, diagnostics }
   if (existing === -1) list.push(entry)
   else list[existing] = entry
 
@@ -111,7 +125,7 @@ export function alignCameras(points: SharedPoint[]): AlignResult {
 
   /* The real service picks the most trustworthy camera, not the first. This
      picks the first, and says so rather than implying a judgement. */
-  const reference = list[0].camera_id
+  const reference = list[0].camera
   const results: AlignResult['results'] = {
     [reference]: { aligned: true, reference: true, n_points: null, via: null },
   }
@@ -119,11 +133,10 @@ export function alignCameras(points: SharedPoint[]): AlignResult {
   const weak: string[] = []
   for (const entry of list.slice(1)) {
     const shared = points.filter(
-      (point) => point[entry.camera_id] !== undefined && point[reference] !== undefined,
+      (point) => point[entry.camera] !== undefined && point[reference] !== undefined,
     ).length
 
     if (shared >= 2) {
-      entry.aligned = true
       entry.diagnostics = {
         ...entry.diagnostics,
         aligned: true,
@@ -132,16 +145,16 @@ export function alignCameras(points: SharedPoint[]): AlignResult {
         fit: shared >= 4 ? 'homography' : shared === 3 ? 'affine' : 'similarity',
         aspect_superseded: shared >= 4,
       }
-      results[entry.camera_id] = {
+      results[entry.camera] = {
         aligned: true,
         reference: false,
         n_points: shared,
         via: reference,
       }
-      if (shared < 4) weak.push(entry.camera_id)
+      if (shared < 4) weak.push(entry.camera)
     } else {
-      entry.aligned = false
-      results[entry.camera_id] = {
+      entry.diagnostics = { ...entry.diagnostics, aligned: false }
+      results[entry.camera] = {
         aligned: false,
         reference: false,
         n_points: shared,
@@ -152,7 +165,6 @@ export function alignCameras(points: SharedPoint[]): AlignResult {
     }
   }
 
-  list[0].aligned = true
   list[0].diagnostics = { ...list[0].diagnostics, aligned: true }
 
   return {
@@ -172,13 +184,6 @@ export function alignCameras(points: SharedPoint[]): AlignResult {
         ? `camera(s) ${weak.join(', ')} were aligned with <4 shared points, so their own rectangle still determines their world frame. If any of them shows a bad aspect, click more shared points (>=4) to replace it outright.`
         : null,
   }
-}
-
-export function deleteCalibration(cameraId: string): void {
-  const list = state()
-  const index = list.findIndex((entry) => entry.camera_id === cameraId)
-  if (index === -1) throw new ApiError('http', 'Camera non calibree', 404)
-  list.splice(index, 1)
 }
 
 /** Tests only - module state would otherwise leak between them. */

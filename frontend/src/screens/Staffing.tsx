@@ -2,21 +2,26 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { CircleHelp, Plus, Trash2, UserCheck, UserX } from 'lucide-react'
+import { fetchAgencies } from '@/api/endpoints/agencies'
+import { fetchCameras } from '@/api/endpoints/cameras'
+import { fetchEmployees } from '@/api/endpoints/employees'
 import { createWorkstationStream } from '@/api/endpoints/streams'
 import {
   createWorkstation,
   deleteWorkstation,
   fetchWorkstations,
 } from '@/api/endpoints/workstations'
-import { fetchZones } from '@/api/endpoints/zones'
+import { fetchZones, zonesOnCameras } from '@/api/endpoints/zones'
 import { ApiError, describeApiError } from '@/api/errors'
 import { applyWorkstationFrame, unstaffed, type WorkstationsByName } from '@/api/streamMerge'
-import type { Workstation, WorkstationFrame, WorkstationStatus } from '@/api/types'
+import type { Employee, Workstation, WorkstationFrame, WorkstationStatus } from '@/api/types'
+import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
 import { useStream } from '@/hooks/useStream'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { Badge, type Tone } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { controlClass } from '@/components/ui/control'
 import { Dialog } from '@/components/ui/Dialog'
 import { Field } from '@/components/ui/Field'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
@@ -55,13 +60,18 @@ import { Screen } from './Screen'
  *
  * ROWS COME FROM REST, STATUS COMES FROM THE STREAM
  *
- * The list is the scoped one - the proxy filters it to the caller's branch
- * through the zone's camera, since the AI service has no notion of an agency
- * and its stream carries the whole site. So the stream is used to refresh
- * the status of rows this caller already has, and a frame naming a
- * workstation that is not in their list is ignored rather than rendered.
- * Without that, one manager's wall display would quietly grow another
- * branch's counters.
+ * The rows are the backend's own table (backend/app/api/employee_activity.py),
+ * scoped to one agency and carrying who is meant to be at each counter. The
+ * stream (WS /ws/employee-activity) is the AI service's, relayed untouched:
+ * the whole site, and no employee on a row. So the stream only refreshes
+ * the status of rows this agency already has - a frame naming a workstation
+ * that is not in the list is ignored rather than rendered, or one manager's
+ * wall display would quietly grow another branch's counters - and it never
+ * replaces a row outright, or the employee would vanish on the first flip.
+ *
+ * The zone picker offers only zones drawn on this branch's cameras. Backend
+ * would accept any zone on the site; binding a Rabat counter to a
+ * Casablanca camera is a mistake this form does not offer.
  */
 
 const STATUS_TONE: Record<WorkstationStatus, Tone> = {
@@ -85,7 +95,9 @@ const STATUS_LABEL: Record<WorkstationStatus, string> = {
  * counter that emptied 40 seconds ago and one that emptied 10 are the same
  * fact to the person reading this.
  */
-function elapsed(since: number): { minutes: number; text: string } {
+function elapsed(since: number | null): { minutes: number; text: string } | null {
+  /* Null when the AI service had no state for this row - nothing to say. */
+  if (since === null) return null
   const seconds = Math.max(0, Date.now() / 1000 - since)
   const minutes = Math.floor(seconds / 60)
   if (minutes < 1) return { minutes, text: 'less than a minute' }
@@ -107,23 +119,52 @@ function elapsed(since: number): { minutes: number; text: string } {
  * top and claiming a total would be arithmetic on a number the service does
  * not publish.
  */
-function flaggedLabel(since: number): string {
-  const { minutes, text } = elapsed(since)
-  return minutes < 1 ? 'flagged just now' : `flagged ${text} ago`
+function flaggedLabel(since: number | null): string {
+  const time = elapsed(since)
+  if (time === null) return 'flagged at a time the detector did not report'
+  return time.minutes < 1 ? 'flagged just now' : `flagged ${time.text} ago`
 }
 
 export default function Staffing() {
   const { user } = useSession()
+  const scope = useScope()
   const queryClient = useQueryClient()
+  const isAdmin = user?.role === 'ADMIN'
+
+  const agencies = useQuery({
+    queryKey: ['agencies'],
+    queryFn: ({ signal }) => fetchAgencies(signal),
+    enabled: isAdmin,
+  })
+
+  const [pickedAgencyId, setPickedAgencyId] = useState<string | null>(null)
+  /* Same order of preference as Zones: what an admin picked here, then the
+     branch open elsewhere, then the first branch. Everyone else has one. */
+  const agencyId = isAdmin
+    ? (pickedAgencyId ?? scope.agencyId ?? agencies.data?.[0]?.id ?? null)
+    : (user?.agency_id ?? null)
 
   const stations = useQuery({
-    queryKey: ['workstations'],
-    queryFn: ({ signal }) => fetchWorkstations(signal),
+    queryKey: ['workstations', agencyId],
+    queryFn: ({ signal }) => fetchWorkstations(agencyId as string, signal),
+    enabled: agencyId !== null,
+  })
+
+  const cameras = useQuery({
+    queryKey: ['cameras', agencyId],
+    queryFn: ({ signal }) => fetchCameras(agencyId as string, signal),
+    enabled: agencyId !== null,
   })
 
   const zones = useQuery({
-    queryKey: ['zones'],
-    queryFn: ({ signal }) => fetchZones(signal),
+    queryKey: ['zones', agencyId],
+    queryFn: ({ signal }) => fetchZones(agencyId as string, signal),
+    enabled: agencyId !== null,
+  })
+
+  const employees = useQuery({
+    queryKey: ['employees'],
+    queryFn: ({ signal }) => fetchEmployees(signal),
   })
 
   const { state: live, status: streamStatus } = useStream<WorkstationFrame, WorkstationsByName>(
@@ -133,11 +174,17 @@ export default function Staffing() {
     () => ({}),
   )
 
-  /* The scoped list, wearing whatever the feed last said about each row. */
+  /* The scoped list, wearing whatever the feed last said about each row's
+     status - and only its status: the employee is ours, not the feed's. */
   const rows: Workstation[] = useMemo(
     () =>
       [...(stations.data ?? [])]
-        .map((station) => live[station.name] ?? station)
+        .map((station) => {
+          const state = live[station.name]
+          return state
+            ? { ...station, status: state.status, since: state.since, zone_known: state.zone_known }
+            : station
+        })
         .sort((a, b) => a.name.localeCompare(b.name)),
     [stations.data, live],
   )
@@ -151,7 +198,7 @@ export default function Staffing() {
   const [binding, setBinding] = useState(false)
 
   const bind = useMutation({
-    mutationFn: (values: { name: string; zone: string }) => createWorkstation(values),
+    mutationFn: (values: BindValues) => createWorkstation(agencyId as string, values),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workstations'] })
       setBinding(false)
@@ -159,15 +206,25 @@ export default function Staffing() {
   })
 
   const unbind = useMutation({
-    mutationFn: (station: Workstation) => deleteWorkstation(station.name),
+    mutationFn: (station: Workstation) => deleteWorkstation(agencyId as string, station.name),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workstations'] })
     },
   })
 
   const zoneNames = useMemo(
-    () => (zones.data ?? []).map((zone) => zone.name).sort((a, b) => a.localeCompare(b)),
-    [zones.data],
+    () =>
+      zonesOnCameras(zones.data ?? [], cameras.data ?? [])
+        .map((zone) => zone.name)
+        .sort((a, b) => a.localeCompare(b)),
+    [zones.data, cameras.data],
+  )
+  const branchEmployees = useMemo(
+    () =>
+      (employees.data ?? [])
+        .filter((employee) => employee.agency_id === agencyId && employee.is_active)
+        .sort((a, b) => a.last_name.localeCompare(b.last_name)),
+    [employees.data, agencyId],
   )
   const takenNames = useMemo(
     () => new Set((stations.data ?? []).map((station) => station.name)),
@@ -190,6 +247,29 @@ export default function Staffing() {
         </div>
       }
     >
+      {isAdmin && (
+        <div className="mb-4 max-w-xs">
+          <label
+            htmlFor="staffing_agency"
+            className="text-ink-3 tracked mb-2 block text-[11px] font-medium"
+          >
+            Branch
+          </label>
+          <select
+            id="staffing_agency"
+            className={controlClass()}
+            value={agencyId ?? ''}
+            onChange={(e) => setPickedAgencyId(e.target.value || null)}
+          >
+            {(agencies.data ?? []).map((agency) => (
+              <option key={agency.id} value={agency.id}>
+                {agency.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {empty.length > 0 && (
         <Panel as="section" tone="alert" className="mb-4">
           <PanelBody className="flex gap-3">
@@ -248,6 +328,12 @@ export default function Staffing() {
                 </div>
                 <p className="text-ink-3 mt-1 truncate text-xs">
                   Watching zone <span className="text-ink-2">{station.zone}</span>
+                  {station.employee_name && (
+                    <>
+                      {' · '}
+                      <span className="text-ink-2">{station.employee_name}</span>’s counter
+                    </>
+                  )}
                 </p>
               </PanelHeader>
 
@@ -265,8 +351,14 @@ export default function Staffing() {
                   <p className="text-ink-2 text-sm leading-relaxed">
                     {station.status === 'present' && (
                       <>
-                        Somebody has been at this counter for{' '}
-                        <span className="text-ink">{elapsed(station.since).text}</span>.
+                        Somebody has been at this counter
+                        {elapsed(station.since) && (
+                          <>
+                            {' for '}
+                            <span className="text-ink">{elapsed(station.since)?.text}</span>
+                          </>
+                        )}
+                        .
                       </>
                     )}
                     {station.status === 'away' && (
@@ -324,6 +416,7 @@ export default function Staffing() {
         {binding && (
           <BindForm
             zoneNames={zoneNames}
+            employees={branchEmployees}
             takenNames={takenNames}
             pending={bind.isPending}
             error={bind.error}
@@ -352,8 +445,15 @@ function StatusIcon({ status }: { status: WorkstationStatus }) {
  * field would make that the normal way to discover a typo. Picking also makes
  * the dependency visible: no zones, no workstations.
  */
+interface BindValues {
+  name: string
+  zone: string
+  employee_id: string | null
+}
+
 function BindForm({
   zoneNames,
+  employees,
   takenNames,
   pending,
   error,
@@ -361,21 +461,23 @@ function BindForm({
   onSubmit,
 }: {
   zoneNames: string[]
+  employees: Employee[]
   takenNames: Set<string>
   pending: boolean
   error: unknown
   onCancel: () => void
-  onSubmit: (values: { name: string; zone: string }) => void
+  onSubmit: (values: BindValues) => void
 }) {
   const [name, setName] = useState('')
   const [zone, setZone] = useState(zoneNames[0] ?? '')
+  const [employeeId, setEmployeeId] = useState('')
   const trimmed = name.trim()
   const replacing = trimmed.length > 0 && takenNames.has(trimmed)
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (trimmed.length === 0 || zone.length === 0) return
-    onSubmit({ name: trimmed, zone })
+    onSubmit({ name: trimmed, zone, employee_id: employeeId || null })
   }
 
   return (
@@ -404,12 +506,31 @@ function BindForm({
             </select>
           )}
         </Field>
+
+        {/* Who is meant to be here. Optional, and only ever a label: the
+            detector reports whether SOMEBODY is in the zone, never who. */}
+        <Field
+          id="workstation_employee"
+          label="Employee"
+          hint="Who normally works this counter. The detector does not check who is there."
+        >
+          {(props) => (
+            <select {...props} value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
+              <option value="">Nobody in particular</option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.first_name} {employee.last_name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       </div>
 
       {replacing && (
         <p className="border-warn/30 bg-warn/8 text-warn mt-4 rounded-lg border p-3 text-sm leading-relaxed">
           A workstation called <span className="font-medium">{trimmed}</span> already exists. Saving
-          rebinds it to this zone.
+          rebinds it to this zone and this employee.
         </p>
       )}
 

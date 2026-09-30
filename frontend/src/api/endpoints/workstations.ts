@@ -2,45 +2,63 @@ import { fetchJson } from '../client'
 import type { Workstation, WorkstationCreate } from '../types'
 
 /**
- * Workstations — PROPOSED, not in contracts/api.md (2026-09-19).
+ * Workstations - backend/app/api/employee_activity.py (PR #109). Not in
+ * contracts/api.md yet; paths, bodies and statuses are transcribed from that
+ * backend source.
  *
- * contracts/ai-service.md §/employee_activity, proxied by the backend for
- * the same reason everything else AI-facing is: the browser must not reach
- * that service (repo CLAUDE.md, 2026-08-11). See BACKEND-ASKS.md §9.
+ * Unlike zones, these are rows in OUR database (the `workstations` table,
+ * scoped to an agency, optionally naming the employee who should be there),
+ * mirrored into the AI service's /employee_activity so it reports on them.
+ * So the list comes back already filtered to the agency, and the AI
+ * service's live state rides along on each row.
  *
- * The cheapest feature in the AI service and the one with the best ratio of
- * value to work: it runs on /zoning's existing occupancy, so binding a name
- * to a zone this dashboard can already draw is the whole setup. No
- * calibration, no extra model, no biometrics.
- *
- * Roles: ADMIN and MANAGER, scoped through the zone's camera, the same as
- * zones themselves.
+ * Roles: reading is ADMIN, MANAGER and SECURITY; binding and unbinding are
+ * ADMIN and MANAGER. A MANAGER is refused another agency with a 403.
  */
 
-export function fetchWorkstations(signal?: AbortSignal): Promise<Workstation[]> {
+export function fetchWorkstations(agencyId: string, signal?: AbortSignal): Promise<Workstation[]> {
   return fetchJson<Workstation[]>(
-    { key: 'GET /api/workstations', path: '/api/workstations', auth: true },
+    {
+      key: 'GET /api/agencies/{id}/workstations',
+      path: `/api/agencies/${agencyId}/workstations`,
+      auth: true,
+    },
     { signal },
   )
 }
 
-/** 422 when the zone does not exist - the AI service's own refusal. */
+/**
+ * Binds a name to a zone (and optionally an employee). Re-posting a name
+ * this agency already has rebinds it; a name another agency uses is a 409.
+ * 422 when the zone does not exist in the AI service, or the employee is
+ * from another agency; 404 for an unknown employee.
+ */
 export function createWorkstation(
+  agencyId: string,
   body: WorkstationCreate,
   signal?: AbortSignal,
 ): Promise<Workstation> {
   return fetchJson<Workstation>(
-    { key: 'POST /api/workstations', path: '/api/workstations', method: 'POST', auth: true },
+    {
+      key: 'POST /api/agencies/{id}/workstations',
+      path: `/api/agencies/${agencyId}/workstations`,
+      method: 'POST',
+      auth: true,
+    },
     { signal, body },
   )
 }
 
-/** The name is the key, so it goes in the path - encoded, as zones are. */
-export function deleteWorkstation(name: string, signal?: AbortSignal): Promise<void> {
+/** 204 on success, 404 when this agency has no workstation by that name. */
+export function deleteWorkstation(
+  agencyId: string,
+  name: string,
+  signal?: AbortSignal,
+): Promise<void> {
   return fetchJson<void>(
     {
-      key: 'DELETE /api/workstations/{name}',
-      path: `/api/workstations/${encodeURIComponent(name)}`,
+      key: 'DELETE /api/agencies/{id}/workstations/{name}',
+      path: `/api/agencies/${agencyId}/workstations/${encodeURIComponent(name)}`,
       method: 'DELETE',
       auth: true,
     },

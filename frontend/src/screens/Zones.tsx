@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ImageOff, Pentagon, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchCameraFrame, fetchCameras } from '@/api/endpoints/cameras'
-import { createZone, deleteZone, fetchZones } from '@/api/endpoints/zones'
+import { createZone, deleteZone, fetchZones, zonesOnCameras } from '@/api/endpoints/zones'
 import { ApiError, describeApiError } from '@/api/errors'
 import type { Camera, CameraZone } from '@/api/types'
 import { useScope } from '@/agency/ScopeContext'
@@ -27,8 +27,17 @@ import { Screen } from './Screen'
  * it. The reference app is the interaction reference, not the surface - it
  * is a local Flask page that talks to the unauthenticated AI service
  * directly, which this dashboard must never do (repo CLAUDE.md, 2026-08-11).
- * Everything here goes through PROPOSED backend proxies; see
- * api/endpoints/zones.ts and BACKEND-ASKS.md §8.
+ * Everything here goes through the backend's AI gateway
+ * (backend/app/api/ai_zoning.py); see api/endpoints/zones.ts.
+ *
+ * ONE SITE-WIDE STORE, FILTERED HERE
+ *
+ * The AI service keeps every zone of every branch in one name-keyed map, and
+ * the gateway hands that whole map to anyone allowed to read the agency. So
+ * this screen keeps only the zones drawn on this branch's own cameras (by
+ * camera NAME, which is how the AI service knows them). The one place the
+ * whole map still matters is the name check before saving: re-posting ANY
+ * existing name replaces that zone, even one on another branch's camera.
  *
  * WHY THIS SCREEN MATTERS TO THE ONE NEXT TO IT
  *
@@ -102,8 +111,9 @@ export default function Zones() {
   })
 
   const zones = useQuery({
-    queryKey: ['zones'],
-    queryFn: ({ signal }) => fetchZones(signal),
+    queryKey: ['zones', agencyId],
+    queryFn: ({ signal }) => fetchZones(agencyId as string, signal),
+    enabled: agencyId !== null,
   })
 
   const cameraRows = useMemo(
@@ -129,7 +139,14 @@ export default function Zones() {
 
   const save = useMutation({
     mutationFn: (name: string) =>
-      createZone({ name, camera_id: camera?.id as string, polygon: points }),
+      createZone(agencyId as string, {
+        name,
+        camera: (camera as Camera).name,
+        polygon: points,
+        /* The gateway requires a non-blank URL per source and then swaps in
+           the one our database holds, so the row's own is sent. */
+        sources: { [(camera as Camera).name]: camera?.stream_url ?? '' },
+      }),
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({ queryKey: ['zones'] })
       setPoints([])
@@ -144,24 +161,26 @@ export default function Zones() {
   const [lastSaved, setLastSaved] = useState<string[] | null>(null)
 
   const remove = useMutation({
-    mutationFn: (zone: CameraZone) => deleteZone(zone.name),
+    mutationFn: (zone: CameraZone) => deleteZone(agencyId as string, zone.name),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['zones'] })
     },
   })
 
+  const branchZones = useMemo(
+    () => zonesOnCameras(zones.data ?? [], cameraRows),
+    [zones.data, cameraRows],
+  )
   const zonesHere = useMemo(
     () =>
-      (zones.data ?? [])
-        .filter((zone) => zone.camera_id === camera?.id)
+      branchZones
+        .filter((zone) => zone.camera === camera?.name)
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [zones.data, camera?.id],
+    [branchZones, camera?.name],
   )
-  const zonesElsewhere = useMemo(
-    () => (zones.data ?? []).filter((zone) => zone.camera_id !== camera?.id).length,
-    [zones.data, camera?.id],
-  )
+  const zonesElsewhere = branchZones.length - zonesHere.length
 
+  /* Site-wide on purpose - see "ONE SITE-WIDE STORE" at the top. */
   const existingNames = useMemo(
     () => new Set((zones.data ?? []).map((zone) => zone.name)),
     [zones.data],
@@ -338,8 +357,8 @@ export default function Zones() {
                     not know about one.
                   </p>
                   <p className="text-ink-3 mt-2 text-xs leading-relaxed">
-                    Areas spanning several cameras need the site calibrated first. That is a
-                    separate screen and it does not exist yet.
+                    Areas spanning several cameras need the site calibrated first, on the
+                    Calibration screen, and are not drawn here.
                   </p>
                 </PanelBody>
               </Panel>
@@ -410,7 +429,7 @@ function Drawing({
      lets it play again. Same rule as the calibration canvases. */
   const frame = useQuery({
     queryKey: ['cameraFrame', camera.id],
-    queryFn: ({ signal }) => fetchCameraFrame(camera.id, signal),
+    queryFn: ({ signal }) => fetchCameraFrame(camera, signal),
     retry: false,
     refetchInterval: drawing ? false : FRAME_MS,
     placeholderData: (previous) => previous,
@@ -429,10 +448,13 @@ function Drawing({
   const svgRef = useRef<SVGSVGElement | null>(null)
 
   const noFrame = frame.isError
-  const unavailable =
-    frame.error instanceof ApiError && frame.error.status === 404
+  const unavailable = !(frame.error instanceof ApiError)
+    ? 'Could not fetch a picture from this camera.'
+    : frame.error.status === 404
       ? `The detector cannot open ${camera.name}’s stream, so there is no picture to draw on.`
-      : 'Could not fetch a picture from this camera.'
+      : frame.error.status === 422
+        ? `${camera.name} has no stream address, so there is no picture to draw on.`
+        : describeApiError(frame.error)
 
   function handleClick(event: React.MouseEvent<SVGSVGElement>) {
     const svg = svgRef.current

@@ -25,11 +25,10 @@ import { Screen } from './Screen'
  * This used to ask the agent to pick their own service and counter. Changed
  * (2026-09-05): which service an agent works is a MANAGER's call, not the
  * agent's, so this now reads it from GET /api/agents/me/assignment instead of
- * showing a picker. That endpoint is PROPOSED - nothing on the real backend
- * stores an agent-to-counter link yet (checked backend/app/models/entities.py)
- * - so it is wired against a mock for now (mocks/assignmentStore.ts) with the
- * exact shape the real one should return. See api/endpoints/assignments.ts.
- * An agent nobody has assigned sees an honest empty state, not a picker.
+ * showing a picker (contracts/api.md §5, api/endpoints/assignments.ts). An
+ * agent nobody has assigned - or whose counter's service was deactivated,
+ * which the route also reports as null - sees an honest empty state, not a
+ * picker.
  *
  * "Currently serving" has the same limitation as the board's at-counter
  * panel: GET /api/tickets/queue returns WAITING tickets only, so the one just
@@ -37,9 +36,9 @@ import { Screen } from './Screen'
  *
  * NOTES
  *
- * `notes` on complete is also PROPOSED - the real route takes no body today
- * (contracts/api.md §8). Sent regardless; the real backend will simply
- * ignore the extra field until it grows one to match.
+ * `notes` on complete is contracts/api.md §8: optional, at most 2,000
+ * characters (the field stops there rather than letting the server refuse
+ * it), trimmed, and a blank one is sent as no body at all.
  */
 
 const POLL_MS = 10_000
@@ -145,6 +144,7 @@ export default function AgentQueue() {
                       {...props}
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
+                      maxLength={2000}
                       placeholder="How did it go?"
                       rows={3}
                     />

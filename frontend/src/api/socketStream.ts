@@ -25,7 +25,23 @@ export type StreamStatus =
   | 'connecting'
   | 'open'
   | 'reconnecting' // dropped, trying again
+  | 'unavailable' // the backend is up but its source is not (close 1013); still retrying
+  | 'refused' // the backend closed with 1008: this token or role may not read it
   | 'closed' // deliberately stopped, or cannot run
+
+/**
+ * The two close codes the backend documents (contracts/api.md §13; the
+ * attendance socket uses 1008 the same way).
+ *
+ * Both arrive AFTER the handshake - the backend accepts, checks, then
+ * closes - so `onopen` fires first and a socket cannot tell them from a
+ * healthy connection that dropped unless it reads the code. Without that,
+ * 1008 retried forever against a refusal, and 1013 reset the backoff on
+ * every accept and hit the backend at the minimum delay for as long as the
+ * AI service stayed down.
+ */
+export const CLOSE_POLICY_VIOLATION = 1008
+export const CLOSE_TRY_AGAIN_LATER = 1013
 
 export interface SocketStream<T> {
   readonly status: StreamStatus
@@ -97,6 +113,9 @@ export function createSocketStream<T>(
   let stopped = false
   /* Once true, drops stay retryable forever - see WS_MAX_INITIAL_ATTEMPTS. */
   let hasEverOpened = false
+  /* Set by a 1013 close and cleared by the first real frame: while the
+     source is down, the backend's accept-then-close must not flash "Live". */
+  let sourceDown = false
 
   function setStatus(next: StreamStatus) {
     if (status === next) return
@@ -108,6 +127,7 @@ export function createSocketStream<T>(
     if (stopped) return
 
     const target = buildSocketTarget(path, tokenProvider())
+    let opened = false
     if (!target) {
       /* No token, or VITE_WS_AUTH_MODE is unset. Either way there is nothing
          honest to connect to, and retrying forever would just spin. */
@@ -115,7 +135,8 @@ export function createSocketStream<T>(
       return
     }
 
-    setStatus(attempt === 0 ? 'connecting' : 'reconnecting')
+    const tokenUsed = tokenProvider()
+    if (!sourceDown) setStatus(attempt === 0 ? 'connecting' : 'reconnecting')
 
     let ws: WebSocket
     try {
@@ -127,12 +148,18 @@ export function createSocketStream<T>(
     socket = ws
 
     ws.onopen = () => {
-      attempt = 0
+      opened = true
       hasEverOpened = true
-      setStatus('open')
+      if (!sourceDown) setStatus('open')
     }
 
     ws.onmessage = (message: MessageEvent) => {
+      /* A frame is proof the source is back, which an accept alone is not. */
+      if (sourceDown) {
+        sourceDown = false
+        attempt = 0
+        setStatus('open')
+      }
       const parsed = parse(message.data)
       /* A frame we cannot read is dropped, not thrown. One malformed message
          must not take down a dashboard that is otherwise fine. */
@@ -145,12 +172,36 @@ export function createSocketStream<T>(
          there - doing it in both places double-schedules. */
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event?: CloseEvent) => {
       socket = null
       if (stopped) {
         setStatus('closed')
         return
       }
+
+      const code = event?.code
+      if (code === CLOSE_POLICY_VIOLATION) {
+        /* Refused. Retrying with the same token gets the same answer; a token
+           refreshed since this socket connected might not, so that one case
+           tries again. */
+        if (tokenProvider() !== tokenUsed) {
+          scheduleReconnect()
+          return
+        }
+        setStatus('refused')
+        return
+      }
+
+      if (code === CLOSE_TRY_AGAIN_LATER) {
+        /* Keep the backoff growing across these: the accept that preceded
+           the close is not evidence of recovery. */
+        sourceDown = true
+        setStatus('unavailable')
+        scheduleReconnect()
+        return
+      }
+
+      if (opened) attempt = 0
       scheduleReconnect()
     }
   }
@@ -164,7 +215,7 @@ export function createSocketStream<T>(
       return
     }
 
-    setStatus('reconnecting')
+    if (!sourceDown) setStatus('reconnecting')
     const delay = backoffDelay(attempt)
     attempt += 1
     retryHandle = scheduleRetry(() => {

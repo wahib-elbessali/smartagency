@@ -4,7 +4,7 @@ import { requestUser } from '../currentUser'
 import { assignAgent, getMyAssignment, listAgentSummaries } from '../assignmentStore'
 
 /**
- * PROPOSED - see api/endpoints/assignments.ts for the full contract note.
+ * contracts/api.md §5 - see api/endpoints/assignments.ts.
  *
  * `empty` always answers null regardless of who is asking, unlike `normal`:
  * it exists so the unassigned state (AgentQueue's "ask your manager") is

@@ -268,15 +268,21 @@ export function assignCounterService(counterId: string, serviceId: string | null
   return { ...found }
 }
 
-/** `notes` is PROPOSED - see the type's comment in api/types.ts. */
+/** `notes` as contracts/api.md §8 has it: trimmed, blank stored as null, 2,000 max. */
 export function completeTicket(id: string, notes?: string | null): Ticket {
   const ticket = find(id)
   if (ticket.status !== 'CALLED' && ticket.status !== 'IN_SERVICE') {
     throw new ApiError('http', 'Ce ticket ne peut pas etre termine', 409)
   }
+  const trimmed = notes?.trim() ?? null
+  if (trimmed !== null && trimmed.length > 2000) {
+    throw new ApiError('http', 'String should have at most 2000 characters', 422)
+  }
   ticket.status = 'COMPLETED'
   ticket.completed_at = new Date().toISOString()
-  if (notes) ticket.notes = notes
+  /* An omitted body leaves notes alone; an explicit one, blank or not,
+     replaces it - which is how `{ "notes": null }` clears it. */
+  if (notes !== undefined) ticket.notes = trimmed || null
   return { ...ticket }
 }
 

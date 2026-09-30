@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Info } from 'lucide-react'
-import { actionErrorMessage, fetchQueue } from '@/api/endpoints/tickets'
+import { fetchQueue } from '@/api/endpoints/tickets'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchServices } from '@/api/endpoints/services'
-import { assignAgent, fetchAgents } from '@/api/endpoints/assignments'
+import { assignAgent, assignmentErrorMessage, fetchAgents } from '@/api/endpoints/assignments'
 import { useSession } from '@/auth/SessionContext'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { controlClass } from '@/components/ui/control'
@@ -23,16 +23,16 @@ import AgentQueue from './AgentQueue'
  *
  * ASSIGNMENT AND "SEEING THEIR QUEUES"
  *
- * Both PROPOSED (api/endpoints/assignments.ts) - nothing on the real backend
- * links an account to a counter yet, so this reads and writes the same mock
- * AgentQueue itself reads from. "See their queues" is a waiting count per
+ * Both are contract routes (contracts/api.md §5, api/endpoints/assignments.ts)
+ * - the same assignment AgentQueue reads for itself. "See their queues" is a
+ * waiting count per
  * assigned service, not who they're currently with: GET /api/tickets/queue
  * only ever returns WAITING tickets (contracts/api.md §8), and "currently
  * serving" is state AgentQueue keeps in its own browser tab - nothing a
  * manager's session could read even if this screen wanted to show it.
  * Faking a live "now serving" here would be inventing data nobody has.
  *
- * A counter with no service assigned can't back an agent assignment either -
+ * A counter with no active service can't back an agent assignment either -
  * AgentQueue needs a service_id to know what queue to show - so those are
  * left out of the picker rather than offered as a dead end.
  */
@@ -63,19 +63,21 @@ function VisitorQueueBoard() {
     return mine[0] ?? null
   }, [agencies.data, isAdmin, user?.agency_id])
 
-  const assignableCounters = useMemo(
-    () =>
-      (myAgency?.counters ?? [])
-        .filter((c) => c.service_id != null)
-        .sort((a, b) => a.number - b.number),
-    [myAgency],
-  )
-
   const services = useQuery({
     queryKey: ['services', myAgency?.id],
     queryFn: ({ signal }) => fetchServices(myAgency!.id, signal),
     enabled: myAgency != null,
   })
+
+  /* The contract refuses a counter whose service is missing OR inactive
+     (409), so neither is offered. Until services load, a counter with any
+     service stays in - the refusal message covers the rare stale pick. */
+  const assignableCounters = useMemo(() => {
+    const inactive = new Set((services.data ?? []).filter((s) => !s.is_active).map((s) => s.id))
+    return (myAgency?.counters ?? [])
+      .filter((c) => c.service_id != null && !inactive.has(c.service_id))
+      .sort((a, b) => a.number - b.number)
+  }, [myAgency, services.data])
 
   const agents = useQuery({
     queryKey: ['agents', myAgency?.id],
@@ -96,9 +98,12 @@ function VisitorQueueBoard() {
   const assign = useMutation({
     mutationFn: ({ userId, counterId }: { userId: string; counterId: string | null }) =>
       assignAgent(userId, counterId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents', myAgency?.id] }),
+    /* Refetch on failure too: every refusal the contract lists (a counter
+       that lost its service, an agent moved to another agency, a deleted
+       row) means this list is already stale. */
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['agents', myAgency?.id] }),
   })
-  const assignError = actionErrorMessage(assign.error)
+  const assignError = assignmentErrorMessage(assign.error)
 
   return (
     <Screen
