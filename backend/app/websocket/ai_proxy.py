@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.security import decode_token
 from app.database.connection import SessionLocal
 from app.models.entities import Agency, Camera, RoleName, User, Workstation, Zone
+from app.websocket.alert_state import alert_state_manager
 
 
 logger = logging.getLogger(__name__)
@@ -378,6 +379,7 @@ async def _proxy(
     *,
     stream_kind: str,
     upstream_query_params: frozenset[str] = frozenset(),
+    alert_state_feature: str | None = None,
 ) -> None:
     """Relay one scoped AI stream until either side disconnects."""
     await websocket.accept()
@@ -402,6 +404,12 @@ async def _proxy(
         allowed_query_params=upstream_query_params,
     )
     upstream_finished = False
+    state_queue = (
+        alert_state_manager.subscribe(alert_state_feature, scope)
+        if alert_state_feature is not None
+        else None
+    )
+    send_lock = asyncio.Lock()
 
     try:
         async with websockets.connect(
@@ -419,7 +427,16 @@ async def _proxy(
                             continue
                     filtered = _filter_frame(message, scope, stream_kind)
                     if filtered is not None:
-                        await websocket.send_text(filtered)
+                        async with send_lock:
+                            await websocket.send_text(filtered)
+
+            async def relay_alert_state() -> None:
+                if state_queue is None:
+                    return
+                while True:
+                    payload = await state_queue.get()
+                    async with send_lock:
+                        await websocket.send_json(payload)
 
             async def drain_client() -> None:
                 while True:
@@ -429,8 +446,16 @@ async def _proxy(
 
             relay_task = asyncio.create_task(relay_upstream())
             client_task = asyncio.create_task(drain_client())
+            state_task = (
+                asyncio.create_task(relay_alert_state())
+                if state_queue is not None
+                else None
+            )
+            tasks = {relay_task, client_task}
+            if state_task is not None:
+                tasks.add(state_task)
             done, pending = await asyncio.wait(
-                {relay_task, client_task},
+                tasks,
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
@@ -443,7 +468,9 @@ async def _proxy(
                     task.result()
                 except Exception as exc:
                     logger.debug("AI WebSocket proxy stopped: %s", exc)
-            upstream_finished = relay_task in done
+            upstream_finished = relay_task in done or (
+                state_task is not None and state_task in done
+            )
     except websockets.exceptions.ConnectionClosed:
         upstream_finished = True
     except Exception:
@@ -451,6 +478,8 @@ async def _proxy(
         await _close(websocket, 1013, "Service AI indisponible")
         return
     finally:
+        if state_queue is not None:
+            alert_state_manager.unsubscribe(state_queue)
         _release_connection(scope.user_id)
 
     if upstream_finished:
@@ -466,6 +495,7 @@ async def weapon_alerts_websocket(websocket: WebSocket) -> None:
         "/weapon/alerts/stream",
         ALERT_ROLES,
         stream_kind="alerts",
+        alert_state_feature="weapon",
     )
 
 
@@ -476,6 +506,7 @@ async def fire_alerts_websocket(websocket: WebSocket) -> None:
         "/fire/alerts/stream",
         ALERT_ROLES,
         stream_kind="alerts",
+        alert_state_feature="fire",
     )
 
 
@@ -486,6 +517,7 @@ async def emotion_alerts_websocket(websocket: WebSocket) -> None:
         "/emotion/alerts/stream",
         ALERT_ROLES,
         stream_kind="alerts",
+        alert_state_feature="emotion",
     )
 
 
@@ -496,6 +528,7 @@ async def wanted_alerts_websocket(websocket: WebSocket) -> None:
         "/wanted/alerts/stream",
         ALERT_ROLES,
         stream_kind="alerts",
+        alert_state_feature="wanted",
     )
 
 

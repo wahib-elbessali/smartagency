@@ -1782,6 +1782,38 @@ or unauthorized roles close the socket with WebSocket code `1008`. If the AI
 service is unavailable, or the connection limit is reached, the backend closes
 the socket with code `1013`.
 
+### GET /api/agencies/{agency_id}/alerts?alert_type=weapon
+
+**Owner:** Backend  
+**Type:** REST  
+**Roles:** `ADMIN`, `MANAGER`, `SECURITY`  
+**Success status:** `200 OK`
+
+**Response body:**
+
+```json
+[
+  {
+    "id": "ALERT_UUID",
+    "agency_id": "AGENCY_UUID",
+    "camera_id": "CAMERA_UUID",
+    "camera_name": "camera-entrance",
+    "alert_type": "weapon",
+    "severity": "CRITICAL",
+    "status": "OPEN",
+    "created_at": "2026-10-04T10:00:00Z",
+    "resolved_at": null
+  }
+]
+```
+
+**Notes:** Returns persisted business alerts, ordered from newest to oldest.
+`alert_type` is optional; when supplied, it filters the result, for example
+`weapon`. `ADMIN` can read any agency. `MANAGER` and `SECURITY` are restricted
+to their own agency. This endpoint is distinct from the live AI detection
+frames, which may contain detections that have not yet become a persisted
+business alert.
+
 ### WS /ws/alerts/weapon
 
 **Owner:** Backend
@@ -1816,7 +1848,27 @@ or an update:
 ```
 
 **Notes:** Relays the AI weapon-detection stream. `detections: []` means that
-the camera is currently clear.
+the camera is currently clear. The same socket also receives persisted state
+events after the database transaction succeeds:
+
+```json
+{
+  "type": "alert_state",
+  "event": "created",
+  "id": "ALERT_UUID",
+  "agency_id": "AGENCY_UUID",
+  "camera_id": "CAMERA_UUID",
+  "camera_name": "camera-entrance",
+  "alert_type": "weapon",
+  "severity": "CRITICAL",
+  "status": "OPEN",
+  "created_at": "2026-10-04T10:00:00Z",
+  "resolved_at": null
+}
+```
+
+`event` is `created`, `updated` or `resolved`. State events are filtered by
+agency and camera before delivery.
 
 ### WS /ws/alerts/fire
 

@@ -39,6 +39,7 @@ from app.models.entities import (
     DeviceStatus,
 )
 from app.services.ai_source_sync import AISourceSyncService, ai_source_sync
+from app.websocket.alert_state import alert_state_manager
 
 
 logger = logging.getLogger(__name__)
@@ -324,9 +325,38 @@ class AIAlertConsumer:
             return filtrer_detections_armes(detections)
         return detections
 
+    @staticmethod
+    def _event_datetime(value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
+
+    def _alert_state_payload(
+        self,
+        alert: Alert,
+        camera: Camera,
+        event: str,
+    ) -> dict[str, Any]:
+        return {
+            "type": "alert_state",
+            "event": event,
+            "id": alert.id,
+            "agency_id": alert.agency_id,
+            "camera_id": alert.camera_id,
+            "camera_name": camera.name,
+            "alert_type": alert.alert_type,
+            "severity": alert.severity.value,
+            "status": alert.status.value,
+            "created_at": self._event_datetime(alert.created_at),
+            "resolved_at": self._event_datetime(alert.resolved_at),
+        }
+
     def _persist_camera_update(self, camera_name: Any, raw_detections: Any) -> None:
         detections = self._normalise_detections(raw_detections)
         db = SessionLocal()
+        state_events: list[dict[str, Any]] = []
         try:
             camera = db.scalar(select(Camera).where(Camera.name == camera_name))
             if camera is None:
@@ -358,6 +388,9 @@ class AIAlertConsumer:
                     for alert in open_alerts:
                         alert.message = alert_message
                         alert.severity = self.feature.severity
+                        state_events.append(
+                            self._alert_state_payload(alert, camera, "updated")
+                        )
                 else:
                     alert = Alert(
                         agency_id=camera.agency_id,
@@ -369,8 +402,11 @@ class AIAlertConsumer:
                         status=AlertStatus.OPEN,
                     )
                     db.add(alert)
+                    db.flush()
+                    state_events.append(
+                        self._alert_state_payload(alert, camera, "created")
+                    )
                     if self.feature_name == "wanted":
-                        db.flush()
                         db.add(
                             AuditLog(
                                 user_id=None,
@@ -390,6 +426,9 @@ class AIAlertConsumer:
                 for alert in open_alerts:
                     alert.status = AlertStatus.RESOLVED
                     alert.resolved_at = resolved_at
+                    state_events.append(
+                        self._alert_state_payload(alert, camera, "resolved")
+                    )
                 if self.feature_name == "wanted" and open_alerts:
                     db.add(
                         AuditLog(
@@ -407,6 +446,8 @@ class AIAlertConsumer:
                     )
 
             db.commit()
+            for event in state_events:
+                alert_state_manager.broadcast_from_thread(event)
         except Exception:
             db.rollback()
             logger.exception(
