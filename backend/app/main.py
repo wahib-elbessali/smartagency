@@ -23,6 +23,7 @@ from app.api.employee_activity import router as employee_activity_router
 from app.api.face_recognition import ai_router as ai_face_router
 from app.api.face_recognition import employee_router as employee_face_router
 from app.api.wanted import router as wanted_router
+from app.api.alerts import router as alerts_router
 from app.mqtt.attendance_consumer import attendance_consumer
 from app.mqtt.sensor_consumer import sensor_consumer
 from app.ai_alerts.consumer import ai_alert_consumers
@@ -66,6 +67,7 @@ app.include_router(ai_zoning_router, prefix="/api")
 app.include_router(employee_activity_router)
 app.include_router(ai_face_router, prefix="/api")
 app.include_router(wanted_router, prefix="/api")
+app.include_router(alerts_router, prefix="/api")
 app.include_router(attendance_websocket_router)
 app.include_router(ai_websocket_router)
 
