@@ -1,4 +1,5 @@
 from app.ai_alerts.consumer import AI_ALERT_FEATURES, AIAlertConsumer
+from app.integrations.ai_client import AIClientError
 from app.services.ai_source_sync import AISourceSyncService
 from app.websocket.ai_proxy import _filter_wanted_frame
 
@@ -39,6 +40,57 @@ def test_source_sync_is_shared_by_all_alert_features():
         ("POST", "/fire/sources", {"sources": {"camera-entrance": "rtsp://entrance"}}),
         ("DELETE", "/fire/sources/camera-counter", None),
     ]
+
+
+def test_already_absent_source_is_treated_as_synchronized():
+    class MissingSourceClient(FakeAIClient):
+        def delete(self, path):
+            self.calls.append(("DELETE", path, None))
+            raise AIClientError(
+                "Camera inexistante",
+                status_code=404,
+                upstream_status=404,
+                path=path,
+            )
+
+    client = MissingSourceClient()
+    service = AISourceSyncService(client)
+
+    assert service.sync(
+        "weapon",
+        {"camera-entrance": "rtsp://entrance"},
+    ) is True
+    assert service.sync("weapon", {}) is True
+    assert client.calls == [
+        ("POST", "/weapon/sources", {"sources": {"camera-entrance": "rtsp://entrance"}}),
+        ("POST", "/weapon/sources", {"sources": {}}),
+        ("DELETE", "/weapon/sources/camera-entrance", None),
+    ]
+
+    # The successful reconciliation updates the local registry, so the same
+    # deletion is not retried on the next normal cycle.
+    assert service.sync("weapon", {}) is True
+    assert len(client.calls) == 3
+
+
+def test_other_source_delete_errors_still_fail_synchronization():
+    class BrokenDeleteClient(FakeAIClient):
+        def delete(self, path):
+            raise AIClientError(
+                "Service AI indisponible",
+                status_code=503,
+                upstream_status=503,
+                path=path,
+            )
+
+    client = BrokenDeleteClient()
+    service = AISourceSyncService(client)
+    assert service.sync("fire", {"camera-entrance": "rtsp://entrance"}) is True
+    assert service.sync("fire", {}) is False
+
+    # The previous registry is retained after a real failure so a later cycle
+    # can retry the incomplete reconciliation.
+    assert service.sync("fire", {}) is False
 
 
 def test_alert_consumer_normalises_and_filters_detections_by_feature():
