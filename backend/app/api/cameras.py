@@ -47,6 +47,32 @@ def ensure_unique_name(name: str, db: Session, camera_id: str | None = None) -> 
         )
 
 
+def ensure_unique_stream_url(
+    stream_url: str,
+    db: Session,
+    camera_id: str | None = None,
+) -> None:
+    query = select(Camera).where(Camera.stream_url == stream_url)
+    if camera_id is not None:
+        query = query.where(Camera.id != camera_id)
+    if db.scalar(query) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Le flux de la camera est deja utilise par une autre camera",
+        )
+
+
+def camera_integrity_error_detail(exc: IntegrityError) -> str:
+    constraint_name = getattr(
+        getattr(getattr(exc, "orig", None), "diag", None),
+        "constraint_name",
+        None,
+    )
+    if constraint_name == "uq_camera_stream_url":
+        return "Le flux de la camera est deja utilise par une autre camera"
+    return "Le nom de la camera est deja utilise"
+
+
 @router.get(
     "/agencies/{agency_id}/cameras",
     response_model=list[CameraResponse],
@@ -83,6 +109,7 @@ def create_camera(
     if not name or not stream_url:
         raise HTTPException(status_code=422, detail="Le nom et le flux de la camera sont obligatoires")
     ensure_unique_name(name, db)
+    ensure_unique_stream_url(stream_url, db)
 
     camera = Camera(agency_id=agency.id, name=name, stream_url=stream_url)
     db.add(camera)
@@ -91,7 +118,7 @@ def create_camera(
         db.refresh(camera)
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Le nom de la camera est deja utilise") from exc
+        raise HTTPException(status_code=409, detail=camera_integrity_error_detail(exc)) from exc
     ai_camera_sync.sync_camera(camera)
     db.commit()
     db.refresh(camera)
@@ -123,6 +150,7 @@ def update_camera(
         changes["stream_url"] = changes["stream_url"].strip()
         if not changes["stream_url"]:
             raise HTTPException(status_code=422, detail="Le flux de la camera est obligatoire")
+        ensure_unique_stream_url(changes["stream_url"], db, camera.id)
     for field, value in changes.items():
         setattr(camera, field, value)
 
@@ -131,7 +159,7 @@ def update_camera(
         db.refresh(camera)
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Le nom de la camera est deja utilise") from exc
+        raise HTTPException(status_code=409, detail=camera_integrity_error_detail(exc)) from exc
     ai_camera_sync.sync_camera(camera, previous_name=previous_name)
     db.commit()
     db.refresh(camera)

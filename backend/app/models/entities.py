@@ -352,7 +352,10 @@ class SensorThreshold(Base):
 
 class Camera(Base):
     __tablename__ = "cameras"
-    __table_args__ = (UniqueConstraint("name", name="uq_camera_name"),)
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_camera_name"),
+        UniqueConstraint("stream_url", name="uq_camera_stream_url"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     agency_id: Mapped[str] = mapped_column(ForeignKey("agencies.id"), nullable=False, index=True)

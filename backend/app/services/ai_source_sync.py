@@ -55,9 +55,23 @@ class AISourceSyncService:
             try:
                 self.client.post(f"/{feature}/sources", payload={"sources": desired})
                 for removed_name in set(previous) - set(desired):
-                    self.client.delete(
-                        f"/{feature}/sources/{quote(removed_name, safe='')}"
-                    )
+                    try:
+                        self.client.delete(
+                            f"/{feature}/sources/{quote(removed_name, safe='')}"
+                        )
+                    except AIClientError as exc:
+                        if exc.status_code != 404:
+                            raise
+                        # Source deletion is idempotent. The camera may have
+                        # already been removed from AI before this reconciliation
+                        # cycle (for example after a camera deletion or restart).
+                        # Treat that state as synchronized instead of retrying
+                        # the same DELETE forever and blocking the alert consumer.
+                        logger.info(
+                            "Source %s/%s deja absente du service AI",
+                            feature,
+                            removed_name,
+                        )
             except AIClientError as exc:
                 logger.warning(
                     "Sources %s non synchronisees avec AI: %s", feature, exc.detail
