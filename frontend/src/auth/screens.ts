@@ -1,4 +1,5 @@
 import {
+  Armchair,
   Bell,
   Building2,
   Camera,
@@ -10,7 +11,6 @@ import {
   Layers,
   Pentagon,
   Ruler,
-  UserCheck as UserCheckIcon,
   ShieldCheck,
   UserCheck,
   Users,
@@ -38,7 +38,9 @@ export const SCREENS: readonly ScreenEntry[] = [
   { to: '/visitors', label: 'Visitor queue', icon: Users },
   { to: '/occupancy', label: 'Occupancy', icon: Grid3x3 },
   { to: '/zones', label: 'Zones', icon: Pentagon },
-  { to: '/staffing', label: 'Counter staffing', icon: UserCheckIcon },
+  /* Its own icon: presence and staffing measure different things (a badge
+     at the door vs an occupied counter) and must not read as one screen. */
+  { to: '/staffing', label: 'Counter staffing', icon: Armchair },
   { to: '/calibration', label: 'Calibration', icon: Ruler },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/cameras', label: 'Cameras', icon: Camera },

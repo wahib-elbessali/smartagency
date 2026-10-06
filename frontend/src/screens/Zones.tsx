@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ImageOff, Pentagon, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { fetchAgencies } from '@/api/endpoints/agencies'
-import { fetchCameraFrame, fetchCameras } from '@/api/endpoints/cameras'
+import { fetchCameras } from '@/api/endpoints/cameras'
 import { createZone, deleteZone, fetchZones, zonesOnCameras } from '@/api/endpoints/zones'
 import { ApiError, describeApiError } from '@/api/errors'
 import type { Camera, CameraZone } from '@/api/types'
@@ -15,6 +15,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { Field } from '@/components/ui/Field'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { controlClass } from '@/components/ui/control'
+import { useCameraFrame } from '@/hooks/useCameraFrame'
 import { Screen } from './Screen'
 
 /**
@@ -38,6 +39,15 @@ import { Screen } from './Screen'
  * camera NAME, which is how the AI service knows them). The one place the
  * whole map still matters is the name check before saving: re-posting ANY
  * existing name replaces that zone, even one on another branch's camera.
+ *
+ * UNATTACHED ZONES
+ *
+ * A zone whose camera matches no camera in ANY branch - the camera was
+ * renamed or deleted after the zone was drawn, or the zone is a world zone
+ * with no record of where it was drawn - belongs to no branch, so the filter
+ * above hides it everywhere. It still counts people (or reads 0 forever), and
+ * its name still blocks new zones. An ADMIN, who can see every branch's
+ * cameras, gets them listed on their own so they can be cleared out.
  *
  * WHY THIS SCREEN MATTERS TO THE ONE NEXT TO IT
  *
@@ -82,9 +92,6 @@ import { Screen } from './Screen'
 
 type Point = [number, number]
 
-/* The live view's cadence, which matches the detectors' update_interval. */
-const FRAME_MS = 2_000
-
 export default function Zones() {
   const { user } = useSession()
   const scope = useScope()
@@ -115,6 +122,25 @@ export default function Zones() {
     queryFn: ({ signal }) => fetchZones(agencyId as string, signal),
     enabled: agencyId !== null,
   })
+
+  /* Every branch's cameras, for an ADMIN only - the one way to tell a zone
+     on another branch's camera from a zone on no camera at all. */
+  const everyBranchCameras = useQueries({
+    queries: (isAdmin ? (agencies.data ?? []) : []).map((agency) => ({
+      queryKey: ['cameras', agency.id],
+      queryFn: ({ signal }: { signal?: AbortSignal }) => fetchCameras(agency.id, signal),
+    })),
+  })
+  const unattached = useMemo(() => {
+    if (!isAdmin || !zones.data || everyBranchCameras.length === 0) return []
+    if (everyBranchCameras.some((query) => !query.data)) return []
+    const names = new Set(
+      everyBranchCameras.flatMap((query) => query.data ?? []).map((c) => c.name),
+    )
+    return zones.data
+      .filter((zone) => zone.camera === null || !names.has(zone.camera))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [isAdmin, zones.data, everyBranchCameras])
 
   const cameraRows = useMemo(
     () => [...(cameras.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
@@ -254,6 +280,7 @@ export default function Zones() {
         {camera && (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
             <Drawing
+              key={camera.id}
               camera={camera}
               points={points}
               zones={zonesHere}
@@ -347,6 +374,47 @@ export default function Zones() {
                 </PanelBody>
               </Panel>
 
+              {unattached.length > 0 && (
+                <Panel as="section" tone="alert">
+                  <PanelHeader>
+                    <h2 className="text-ink text-sm font-semibold">Not on any camera</h2>
+                    <p className="text-ink-3 mt-1 text-xs leading-relaxed">
+                      These zones name a camera no branch has any more, so no branch lists them.
+                      They still hold their names, and may be counting nothing.
+                    </p>
+                  </PanelHeader>
+                  <PanelBody>
+                    <ul className="space-y-2">
+                      {unattached.map((zone) => (
+                        <li
+                          key={zone.name}
+                          className="border-line bg-panel-2 flex items-center gap-2 rounded-lg border px-3 py-2"
+                        >
+                          <span className="text-ink min-w-0 flex-1 truncate text-sm font-medium">
+                            {zone.name}
+                          </span>
+                          <span className="text-ink-3 truncate text-xs">
+                            {zone.camera ?? 'no camera recorded'}
+                          </span>
+                          <Badge tone={zone.mode === 'world' ? 'info' : 'neutral'}>
+                            {zone.mode}
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Delete ${zone.name}`}
+                            disabled={remove.isPending}
+                            onClick={() => remove.mutate(zone)}
+                          >
+                            <Trash2 className="size-3.5" aria-hidden />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </PanelBody>
+                </Panel>
+              )}
+
               <Panel as="section">
                 <PanelBody>
                   <h2 className="text-ink text-sm font-semibold">How a zone is counted</h2>
@@ -427,24 +495,8 @@ function Drawing({
      points are in frame pixels, so a picture that kept moving would leave a
      half-drawn zone tracing a room that has walked away. Clearing the points
      lets it play again. Same rule as the calibration canvases. */
-  const frame = useQuery({
-    queryKey: ['cameraFrame', camera.id],
-    queryFn: ({ signal }) => fetchCameraFrame(camera, signal),
-    retry: false,
-    refetchInterval: drawing ? false : FRAME_MS,
-    placeholderData: (previous) => previous,
-    gcTime: 0,
-  })
-
-  const [src, setSrc] = useState<string | null>(null)
-  useEffect(() => {
-    if (!frame.data) return
-    const url = URL.createObjectURL(frame.data)
-    setSrc(url)
-    return () => URL.revokeObjectURL(url)
-  }, [frame.data])
-
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  const frame = useCameraFrame(camera, { hold: drawing })
+  const { src, size } = frame
   const svgRef = useRef<SVGSVGElement | null>(null)
 
   const noFrame = frame.isError
@@ -474,7 +526,7 @@ function Drawing({
             /* Refetching under a half-drawn polygon would leave the points
                in the right pixels over a room that has moved. */
             disabled={drawing || frame.isFetching}
-            onClick={() => void frame.refetch()}
+            onClick={frame.refetch}
           >
             <RotateCcw className="size-3.5" aria-hidden />
             {frame.isFetching ? 'Refreshing…' : 'Refresh picture'}
@@ -502,9 +554,7 @@ function Drawing({
               src={src}
               alt={`Current frame from ${camera.name}`}
               className="absolute inset-0 h-full w-full object-contain"
-              onLoad={(e) =>
-                setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
-              }
+              onLoad={frame.onLoad}
             />
           ) : (
             <div className="text-ink-3 absolute inset-0 grid place-items-center p-6 text-center text-sm">

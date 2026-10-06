@@ -113,6 +113,49 @@ describe('Zones', () => {
     expect(screen.queryByText('vault')).not.toBeInTheDocument()
   })
 
+  /* A zone on a camera no branch has (renamed or deleted since) is filtered
+     out of every branch's list, so an admin gets it on its own to clear. */
+  it('lists a zone on a camera no branch has, for an admin to delete', async () => {
+    const user = userEvent.setup()
+    zoneStore.createZone({
+      name: 'old-door',
+      camera: 'cam-gone',
+      polygon: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ],
+      sources: { 'cam-gone': 'rtsp://x' },
+    })
+    renderAs('ADMIN')
+
+    expect(
+      await screen.findByRole('heading', { name: 'Not on any camera' }, WAIT),
+    ).toBeInTheDocument()
+    expect(screen.getByText('old-door')).toBeInTheDocument()
+    /* Rabat's vault is on a real camera in another branch - not unattached. */
+    expect(screen.queryByText('vault')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Delete old-door' }))
+    await waitFor(() => expect('old-door' in zoneStore.listZones()).toBe(false), WAIT)
+  })
+
+  it('does not show a manager the unattached list', async () => {
+    zoneStore.createZone({
+      name: 'old-door',
+      camera: 'cam-gone',
+      polygon: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ],
+      sources: { 'cam-gone': 'rtsp://x' },
+    })
+    renderAs('MANAGER')
+    await screen.findByText('counters', {}, WAIT)
+    expect(screen.queryByText('old-door')).not.toBeInTheDocument()
+  })
+
   it('deletes a zone', async () => {
     const user = userEvent.setup()
     renderAs('MANAGER')

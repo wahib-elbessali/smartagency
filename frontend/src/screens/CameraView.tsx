@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 import { ArrowLeft, Camera as CameraIcon, ImageOff } from 'lucide-react'
 import { fetchAgencies } from '@/api/endpoints/agencies'
-import { fetchCameraFrame, fetchCameras } from '@/api/endpoints/cameras'
+import { fetchCameras } from '@/api/endpoints/cameras'
 import { createAlertStream } from '@/api/endpoints/streams'
 import { ApiError } from '@/api/errors'
 import { applyAlertFrame, type AlertsByCamera } from '@/api/streamMerge'
@@ -13,6 +13,7 @@ import { useStream } from '@/hooks/useStream'
 import { Badge, type Tone } from '@/components/ui/Badge'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { StreamStatusBadge } from '@/components/StreamStatusBadge'
+import { useCameraFrame } from '@/hooks/useCameraFrame'
 import { Screen } from './Screen'
 
 /**
@@ -71,8 +72,6 @@ const STATUS_TONE: Record<DeviceStatus, Tone> = {
   MAINTENANCE: 'warn',
 }
 
-const FRAME_MS = 2_000
-
 export default function CameraView() {
   const { id = '' } = useParams()
   const { user } = useSession()
@@ -130,35 +129,9 @@ export default function CameraView() {
 }
 
 function LiveView({ camera }: { camera: Camera }) {
-  const frame = useQuery({
-    queryKey: ['cameraFrame', camera.id],
-    queryFn: ({ signal }) => fetchCameraFrame(camera, signal),
-    /* A 403 is a permission and will be one again in two seconds; stop
-       asking. Every other failure is worth the next poll. */
-    refetchInterval: (query) =>
-      query.state.error instanceof ApiError && query.state.error.status === 403 ? false : FRAME_MS,
-    /* A 404 is the AI service saying it cannot open the stream; asking again
-       in two seconds is the retry, and a backoff would only make the picture
-       come back later than the camera did. */
-    retry: false,
-    /* The previous frame stays up while the next one loads, so the picture
-       does not blink to a skeleton twice a second. */
-    placeholderData: (previous) => previous,
-    gcTime: 0,
-  })
-
-  /* A Blob needs an object URL to be an <img>, and every URL made has to be
-     revoked or the tab leaks a frame every two seconds for as long as it is
-     open. */
-  const [src, setSrc] = useState<string | null>(null)
-  useEffect(() => {
-    if (!frame.data) return
-    const url = URL.createObjectURL(frame.data)
-    setSrc(url)
-    return () => URL.revokeObjectURL(url)
-  }, [frame.data])
-
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  /* Polled every two seconds; a 403 stops the polling (hooks/useCameraFrame). */
+  const frame = useCameraFrame(camera)
+  const { src, size } = frame
 
   const { state: alerts, status } = useStream<AlertFrame, AlertsByCamera>(
     'weapon',
@@ -202,9 +175,7 @@ function LiveView({ camera }: { camera: Camera }) {
                 src={src}
                 alt={`Current frame from ${camera.name}`}
                 className="absolute inset-0 h-full w-full object-contain"
-                onLoad={(e) =>
-                  setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
-                }
+                onLoad={frame.onLoad}
               />
             ) : (
               <div className="text-ink-3 absolute inset-0 grid place-items-center p-6 text-center text-sm">
