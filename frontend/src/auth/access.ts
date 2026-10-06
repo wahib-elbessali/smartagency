@@ -72,6 +72,9 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/devices': ['ADMIN', 'MANAGER', 'TECHNICIAN'],
   '/users': ['ADMIN'],
   '/visitors': ['ADMIN', 'MANAGER', 'AGENT'],
+  /* Reads the ticket history, so the ticket roles - SECURITY and TECHNICIAN
+     would only meet a 403. */
+  '/client-stats': ['ADMIN', 'MANAGER', 'AGENT'],
   /* OCCUPANCY_ROLES in backend/app/websocket/ai_proxy.py, and
      contracts/api.md §13. */
   '/occupancy': ['ADMIN', 'MANAGER'],

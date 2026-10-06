@@ -208,6 +208,15 @@ export function listQueue(serviceId?: string | null): Ticket[] {
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 }
 
+/**
+ * Every ticket in every state - what the PROPOSED `GET /api/tickets` history
+ * route reads, so a ticket called or completed on the queue screen moves the
+ * client statistics too. Not used by the queue itself; see listQueue above.
+ */
+export function listAllTickets(): Ticket[] {
+  return [...seed().tickets]
+}
+
 function find(id: string): Ticket {
   const ticket = seed().tickets.find((t) => t.id === id)
   if (!ticket) throw new ApiError('http', 'Ticket introuvable', 404)

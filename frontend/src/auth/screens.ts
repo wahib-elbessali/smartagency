@@ -1,5 +1,6 @@
 import {
   Bell,
+  BarChart3,
   Building2,
   Camera,
   Cpu,
@@ -36,6 +37,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   { to: '/users', label: 'User accounts', icon: ShieldCheck },
   { to: '/climate', label: 'Climate', icon: Fan },
   { to: '/visitors', label: 'Visitor queue', icon: Users },
+  { to: '/client-stats', label: 'Client statistics', icon: BarChart3 },
   { to: '/occupancy', label: 'Occupancy', icon: Grid3x3 },
   { to: '/zones', label: 'Zones', icon: Pentagon },
   { to: '/staffing', label: 'Counter staffing', icon: UserCheckIcon },

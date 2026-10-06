@@ -1,6 +1,7 @@
 import { registerMock, registerMockWriter } from '../registry'
 import type { Ticket, TicketCreate, Visitor, VisitorCreate } from '@/api/types'
 import * as store from '../ticketStore'
+import { ticketHistory, withinWindow } from '../ticketHistory'
 
 /**
  * Field names from VisitorResponse and TicketResponse in
@@ -51,3 +52,15 @@ registerMockWriter('POST /api/tickets/{id}/complete', (body, path) =>
 registerMockWriter('POST /api/tickets/{id}/cancel', (_body, path) =>
   store.cancelTicket(idFrom(path)),
 )
+
+/**
+ * PROPOSED `GET /api/tickets?from=&to=` - see endpoints/ticketHistory.ts. A
+ * generated week plus the live store, so the client statistics move when the
+ * queue screen calls or completes someone. `large` is the same week at four
+ * times the footfall, for the busiest branch the charts have to survive.
+ */
+registerMock<Ticket[]>('GET /api/tickets', {
+  normal: (path) => withinWindow(ticketHistory(), path),
+  empty: () => [],
+  large: (path) => withinWindow(ticketHistory(new Date(), 4), path),
+})

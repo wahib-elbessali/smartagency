@@ -29,6 +29,7 @@ const AgencyDetail = lazy(() => import('@/screens/AgencyDetail'))
 const Services = lazy(() => import('@/screens/Services'))
 const Devices = lazy(() => import('@/screens/Devices'))
 const Users = lazy(() => import('@/screens/Users'))
+const ClientStats = lazy(() => import('@/screens/ClientStats'))
 const Login = lazy(() => import('@/screens/Login'))
 
 function RouteFallback() {
@@ -73,6 +74,7 @@ export function App() {
               (auth/access.ts). Routing stays a map of what exists; who may see
               it is one table rather than a condition repeated nine times. */}
           <Route path="presence" element={<EmployeePresence />} />
+          <Route path="client-stats" element={<ClientStats />} />
           <Route path="employees" element={<Employees />} />
           <Route path="agencies" element={<Agencies />} />
           <Route path="agencies/:id" element={<AgencyDetail />} />
