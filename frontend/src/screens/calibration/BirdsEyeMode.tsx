@@ -158,7 +158,7 @@ export function BirdsEyeMode({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
       <Panel as="section">
         <PanelHeader>
           <h2 className="text-ink text-sm font-semibold">The floor, from above</h2>
