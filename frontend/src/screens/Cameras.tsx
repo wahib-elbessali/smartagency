@@ -171,7 +171,7 @@ export default function Cameras() {
         onRetry={() => void cameras.refetch()}
         skeletonRows={3}
       >
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {rows.map((camera) => (
             <Panel as="section" key={camera.id}>
               <PanelHeader

@@ -303,7 +303,7 @@ export default function Staffing() {
         onRetry={() => void stations.refetch()}
         skeletonRows={3}
       >
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {rows.map((station) => (
             <Panel as="section" key={station.name}>
               <PanelHeader

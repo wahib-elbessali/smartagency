@@ -104,7 +104,7 @@ export default function Occupancy() {
       description="Where people are standing, zone by zone."
       actions={<StreamStatusBadge status={status} />}
     >
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatTile label="Zones" value={String(names.length)} />
         <StatTile label="Detections across zones" value={String(total)} />
         <StatTile label="Busiest zone" value={busiest > 0 ? String(busiest) : '—'} />

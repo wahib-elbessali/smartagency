@@ -235,7 +235,7 @@ function CalibrateMode({
   const current = camera ? byCamera.get(camera.name) : undefined
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
       <div>
         <div className="mb-3 max-w-xs">
           <label
@@ -598,7 +598,7 @@ function AlignMode({
         </Panel>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {calibrated.map((camera) => (
           <FrameCanvas
             key={camera.id}

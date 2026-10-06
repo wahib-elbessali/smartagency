@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router'
-import { Building2, FlaskConical, LogOut, ShieldCheck } from 'lucide-react'
+import { Building2, FlaskConical, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
 import { MOCK_SCENARIO, USE_MOCKS } from '@/api/config'
 import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
@@ -23,6 +24,23 @@ export function AppShell() {
      is not a link, and the nav is the one place that has to be true. */
   const nav = SCREENS.filter(({ to }) => canReach(user?.role, to))
 
+  /* Below md the nav is a full-screen menu behind a button rather than a
+     column. Laid out inline it wrapped into a block of fifteen links that
+     pushed every screen's content most of the way down a phone, and the
+     account block (with Sign out) had to be hidden to make room - leaving a
+     phone with no way to sign out at all. */
+  const [menuOpen, setMenuOpen] = useState(false)
+  const current = nav.find(({ to }) => pathname === to || pathname.startsWith(`${to}/`))
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuOpen])
+
   /* The URL is the other way in, and hiding the link without closing it would
      leave the boundary half-applied. Sent to where their role starts rather
      than to a refusal, because there is nothing here for them to act on.
@@ -44,6 +62,31 @@ export function AppShell() {
         Skip to content
       </a>
 
+      {/* Phone-only bar. Opaque, unlike the desktop sidebar: it stays pinned
+          while the page scrolls under it, and glass over moving content reads
+          as a smear. The current screen's name sits here because the menu
+          that would otherwise show it is closed. */}
+      <div className="bg-canvas/95 border-line sticky top-0 z-40 flex items-center gap-3 border-b px-4 py-2.5 backdrop-blur md:hidden">
+        <ShieldCheck className="text-accent size-[1.15rem] shrink-0" aria-hidden />
+        <span className="text-ink min-w-0 flex-1 truncate text-sm font-medium">
+          {current?.label ?? 'SmartAgency'}
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-expanded={menuOpen}
+          aria-controls="main-nav"
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+        >
+          {menuOpen ? (
+            <X className="size-4" aria-hidden />
+          ) : (
+            <Menu className="size-4" aria-hidden />
+          )}
+        </Button>
+      </div>
+
       {/* The sidebar has no surface of its own and no dividing rule - it sits
           directly on the canvas, and the only lit thing in it is the active
           item. A navigation panel with its own fill competes with the cards it
@@ -58,21 +101,30 @@ export function AppShell() {
           h-screen with its own overflow, so a long nav scrolls inside the
           column instead of pushing the account block off the bottom. */}
       <nav
+        id="main-nav"
         aria-label="Main"
-        className="shrink-0 md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col md:overflow-y-auto"
+        className={cn(
+          'shrink-0 md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col md:overflow-y-auto',
+          /* On a phone: hidden until the menu button opens it, then a sheet
+             under the top bar. md:flex above wins back the sidebar either way. */
+          menuOpen
+            ? 'bg-canvas fixed inset-x-0 top-[3.3rem] bottom-0 z-30 flex flex-col overflow-y-auto pt-3'
+            : 'hidden',
+        )}
       >
-        <div className="flex items-center gap-2.5 px-5 pt-6 pb-7">
+        <div className="hidden items-center gap-2.5 px-5 pt-6 pb-7 md:flex">
           <ShieldCheck className="text-accent size-[1.15rem]" aria-hidden />
           <span className="text-ink text-[0.95rem] font-medium tracking-tight">
             Smart<span className="text-ink-2">Agency</span>
           </span>
         </div>
 
-        <ul className="flex flex-wrap gap-0.5 px-3 pb-4 md:flex-col md:flex-nowrap">
+        <ul className="flex flex-col gap-0.5 px-3 pb-4">
           {nav.map(({ to, label, icon: Icon }) => (
             <li key={to}>
               <NavLink
                 to={to}
+                onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
                   cn(
                     'group ease-soft relative flex items-center gap-3 rounded-[0.9375rem] p-2.5 text-sm transition-all duration-200',
@@ -123,7 +175,7 @@ export function AppShell() {
           /* Role is shown because several endpoints are role-scoped, so "why
              can't I see the other agency?" has a visible answer instead of
              looking like a bug. */
-          <div className="mt-auto hidden px-3 pt-3 pb-4 md:block">
+          <div className="border-line mt-auto border-t px-3 pt-3 pb-4 md:border-t-0">
             {/* Sits with the account block rather than in the page header:
                 it is a preference about the whole app, not about this screen,
                 and putting it beside the sign-out control groups it with the
@@ -158,7 +210,7 @@ export function AppShell() {
         {USE_MOCKS && (
           /* Always visible while mocking. A screen of fake numbers must never
              be mistakable for a live one. */
-          <div className="bg-warn/8 flex flex-wrap items-center gap-x-2.5 gap-y-1 px-6 py-2">
+          <div className="bg-warn/8 flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 py-2 md:px-6">
             <Badge tone="warn" icon={<FlaskConical className="size-3.5" aria-hidden />}>
               Fixture data
             </Badge>
@@ -173,7 +225,7 @@ export function AppShell() {
             failure this control could cause, so the state it puts them in is
             never off-screen. */}
         {scope.agencyName && (
-          <div className="border-accent/25 bg-accent/8 flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-6 py-2">
+          <div className="border-accent/25 bg-accent/8 flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 md:px-6">
             <Building2 className="text-accent size-3.5 shrink-0" aria-hidden />
             <span className="text-ink text-xs">
               Working inside <span className="font-medium">{scope.agencyName}</span> — everything
@@ -185,7 +237,7 @@ export function AppShell() {
           </div>
         )}
 
-        <main id="main" className="min-w-0 flex-1 px-6 py-7">
+        <main id="main" className="min-w-0 flex-1 px-4 py-5 md:px-6 md:py-7">
           {/* Wider than the old 5xl. A measure that suits prose starves a
               dashboard: the charts and the roster both want horizontal room,
               and on the wall display this runs on, a third of the panel sitting

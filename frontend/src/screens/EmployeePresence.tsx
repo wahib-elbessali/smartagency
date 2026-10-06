@@ -120,7 +120,7 @@ export default function EmployeePresence() {
         </>
       }
     >
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatTile
           label="In the building"
           value={attendance.totals.present}
@@ -172,7 +172,7 @@ export default function EmployeePresence() {
           the table below renders - no extra request, and nothing on screen can
           disagree with anything else on screen. */}
       {arrivals.length > 0 && (
-        <div className="mb-5 grid gap-3 lg:grid-cols-5">
+        <div className="mb-5 grid grid-cols-1 gap-3 lg:grid-cols-5">
           <Panel as="section" className="lg:col-span-3">
             <PanelHeader>
               <h2 className="text-ink text-sm font-semibold">Arrivals through the day</h2>
@@ -301,7 +301,7 @@ function RosterTable({
   onSelect: (entry: AttendanceEntry) => void
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full text-sm">
         <caption className="sr-only">
           Employees who have checked in today, still-present first
