@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Flame, ShieldAlert, Smile, UserSearch } from 'lucide-react'
+import { fetchWeaponThreshold } from '@/api/endpoints/aiAlerts'
 import { createAlertStream } from '@/api/endpoints/streams'
-import { applyAlertFrame, activeCameras, type AlertsByCamera } from '@/api/streamMerge'
+import { applyAlertFrame, activeCameras, atOrAbove, type AlertsByCamera } from '@/api/streamMerge'
 import {
   ALERT_FEATURES,
   type AlertDetection,
@@ -31,6 +33,16 @@ import { Screen } from './Screen'
  *
  * The four features are separate streams, mirroring the AI service. If the
  * backend merges them the switcher goes away; see endpoints/streams.ts.
+ *
+ * WHY THE WEAPONS TAB FILTERS BY THE THRESHOLD ITSELF
+ *
+ * The weapon threshold set on Cameras decides which detections the backend
+ * turns into alerts, but the live stream is relayed raw - every detection
+ * the model reports, whatever its confidence. Shown unfiltered, a guard who
+ * raised the bar to 90% would still see an 87% pistol here and conclude the
+ * setting did nothing. So the tab applies the same `>=` rule the backend
+ * does. If the threshold cannot be read, nothing is hidden: a missing
+ * setting must never be the reason a weapon goes unseen.
  */
 
 const FEATURE_LABEL: Record<AlertFeature, string> = {
@@ -101,7 +113,26 @@ export default function Alerts() {
     () => ({}),
   )
 
-  const active = useMemo(() => activeCameras(alerts), [alerts])
+  const threshold = useQuery({
+    queryKey: ['weaponThreshold'],
+    queryFn: ({ signal }) => fetchWeaponThreshold(signal),
+    enabled: feature === 'weapon',
+  })
+  const minimum = feature === 'weapon' ? threshold.data?.confidence : undefined
+
+  const shown = useMemo(
+    () => (minimum === undefined ? alerts : atOrAbove(alerts, minimum)),
+    [alerts, minimum],
+  )
+  const hidden = useMemo(() => {
+    let count = 0
+    for (const camera of Object.keys(alerts)) {
+      count += (alerts[camera]?.length ?? 0) - (shown[camera]?.length ?? 0)
+    }
+    return count
+  }, [alerts, shown])
+
+  const active = useMemo(() => activeCameras(shown), [shown])
   const cameras = useMemo(() => Object.keys(alerts).sort(), [alerts])
   const Icon = FEATURE_ICON[feature]
 
@@ -124,6 +155,18 @@ export default function Alerts() {
         ))}
       </div>
 
+      {feature === 'weapon' && (
+        <p className="text-ink-3 -mt-2 mb-4 text-xs">
+          {minimum !== undefined
+            ? `Showing detections at ${Math.round(minimum * 100)}% confidence or more, the threshold set on Cameras.${
+                hidden > 0 ? ` ${hidden} below it ${hidden === 1 ? 'is' : 'are'} hidden.` : ''
+              }`
+            : threshold.isError
+              ? 'Could not read the weapon threshold, so every detection is shown.'
+              : null}
+        </p>
+      )}
+
       {active.length > 0 ? (
         <Panel as="section" tone="alert">
           <PanelHeader>
@@ -139,7 +182,7 @@ export default function Alerts() {
               <div key={camera}>
                 <p className="text-ink-2 mb-2 text-xs font-medium">{camera}</p>
                 <div className="space-y-2">
-                  {(alerts[camera] ?? []).map((detection, i) => (
+                  {(shown[camera] ?? []).map((detection, i) => (
                     <DetectionRow
                       key={`${camera}-${detection.class}-${i}`}
                       feature={feature}

@@ -8,6 +8,7 @@ import Occupancy from './Occupancy'
 import { clearSession, setSession } from '@/api/tokenStore'
 import type { Role } from '@/api/types'
 import { SessionContext, type SessionValue } from '@/auth/SessionContext'
+import { resetCameraStore, setWeaponThreshold } from '@/mocks/cameraStore'
 import { mockUserForRole } from '@/mocks/currentUser'
 import '@/mocks'
 
@@ -16,8 +17,15 @@ import '@/mocks'
    generous because the point is the sequence, not the speed. */
 const WAIT = { timeout: 8000 }
 
+/* Alerts reads the weapon threshold through React Query, so it needs a
+   client; a fresh one per render keeps a threshold from leaking between tests. */
 function renderScreen(node: React.ReactNode) {
-  return render(<MemoryRouter>{node}</MemoryRouter>)
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{node}</MemoryRouter>
+    </QueryClientProvider>,
+  )
 }
 
 /**
@@ -72,6 +80,48 @@ describe('Alerts', () => {
     await waitFor(() => {
       expect(screen.queryByText('pistol')).not.toBeInTheDocument()
     }, WAIT)
+  })
+
+  describe('weapon threshold', () => {
+    afterEach(() => {
+      resetCameraStore()
+      clearSession()
+    })
+
+    /* The live stream is relayed raw, so the screen applies the threshold
+       itself. The weapon script settles on a 91% knife (cam-store) and an 83%
+       pistol (cam-counter): under a 90% bar the knife shows, the pistol does
+       not, and the note says one was hidden. All checked in one waitFor, so
+       they hold against the same DOM rather than across frames. */
+    it('hides weapon detections below the threshold set on Cameras', async () => {
+      setSession({
+        accessToken: 'mock-token',
+        refreshToken: 'mock-refresh',
+        user: mockUserForRole('SECURITY'),
+      })
+      setWeaponThreshold({ confidence: 0.9 })
+      renderScreen(<Alerts />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/90% confidence or more/)).toBeInTheDocument()
+        expect(screen.getByText(/1 below it is hidden/)).toBeInTheDocument()
+        expect(screen.getByText('knife')).toBeInTheDocument()
+        expect(screen.getByText('91% confidence')).toBeInTheDocument()
+        expect(screen.queryByText('pistol')).not.toBeInTheDocument()
+      }, WAIT)
+    })
+
+    it('shows a detection exactly at the threshold, as the backend does', async () => {
+      setSession({
+        accessToken: 'mock-token',
+        refreshToken: 'mock-refresh',
+        user: mockUserForRole('SECURITY'),
+      })
+      setWeaponThreshold({ confidence: 0.87 })
+      renderScreen(<Alerts />)
+
+      await screen.findByText('pistol', {}, WAIT)
+    })
   })
 
   /* For the watchlist feed, confidence is cosine similarity in [-1,1], not a

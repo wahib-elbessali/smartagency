@@ -87,21 +87,64 @@ function alertScript(feature: AlertFeature): AlertFrame[] {
     ]
   }
 
-  /* weapon: starts clear, a pistol appears on one camera, then clears, then
-     returns. A repeated identical alert means the situation genuinely changed
-     and changed back - not a duplicate to be swallowed. */
+  /* weapon: spread across all three cameras, with confidences on both sides
+     of any threshold someone is likely to try (0.6 by default, 0.9 when
+     tightened), so the Alerts screen's threshold filter has something to show
+     AND something to hide whichever way it is set. Only the two classes the
+     feature alerts on (pistol, knife - ai-service.md), and every update
+     changes that camera's set of classes, since nothing else sends one.
+
+     It ends with a 91% knife still up on cam-store and an 83% pistol on
+     cam-counter: at 0.9 the screen settles on one shown and one hidden rather
+     than going blank once the script runs out. cam-lobby never carries a
+     pistol and ends clear - CameraView.test relies on both. */
   return [
-    { type: 'snapshot', cameras: { 'cam-lobby': [], 'cam-counter': [] } },
+    { type: 'snapshot', cameras: { 'cam-lobby': [], 'cam-counter': [], 'cam-store': [] } },
     {
       type: 'update',
       camera: 'cam-counter',
       detections: [{ class: 'pistol', confidence: 0.87, bbox: [900, 332, 1352, 664] }],
     },
+    {
+      type: 'update',
+      camera: 'cam-lobby',
+      detections: [{ class: 'knife', confidence: 0.94, bbox: [610, 410, 700, 560] }],
+    },
+    /* A repeated alert later on means the situation genuinely changed and
+       changed back - not a duplicate to be swallowed. */
     { type: 'update', camera: 'cam-counter', detections: [] },
+    {
+      type: 'update',
+      camera: 'cam-store',
+      detections: [{ class: 'pistol', confidence: 0.96, bbox: [420, 280, 690, 520] }],
+    },
+    /* Two at once, either side of 0.9: a tightened threshold hides half of it. */
+    {
+      type: 'update',
+      camera: 'cam-counter',
+      detections: [
+        { class: 'pistol', confidence: 0.92, bbox: [880, 320, 1330, 650] },
+        { class: 'knife', confidence: 0.58, bbox: [1400, 500, 1480, 640] },
+      ],
+    },
+    { type: 'update', camera: 'cam-lobby', detections: [] },
+    {
+      type: 'update',
+      camera: 'cam-store',
+      detections: [
+        { class: 'pistol', confidence: 0.96, bbox: [420, 280, 690, 520] },
+        { class: 'knife', confidence: 0.71, bbox: [760, 300, 840, 470] },
+      ],
+    },
     {
       type: 'update',
       camera: 'cam-counter',
       detections: [{ class: 'pistol', confidence: 0.83, bbox: [880, 320, 1330, 650] }],
+    },
+    {
+      type: 'update',
+      camera: 'cam-store',
+      detections: [{ class: 'knife', confidence: 0.91, bbox: [760, 300, 840, 470] }],
     },
   ]
 }
