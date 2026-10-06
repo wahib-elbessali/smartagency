@@ -99,6 +99,22 @@ export function unstaffed<T extends { name: string; status: WorkstationStatus }>
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
+/**
+ * Drops detections below a minimum confidence, keeping cameras that end up
+ * empty (an empty list still means "watched and clear").
+ *
+ * `>=`, not `>`: the backend's own filter (ai_alerts/classifier.py) keeps a
+ * detection exactly at the threshold, and the screen must agree with which
+ * detections become alerts.
+ */
+export function atOrAbove(alerts: AlertsByCamera, minimum: number): AlertsByCamera {
+  const kept: AlertsByCamera = {}
+  for (const [camera, detections] of Object.entries(alerts)) {
+    kept[camera] = detections.filter((d) => d.confidence >= minimum)
+  }
+  return kept
+}
+
 /** Cameras with at least one detection, which is what a screen leads with. */
 export function activeCameras(alerts: AlertsByCamera): string[] {
   return Object.keys(alerts)
