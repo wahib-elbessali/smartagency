@@ -87,6 +87,9 @@ export function rolesFor(key: string): Role[] | null {
     return method === 'DELETE' ? ['ADMIN', 'MANAGER'] : ['ADMIN', 'MANAGER', 'SECURITY']
   }
   if (path.startsWith('/api/ai-alerts')) return ['ADMIN', 'MANAGER', 'SECURITY']
+  /* Stored alerts (#112) hang off /api/agencies/{id}/..., so ahead of the
+     agencies rule below, which would lock SECURITY out. */
+  if (path.endsWith('/alerts')) return ['ADMIN', 'MANAGER', 'SECURITY']
 
   /* The AI gateway (PR #109) hangs off /api/agencies/{id}/..., so it is
      checked ahead of the agencies rule below, which would otherwise give

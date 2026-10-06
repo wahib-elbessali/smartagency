@@ -63,6 +63,13 @@ export function parseAlertFrame(data: unknown): AlertFrame | null {
     if (!Array.isArray(frame.detections)) return null
     return frame as unknown as AlertFrame
   }
+  /* Added in #112: a stored alert was created, updated or resolved. Only the
+     id and the event are checked - the rest is the stored record itself. */
+  if (frame.type === 'alert_state') {
+    if (typeof frame.id !== 'string') return null
+    if (!['created', 'updated', 'resolved'].includes(frame.event as string)) return null
+    return frame as unknown as AlertFrame
+  }
   return null
 }
 

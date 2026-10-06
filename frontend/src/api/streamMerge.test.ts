@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   activeCameras,
   applyAlertFrame,
+  applyAlertState,
+  mergeStoredAlerts,
   applyOccupancyFrame,
   applyWorkstationFrame,
   totalAcrossZones,
@@ -11,6 +13,7 @@ import {
   type ZonesByName,
 } from './streamMerge'
 import { parseAlertFrame, parseOccupancyFrame, parseWorkstationFrame } from './endpoints/streams'
+import type { AlertStateFrame, StoredAlert } from './types'
 
 describe('applyAlertFrame', () => {
   it('takes a snapshot as the whole truth', () => {
@@ -136,7 +139,13 @@ describe('frame parsers', () => {
     expect(parseOccupancyFrame('{}')).toBeNull()
   })
 
-  it('rejects a frame whose type is not one of the two documented', () => {
+  it('accepts a stored-alert state frame, and only with a known event', () => {
+    const frame = { ...stateFrame('a1', 'created') }
+    expect(parseAlertFrame(JSON.stringify(frame))).toEqual(frame)
+    expect(parseAlertFrame(JSON.stringify({ ...frame, event: 'deleted' }))).toBeNull()
+  })
+
+  it('rejects a frame whose type is not one of the documented ones', () => {
     expect(parseAlertFrame(JSON.stringify({ type: 'heartbeat' }))).toBeNull()
   })
 
@@ -256,5 +265,72 @@ describe('applyWorkstationFrame', () => {
     expect(
       parseWorkstationFrame(JSON.stringify({ type: 'snapshot', workstations: [] })),
     ).not.toBeNull()
+  })
+})
+
+function stored(id: string, overrides: Partial<StoredAlert> = {}): StoredAlert {
+  return {
+    id,
+    agency_id: 'casa',
+    camera_id: 'cam-1',
+    camera_name: 'cam-counter',
+    alert_type: 'weapon',
+    severity: 'CRITICAL',
+    status: 'OPEN',
+    created_at: '2026-10-06T10:00:00+00:00',
+    resolved_at: null,
+    ...overrides,
+  }
+}
+
+function stateFrame(
+  id: string,
+  event: AlertStateFrame['event'],
+  overrides: Partial<StoredAlert> = {},
+): AlertStateFrame {
+  return { ...stored(id, overrides), type: 'alert_state', event }
+}
+
+describe('stored alerts', () => {
+  it('leaves the live detections alone when a state frame arrives', () => {
+    const cameras: AlertsByCamera = { cam1: [] }
+    expect(applyAlertFrame(cameras, stateFrame('a1', 'created'))).toBe(cameras)
+  })
+
+  it('keeps the latest pushed state per alert', () => {
+    let pushed = applyAlertState({}, stateFrame('a1', 'created'))
+    pushed = applyAlertState(
+      pushed,
+      stateFrame('a1', 'resolved', {
+        status: 'RESOLVED',
+        resolved_at: '2026-10-06T10:02:00+00:00',
+      }),
+    )
+    expect(Object.keys(pushed)).toEqual(['a1'])
+    expect(pushed.a1?.status).toBe('RESOLVED')
+  })
+
+  /* A refetch can land after a socket that missed the resolve while it was
+     reconnecting: the resolved copy must not be reopened by the stale push. */
+  it('never reopens an alert the fetch already has as resolved', () => {
+    const fetched = [stored('a1', { status: 'RESOLVED', resolved_at: '2026-10-06T10:02:00+00:00' })]
+    const pushed = applyAlertState({}, stateFrame('a1', 'created'))
+    expect(mergeStoredAlerts(fetched, pushed, 'casa', 'weapon')[0]?.status).toBe('RESOLVED')
+  })
+
+  it('keeps to one agency and one type, newest first', () => {
+    const fetched = [
+      stored('old', { created_at: '2026-10-05T09:00:00+00:00' }),
+      stored('rabat', { agency_id: 'rabat' }),
+      stored('fire', { alert_type: 'fire' }),
+    ]
+    const pushed = applyAlertState(
+      {},
+      stateFrame('new', 'created', { created_at: '2026-10-06T11:00:00+00:00' }),
+    )
+    expect(mergeStoredAlerts(fetched, pushed, 'casa', 'weapon').map((a) => a.id)).toEqual([
+      'new',
+      'old',
+    ])
   })
 })

@@ -2,6 +2,7 @@ import type {
   AlertDetection,
   AlertFrame,
   OccupancyFrame,
+  StoredAlert,
   WorkstationFrame,
   WorkstationState,
   WorkstationStatus,
@@ -32,6 +33,8 @@ export type AlertsByCamera = Record<string, AlertDetection[]>
  * ignore the panel.
  */
 export function applyAlertFrame(current: AlertsByCamera, frame: AlertFrame): AlertsByCamera {
+  /* A stored alert's state change says nothing about what a camera sees. */
+  if (frame.type === 'alert_state') return current
   if (frame.type === 'snapshot') {
     /* A snapshot is the whole truth, including cameras that have gone away. */
     return { ...frame.cameras }
@@ -113,6 +116,56 @@ export function atOrAbove(alerts: AlertsByCamera, minimum: number): AlertsByCame
     kept[camera] = detections.filter((d) => d.confidence >= minimum)
   }
   return kept
+}
+
+export type StoredAlertsById = Record<string, StoredAlert>
+
+/**
+ * Keeps the latest state the socket pushed for each stored alert, by id.
+ *
+ * Each `alert_state` frame carries the whole record, so the newest one simply
+ * replaces the last - no fields to merge.
+ */
+export function applyAlertState(current: StoredAlertsById, frame: AlertFrame): StoredAlertsById {
+  if (frame.type !== 'alert_state') return current
+  const alert: StoredAlert = {
+    id: frame.id,
+    agency_id: frame.agency_id,
+    camera_id: frame.camera_id,
+    camera_name: frame.camera_name,
+    alert_type: frame.alert_type,
+    severity: frame.severity,
+    status: frame.status,
+    created_at: frame.created_at,
+    resolved_at: frame.resolved_at,
+  }
+  return { ...current, [alert.id]: alert }
+}
+
+/**
+ * The stored list as fetched, with what the socket has pushed since laid
+ * over it, for one agency and one alert type, newest first.
+ *
+ * When both sides know an alert, the resolved copy wins. A resolution is
+ * final, and either side can be the newer one: the socket after the fetch, or
+ * a refetch after a socket that dropped the resolve event while reconnecting.
+ * Otherwise the pushed copy wins, since it was sent after the commit.
+ */
+export function mergeStoredAlerts(
+  fetched: readonly StoredAlert[],
+  pushed: StoredAlertsById,
+  agencyId: string,
+  alertType: string,
+): StoredAlert[] {
+  const byId = new Map(fetched.map((alert) => [alert.id, alert]))
+  for (const alert of Object.values(pushed)) {
+    const known = byId.get(alert.id)
+    if (known?.status === 'RESOLVED' && alert.status !== 'RESOLVED') continue
+    byId.set(alert.id, alert)
+  }
+  return [...byId.values()]
+    .filter((alert) => alert.agency_id === agencyId && alert.alert_type === alertType)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
 }
 
 /** Cameras with at least one detection, which is what a screen leads with. */

@@ -137,6 +137,12 @@ export function deleteCamera(id: string): void {
 }
 
 /** The contract's own example value. */
+/** The AI service knows cameras by name; the alert consumer maps back by it. */
+export function findCameraByName(name: string): Camera | undefined {
+  const found = seed().find((c) => c.name === name)
+  return found ? { ...found } : undefined
+}
+
 export function getWeaponThreshold(): WeaponThreshold {
   if (threshold === null) threshold = { confidence: 0.6 }
   return { ...threshold }

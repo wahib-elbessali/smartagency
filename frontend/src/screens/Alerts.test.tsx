@@ -1,13 +1,15 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Alerts from './Alerts'
 import Occupancy from './Occupancy'
 import { clearSession, setSession } from '@/api/tokenStore'
 import type { Role } from '@/api/types'
 import { SessionContext, type SessionValue } from '@/auth/SessionContext'
+import { ScopeProvider } from '@/agency/scope'
+import { resetAlertStore } from '@/mocks/alertStore'
 import { resetCameraStore, setWeaponThreshold } from '@/mocks/cameraStore'
 import { mockUserForRole } from '@/mocks/currentUser'
 import '@/mocks'
@@ -17,13 +19,25 @@ import '@/mocks'
    generous because the point is the sequence, not the speed. */
 const WAIT = { timeout: 8000 }
 
-/* Alerts reads the weapon threshold through React Query, so it needs a
-   client; a fresh one per render keeps a threshold from leaking between tests. */
-function renderScreen(node: React.ReactNode) {
+/* Alerts reads the weapon threshold and the stored alerts through React
+   Query, and the stored alerts need to know whose branch to read - so a query
+   client (fresh per render, so nothing leaks between tests), a session and the
+   branch scope. A guard by default: one branch, no picker. */
+function renderScreen(node: React.ReactNode, role: Role = 'SECURITY') {
+  const session: SessionValue = {
+    status: 'authenticated',
+    user: mockUserForRole(role),
+    signIn: async () => {},
+    signOut: () => {},
+  }
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>{node}</MemoryRouter>
+      <SessionContext value={session}>
+        <ScopeProvider>
+          <MemoryRouter>{node}</MemoryRouter>
+        </ScopeProvider>
+      </SessionContext>
     </QueryClientProvider>,
   )
 }
@@ -121,6 +135,41 @@ describe('Alerts', () => {
       renderScreen(<Alerts />)
 
       await screen.findByText('pistol', {}, WAIT)
+    })
+  })
+
+  describe('weapon alert history', () => {
+    /* Before as well as after: every test above runs the weapon feed too,
+       and each run opens and resolves stored alerts in the mock store. */
+    beforeEach(resetAlertStore)
+    afterEach(() => {
+      resetAlertStore()
+      resetCameraStore()
+    })
+
+    /* The fixture's past: three resolved alerts at this branch, one of them
+       from a camera since deleted, and Rabat's kept out. */
+    it('lists the branch’s recorded alerts, and names a deleted camera as such', async () => {
+      renderScreen(<Alerts />)
+      const heading = await screen.findByRole('heading', { name: 'Weapon alerts' }, WAIT)
+      /* Scoped to this panel: the live panel above shows every camera the
+         mock feed reports, Rabat's included. */
+      const panel = within(heading.closest('section') as HTMLElement)
+      expect(await panel.findByText('A deleted camera', {}, WAIT)).toBeInTheDocument()
+      expect(panel.queryByText('cam-store')).not.toBeInTheDocument()
+    })
+
+    /* The weapon socket pushes the stored alert's state after the commit, so
+       alerts open and resolve here without a refetch. At the default 0.6, the
+       script opens and closes one on cam-counter and one on cam-lobby, then
+       leaves cam-counter's 83% pistol open: the 3 seeded resolved become 5,
+       with 1 open. Rabat's cam-store alerts never appear here. */
+    it('opens and resolves alerts as the socket pushes them', async () => {
+      renderScreen(<Alerts />)
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /^open\s*1$/i })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: /^resolved\s*5$/i })).toBeInTheDocument()
+      }, WAIT)
     })
   })
 
