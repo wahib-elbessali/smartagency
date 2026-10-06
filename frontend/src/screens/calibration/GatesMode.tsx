@@ -113,7 +113,7 @@ export function GatesMode({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
       <div>
         <div className="mb-3 max-w-xs">
           <label
