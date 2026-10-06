@@ -202,7 +202,7 @@ export default function Users() {
           )}
 
           <PanelBody className="px-0 py-0">
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">
                   User accounts, with their role, agency and linked employee

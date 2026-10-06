@@ -122,7 +122,7 @@ export default function Agencies() {
         onRetry={() => void agencies.refetch()}
         skeletonRows={4}
       >
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {rows.map((agency) => (
             <Panel as="section" key={agency.id}>
               <PanelHeader

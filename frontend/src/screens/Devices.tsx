@@ -135,7 +135,7 @@ export default function Devices() {
         onRetry={() => void devices.refetch()}
         skeletonRows={4}
       >
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {rows.map((device) => (
             <Panel as="section" key={device.id}>
               <PanelHeader

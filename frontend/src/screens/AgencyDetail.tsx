@@ -197,7 +197,7 @@ export default function AgencyDetail() {
               </PanelBody>
             </Panel>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <SectionPanel
                 icon={<Layers className="text-ink-3 size-4 shrink-0" aria-hidden />}
                 title="Services"

@@ -160,7 +160,7 @@ export default function Services() {
         onRetry={() => void services.refetch()}
         skeletonRows={4}
       >
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {rows.map((service) => {
             const assignedCount = counters.filter((c) => c.service_id === service.id).length
             return (

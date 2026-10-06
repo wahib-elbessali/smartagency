@@ -139,7 +139,7 @@ export function VisitorForm({
         )}
       </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field id="phone" label="Phone" hint="Optional.">
           {(props) => (
             <input {...props} value={values.phone} onChange={(e) => set('phone', e.target.value)} />

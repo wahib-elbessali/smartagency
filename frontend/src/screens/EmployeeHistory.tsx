@@ -92,7 +92,7 @@ export function EmployeeHistory({
         )}
       </div>
 
-      <div className="max-h-72 overflow-y-auto">
+      <div className="relative max-h-72 overflow-y-auto">
         <table className="w-full text-sm">
           <caption className="sr-only">Attendance history, most recent first</caption>
           <thead>

@@ -228,7 +228,7 @@ export function UserForm({
       {/* Role and agency exist on create only: PUT /api/users/{id} accepts
           neither, and the table changes them one call at a time. */}
       {!editing && (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field id="role" label="Role" required>
             {(props) => (
               <select
