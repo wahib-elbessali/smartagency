@@ -76,10 +76,15 @@ describe('Alerts', () => {
      system - or worse, a dead system as a safe building. */
   it('explains that silence is normal rather than broken', async () => {
     renderScreen(<Alerts />)
-    await screen.findByText('All clear', {}, WAIT)
-    expect(
-      screen.getByText(/only sends a message when what a camera sees changes/i),
-    ).toBeInTheDocument()
+    /* One waitFor, not a find then a get: "All clear" shows as soon as the
+       socket opens, but the note needs the first snapshot, which lands a
+       moment later - a gap a slow CI runner can fall into. */
+    await waitFor(() => {
+      expect(screen.getByText('All clear')).toBeInTheDocument()
+      expect(
+        screen.getByText(/only sends a message when what a camera sees changes/i),
+      ).toBeInTheDocument()
+    }, WAIT)
   })
 
   it('switches feeds without carrying detections across', async () => {
