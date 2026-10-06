@@ -25,7 +25,6 @@ const CameraView = lazy(() => import('@/screens/CameraView'))
 const ManualControls = lazy(() => import('@/screens/ManualControls'))
 const Employees = lazy(() => import('@/screens/Employees'))
 const Agencies = lazy(() => import('@/screens/Agencies'))
-const AgencyDetail = lazy(() => import('@/screens/AgencyDetail'))
 const Services = lazy(() => import('@/screens/Services'))
 const Devices = lazy(() => import('@/screens/Devices'))
 const Users = lazy(() => import('@/screens/Users'))
@@ -75,7 +74,6 @@ export function App() {
           <Route path="presence" element={<EmployeePresence />} />
           <Route path="employees" element={<Employees />} />
           <Route path="agencies" element={<Agencies />} />
-          <Route path="agencies/:id" element={<AgencyDetail />} />
           <Route path="services" element={<Services />} />
           <Route path="devices" element={<Devices />} />
           <Route path="users" element={<Users />} />
