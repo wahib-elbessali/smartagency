@@ -722,6 +722,44 @@ export interface AlertDetection {
 export type AlertFrame =
   | { type: 'snapshot'; cameras: Record<string, AlertDetection[]> }
   | { type: 'update'; camera: string; detections: AlertDetection[] }
+  | AlertStateFrame
+
+/** AlertSeverity / AlertStatus in backend/app/models/entities.py. */
+export type AlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+export type AlertStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED'
+
+/**
+ * A stored business alert - GET /api/agencies/{agency_id}/alerts, from
+ * AlertResponse. contracts/api.md §14, added in #112. ADMIN any agency,
+ * MANAGER and SECURITY their own.
+ *
+ * Not the same thing as a live detection. The backend turns a detection into
+ * one of these only when it clears the weapon threshold, and resolves it when
+ * the camera clears; the live frames above report everything the model sees.
+ * `camera_id` and `camera_name` are null once the camera has been deleted.
+ * The model also has `title` and `message`, but the response leaves them out.
+ */
+export interface StoredAlert {
+  id: string
+  agency_id: string
+  camera_id: string | null
+  camera_name: string | null
+  alert_type: string
+  severity: AlertSeverity
+  status: AlertStatus
+  created_at: string
+  resolved_at: string | null
+}
+
+/**
+ * The weapon socket also pushes a stored alert's new state once the database
+ * commit has gone through: the whole record, plus which change it was.
+ * Filtered by agency and camera before delivery, like the detections.
+ */
+export interface AlertStateFrame extends StoredAlert {
+  type: 'alert_state'
+  event: 'created' | 'updated' | 'resolved'
+}
 
 /** One zone's occupancy inside an occupancy frame. */
 export interface ZoneOccupancy {

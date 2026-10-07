@@ -3,7 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Flame, ShieldAlert, Smile, UserSearch } from 'lucide-react'
 import { fetchWeaponThreshold } from '@/api/endpoints/aiAlerts'
 import { createAlertStream } from '@/api/endpoints/streams'
-import { applyAlertFrame, activeCameras, atOrAbove, type AlertsByCamera } from '@/api/streamMerge'
+import {
+  applyAlertFrame,
+  applyAlertState,
+  activeCameras,
+  atOrAbove,
+  type AlertsByCamera,
+  type StoredAlertsById,
+} from '@/api/streamMerge'
 import {
   ALERT_FEATURES,
   type AlertDetection,
@@ -16,6 +23,7 @@ import { Button } from '@/components/ui/Button'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { StreamStatusBadge } from '@/components/StreamStatusBadge'
 import { Screen } from './Screen'
+import { WeaponAlertHistory } from './WeaponAlertHistory'
 
 /**
  * Computer-vision alerts, one feature at a time.
@@ -103,15 +111,27 @@ function DetectionRow({
   )
 }
 
+/* One socket feeds both panels: the live detections, and the stored-alert
+   states the weapon feed pushes alongside them (#112). */
+type FeedState = { cameras: AlertsByCamera; stored: StoredAlertsById }
+
+function applyFeedFrame(current: FeedState, frame: AlertFrame): FeedState {
+  return {
+    cameras: applyAlertFrame(current.cameras, frame),
+    stored: applyAlertState(current.stored, frame),
+  }
+}
+
 export default function Alerts() {
   const [feature, setFeature] = useState<AlertFeature>('weapon')
 
-  const { state: alerts, status } = useStream<AlertFrame, AlertsByCamera>(
+  const { state: feed, status } = useStream<AlertFrame, FeedState>(
     feature,
     () => createAlertStream(feature),
-    applyAlertFrame,
-    () => ({}),
+    applyFeedFrame,
+    () => ({ cameras: {}, stored: {} }),
   )
+  const alerts = feed.cameras
 
   const threshold = useQuery({
     queryKey: ['weaponThreshold'],
@@ -219,6 +239,8 @@ export default function Alerts() {
           long silence is normal — check the badge above, not the emptiness below.
         </p>
       )}
+
+      {feature === 'weapon' && <WeaponAlertHistory pushed={feed.stored} />}
     </Screen>
   )
 }

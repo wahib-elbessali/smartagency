@@ -1,6 +1,14 @@
 import { MOCK_SCENARIO } from '@/api/config'
 import type { SocketStream, StreamStatus } from '@/api/socketStream'
-import type { AlertFeature, AlertFrame, OccupancyFrame, WorkstationFrame } from '@/api/types'
+import type {
+  AlertFeature,
+  AlertFrame,
+  AlertStateFrame,
+  OccupancyFrame,
+  WorkstationFrame,
+} from '@/api/types'
+import * as alertStore from './alertStore'
+import { findCameraByName, getWeaponThreshold } from './cameraStore'
 
 /**
  * Fake alerts and occupancy sockets for mock mode.
@@ -268,7 +276,72 @@ function workstationScript(): WorkstationFrame[] {
   ]
 }
 
-function createScriptedStream<T>(frames: T[]): SocketStream<T> {
+/**
+ * The backend's half of the weapon socket: after each detection frame, the
+ * alert consumer (backend/app/ai_alerts/consumer.py) keeps the detections at
+ * or above the weapon threshold, then for that camera
+ *   - some left, an alert open   -> "updated"
+ *   - some left, none open       -> "created" (CRITICAL, OPEN)
+ *   - none left, alerts open     -> each "resolved"
+ * and pushes the committed record on the same socket. Worked out when the
+ * frame is sent rather than written into the script, so it follows the
+ * threshold as it is at that moment - set it to 0.9 on Cameras and fewer
+ * alerts open, exactly as against the backend. alertStore is updated too, so
+ * a refetch of the history agrees with what was pushed.
+ */
+let nextAlertId = 0
+
+function weaponAlertStates(frame: AlertFrame): AlertStateFrame[] {
+  if (frame.type !== 'update') return []
+  const camera = findCameraByName(frame.camera)
+  if (!camera) return []
+
+  const minimum = getWeaponThreshold().confidence
+  const kept = frame.detections.filter((d) => d.confidence >= minimum)
+  const open = alertStore
+    .listAlerts(camera.agency_id, 'weapon')
+    .filter((a) => a.camera_id === camera.id && a.status !== 'RESOLVED')
+  const now = new Date().toISOString()
+
+  let states: AlertStateFrame[]
+  if (kept.length > 0) {
+    states =
+      open.length > 0
+        ? open.map((a) => ({ ...a, type: 'alert_state', event: 'updated' }))
+        : [
+            {
+              type: 'alert_state',
+              event: 'created',
+              id: `e2000000-0000-4000-8000-${String((nextAlertId += 1)).padStart(12, '0')}`,
+              agency_id: camera.agency_id,
+              camera_id: camera.id,
+              camera_name: camera.name,
+              alert_type: 'weapon',
+              severity: 'CRITICAL',
+              status: 'OPEN',
+              created_at: now,
+              resolved_at: null,
+            },
+          ]
+  } else {
+    states = open.map((a) => ({
+      ...a,
+      type: 'alert_state',
+      event: 'resolved',
+      status: 'RESOLVED',
+      resolved_at: now,
+    }))
+  }
+
+  states.forEach(alertStore.applyAlertState)
+  return states
+}
+
+/**
+ * `expand` turns one scripted frame into what is actually sent, at the moment
+ * it is sent - the weapon feed uses it to add the stored-alert frames above.
+ */
+function createScriptedStream<T>(frames: T[], expand?: (frame: T) => T[]): SocketStream<T> {
   const eventListeners = new Set<(event: T) => void>()
   const statusListeners = new Set<(status: StreamStatus) => void>()
   const timers: ReturnType<typeof setTimeout>[] = []
@@ -293,7 +366,9 @@ function createScriptedStream<T>(frames: T[]): SocketStream<T> {
         frames.forEach((frame, i) => {
           timers.push(
             setTimeout(() => {
-              for (const listener of eventListeners) listener(frame)
+              for (const sent of [frame, ...(expand?.(frame) ?? [])]) {
+                for (const listener of eventListeners) listener(sent)
+              }
             }, i * INTERVAL_MS),
           )
         })
@@ -325,7 +400,10 @@ function createScriptedStream<T>(frames: T[]): SocketStream<T> {
 }
 
 export function createMockAlertStream(feature: AlertFeature): SocketStream<AlertFrame> {
-  return createScriptedStream(alertScript(feature))
+  return createScriptedStream(
+    alertScript(feature),
+    feature === 'weapon' ? weaponAlertStates : undefined,
+  )
 }
 
 export function createMockOccupancyStream(): SocketStream<OccupancyFrame> {
