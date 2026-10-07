@@ -110,8 +110,25 @@ describe('Cameras', () => {
     await user.click(within(dialog).getByRole('button', { name: /add camera/i }))
 
     expect(await within(dialog).findByRole('alert', {}, WAIT)).toHaveTextContent(
-      /already exists, possibly at another branch/i,
+      /already uses that name or that stream URL, possibly at another branch/i,
     )
+    expect(listCameras(AGENCY_ID)).toHaveLength(2)
+  })
+
+  /* Since backend #113 the stream is unique too: two cameras on one feed
+     would make the detector report the same picture twice under two names. */
+  it('explains a stream already used by a camera at another branch', async () => {
+    const user = userEvent.setup()
+    renderAs('MANAGER')
+    await screen.findByRole('heading', { name: 'cam-lobby' }, WAIT)
+
+    await user.click(screen.getByRole('button', { name: /add camera/i }))
+    const dialog = await screen.findByRole('dialog', {}, WAIT)
+    await user.type(within(dialog).getByLabelText(/^name/i), 'cam-new')
+    await user.type(within(dialog).getByLabelText(/stream url/i), 'rtsp://192.168.2.10:8554/store')
+    await user.click(within(dialog).getByRole('button', { name: /add camera/i }))
+
+    expect(await within(dialog).findByRole('alert', {}, WAIT)).toHaveTextContent(/that stream URL/i)
     expect(listCameras(AGENCY_ID)).toHaveLength(2)
   })
 

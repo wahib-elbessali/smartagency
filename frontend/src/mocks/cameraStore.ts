@@ -18,7 +18,8 @@ import { AGENCY_ID, AGENCY_ID_RABAT } from './fixtures/people'
  * until the consumer re-syncs.
  *
  * Refusals mirror backend/app/api/cameras.py, same status code:
- *   409  the `name` collides with any camera at any branch (unique globally)
+ *   409  the `name` or the `stream_url` collides with any camera at any
+ *        branch (both unique globally; stream_url since backend #113)
  *   422  `name` or `stream_url` is blank after trimming; or the threshold is
  *        not in (0, 1]
  *   404  the camera does not exist
@@ -88,12 +89,20 @@ function assertUniqueName(name: string, excludingId?: string): void {
   if (clash) throw new ApiError('http', 'Le nom de la camera est deja utilise', 409)
 }
 
+function assertUniqueStream(streamUrl: string, excludingId?: string): void {
+  const clash = seed().some((c) => c.stream_url === streamUrl && c.id !== excludingId)
+  if (clash) {
+    throw new ApiError('http', 'Le flux de la camera est deja utilise par une autre camera', 409)
+  }
+}
+
 export function createCamera(agencyId: string, body: CameraCreate): Camera {
   const name = body.name.trim()
   const streamUrl = body.stream_url.trim()
   if (!name || !streamUrl) {
     throw new ApiError('http', 'Le nom et le flux de la camera sont obligatoires', 422)
   }
+  assertUniqueStream(streamUrl)
   assertUniqueName(name)
 
   const created: Camera = {
@@ -123,6 +132,7 @@ export function updateCamera(id: string, body: CameraUpdate): Camera {
   if (body.stream_url !== undefined) {
     const streamUrl = body.stream_url.trim()
     if (!streamUrl) throw new ApiError('http', 'Le flux de la camera est obligatoire', 422)
+    assertUniqueStream(streamUrl, id)
     updated.stream_url = streamUrl
   }
   list[index] = updated

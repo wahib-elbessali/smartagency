@@ -43,7 +43,10 @@ function streamUrlError(value: string, touched: boolean): string | undefined {
 
 /**
  * Refusals verified against backend/app/api/cameras.py:
- *   409  name already used by a camera at any branch (unique site-wide)
+ *   409  name OR stream_url already used by a camera at any branch (both
+ *        unique site-wide since #113). Same status for both, told apart only
+ *        by the French `detail`, which this file won't string-match (see
+ *        api/errors.ts) - so the message names both causes.
  *   403  the camera or branch belongs to another agency
  *   404  the branch no longer exists
  */
@@ -53,7 +56,7 @@ function saveErrorMessage(error: unknown): string | null {
 
   switch (error.status) {
     case 409:
-      return 'A camera with that name already exists, possibly at another branch. Names are unique across all branches because the detector knows cameras by name.'
+      return 'Another camera already uses that name or that stream URL, possibly at another branch. Both are unique across all branches: the detector knows cameras by name, and one stream can only feed one camera.'
     case 403:
       return 'That camera belongs to another branch.'
     case 404:
