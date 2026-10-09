@@ -35,21 +35,13 @@ export const ASSIGNABLE_ROLES: readonly Role[] = ROLES.filter((role) => role !==
  * a 403 answered by a blank screen would be worse than one answered in words.
  *
  * KEYED ON THE PRIMARY DATA OF EACH SCREEN, which is not always the only data
- * it reads. Two screens fetch something their own visitors may not be allowed
- * to fetch, and both let that degrade rather than fail:
- *
- *   /presence  reads attendance (ADMIN, MANAGER, SECURITY), and also agencies
- *              and employees, which are ADMIN and MANAGER only. A SECURITY
- *              account gets the roster but no opening_time, so nobody is marked
- *              late - the screen works and is missing a column of meaning.
- *   /visitors  reads tickets (ADMIN, MANAGER, AGENT), and also agencies for the
- *              branch picker when registering someone, and services for the
- *              service picker. An AGENT gets the queue and an empty picker for
- *              anything scoped ADMIN/MANAGER-only.
- *
- * Both are worth fixing properly one day - by scoping those two reads to the
- * caller's own agency in the backend rather than refusing them - and neither is
- * a reason to hide a screen that otherwise works.
+ * it reads. /visitors fetches something its own visitors may not be allowed to
+ * fetch, and lets that degrade rather than fail: it reads tickets (ADMIN,
+ * MANAGER, AGENT), and also agencies for the branch picker when registering
+ * someone, and services for the service picker. An AGENT gets the queue and an
+ * empty picker for anything scoped ADMIN/MANAGER-only. Worth fixing properly one
+ * day - by scoping that read to the caller's own agency in the backend rather
+ * than refusing it - and not a reason to hide a screen that otherwise works.
  *
  * /occupancy is a rule with nothing behind it yet. The AI stream it reads
  * (contracts/ai-service.md, WS /zoning/occupancy/stream) has no role check and
@@ -63,9 +55,21 @@ export const ASSIGNABLE_ROLES: readonly Role[] = ROLES.filter((role) => role !==
  * Roles transcribed from backend/app/api/*.py. mocks/roles.ts carries the same
  * table keyed by API path; they describe the same rules from the two ends and
  * have to move together.
+ *
+ * ONE ENTRY IS DELIBERATELY STRICTER THAN THE API IT FRONTS: /presence, which
+ * drops SECURITY. Everywhere else this table transcribes, and mocks/roles.ts
+ * is right to keep answering a guard - it describes the API, not the nav.
  */
 const ROUTE_ROLES: Record<string, readonly Role[]> = {
-  '/presence': ['ADMIN', 'MANAGER', 'SECURITY'],
+  /* Admins and managers only from 2026-10-09, though GET /api/attendance/*
+     still takes SECURITY. A product call, not a transcription: who is on the
+     payroll and when they arrive is not a guard's to read.
+
+     It costs them the "Record attendance" dialog too, which lives on this
+     screen and nowhere else, while POST /api/attendance/check-in still takes
+     SECURITY. If badging people in at the door turns out to be part of the
+     job, give that dialog its own route rather than widen this entry. */
+  '/presence': ['ADMIN', 'MANAGER'],
   '/employees': ['ADMIN', 'MANAGER'],
   '/agencies': ['ADMIN', 'MANAGER'],
   '/services': ['ADMIN', 'MANAGER'],

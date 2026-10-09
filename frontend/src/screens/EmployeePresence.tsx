@@ -214,10 +214,10 @@ export default function EmployeePresence() {
         error={attendance.error}
         isEmpty={entries.length === 0}
         emptyMessage="Nobody has checked in today yet."
-        /* GET /api/attendance/today is restricted to ADMIN, MANAGER and
-           SECURITY, so AGENT and TECHNICIAN land here. Naming the roles saves
-           a round trip to whoever administers accounts. */
-        forbiddenMessage="Attendance is visible to administrators, managers and security staff. Ask an administrator if you need access."
+        /* Close to unreachable: auth/access.ts keeps this screen to ADMIN and
+           MANAGER. A backstop for a session whose role changed under it, so it
+           names the screen's rule, not the endpoint's wider one. */
+        forbiddenMessage="Attendance is visible to administrators and managers. Ask an administrator if you need access."
         onRetry={attendance.refetch}
         skeletonRows={6}
       >
