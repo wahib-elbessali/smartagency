@@ -117,16 +117,16 @@ export function EmployeeHistory({
               const late = isLate(record.check_in, openingTime ?? undefined)
               return (
                 <tr key={record.id} className="border-line/70 border-b last:border-b-0">
-                  <th scope="row" className="text-ink py-2.5 pr-4 text-left font-normal">
+                  <th scope="row" className="text-ink py-3 pr-4 text-left font-normal">
                     <span className="flex items-center gap-2">
                       {dayLabel(record.check_in)}
                       {late === true && <Badge tone="warn">Late</Badge>}
                     </span>
                   </th>
-                  <td className="text-ink-2 py-2.5 pr-4">
+                  <td className="text-ink-2 py-3 pr-4">
                     <Clock iso={record.check_in} />
                   </td>
-                  <td className="text-ink-2 py-2.5 pr-4">
+                  <td className="text-ink-2 py-3 pr-4">
                     {record.check_out ? (
                       <Clock iso={record.check_out} />
                     ) : (
@@ -134,7 +134,7 @@ export function EmployeeHistory({
                       <span className="text-ok">Still in</span>
                     )}
                   </td>
-                  <td className="text-ink-2 tabular py-2.5">
+                  <td className="text-ink-2 tabular py-3">
                     {hours === null ? '—' : `${hours.toFixed(1)} h`}
                   </td>
                 </tr>

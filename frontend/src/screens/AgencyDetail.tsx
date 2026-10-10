@@ -154,7 +154,7 @@ export default function AgencyDetail() {
 
             <Panel as="section">
               <PanelHeader>
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <Building2 className="text-ink-3 size-4 shrink-0" aria-hidden />
                   <h2 className="text-ink text-sm font-semibold">{agency.data.name}</h2>
                   {!agency.data.is_active && <Badge tone="neutral">Inactive</Badge>}
@@ -170,7 +170,7 @@ export default function AgencyDetail() {
                 </dl>
 
                 {agency.data.counters.length > 0 && (
-                  <ul className="mt-4 flex flex-wrap gap-1.5">
+                  <ul className="mt-4 flex flex-wrap gap-2">
                     {agency.data.counters.map((counter) => (
                       <li key={counter.id}>
                         <Badge tone={counter.is_open ? 'ok' : 'neutral'}>
@@ -183,7 +183,7 @@ export default function AgencyDetail() {
                 )}
 
                 {agency.data.zones.length > 0 && (
-                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                  <ul className="mt-2 flex flex-wrap gap-2">
                     {agency.data.zones.map((zone) => (
                       <li key={zone.id}>
                         <Badge tone={zone.is_private ? 'warn' : 'info'}>
@@ -211,10 +211,10 @@ export default function AgencyDetail() {
                 {services.data?.map((service) => (
                   <li
                     key={service.id}
-                    className="flex items-center justify-between gap-2 py-1.5 text-sm"
+                    className="flex items-center justify-between gap-2 py-2 text-sm"
                   >
                     <span className="text-ink truncate">{service.name}</span>
-                    <div className="flex shrink-0 gap-1.5">
+                    <div className="flex shrink-0 gap-2">
                       <Badge tone="neutral">{service.code}</Badge>
                       {!service.is_active && <Badge tone="neutral">Inactive</Badge>}
                     </div>
@@ -235,7 +235,7 @@ export default function AgencyDetail() {
                 {agencyEmployees.map((employee) => (
                   <li
                     key={employee.id}
-                    className="flex items-center justify-between gap-2 py-1.5 text-sm"
+                    className="flex items-center justify-between gap-2 py-2 text-sm"
                   >
                     <span className="text-ink truncate">
                       {employee.first_name} {employee.last_name}
@@ -260,7 +260,7 @@ export default function AgencyDetail() {
                 {agencyDevices.map((device) => (
                   <li
                     key={device.id}
-                    className="flex items-center justify-between gap-2 py-1.5 text-sm"
+                    className="flex items-center justify-between gap-2 py-2 text-sm"
                   >
                     <span className="text-ink truncate">{device.name}</span>
                     <Badge tone={DEVICE_STATUS_TONE[device.status]}>{device.status}</Badge>
@@ -332,7 +332,7 @@ function SectionPanel({
         ) : isEmpty ? (
           <p className="text-ink-3 text-sm">{emptyMessage}</p>
         ) : (
-          <ul className="divide-line/70 -my-1.5 divide-y">{children}</ul>
+          <ul className="divide-line/70 -my-2 divide-y">{children}</ul>
         )}
 
         <Link to={manageHref} className="mt-3 inline-block">

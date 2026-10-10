@@ -319,7 +319,7 @@ export default function Staffing() {
                   </Button>
                 }
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <StatusIcon status={station.status} />
                   <h2 className="text-ink min-w-0 truncate text-sm font-semibold">
                     {station.name}
@@ -543,7 +543,7 @@ function BindForm({
         </p>
       )}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-6 flex justify-end gap-2">
         <Button type="button" onClick={onCancel}>
           Cancel
         </Button>

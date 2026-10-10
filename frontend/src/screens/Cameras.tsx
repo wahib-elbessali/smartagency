@@ -176,7 +176,7 @@ export default function Cameras() {
             <Panel as="section" key={camera.id}>
               <PanelHeader
                 action={
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-2">
                     {/* The live picture lives one level down (CameraView.tsx)
                         rather than on this card: a grid of six polling images
                         is a lot of requests for a screen whose job is the
@@ -209,9 +209,9 @@ export default function Cameras() {
                   </div>
                 }
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <CameraIcon className="text-ink-3 size-4 shrink-0" aria-hidden />
-                  <h2 className="text-ink truncate text-sm font-semibold">{camera.name}</h2>
+                  <h2 className="text-ink truncate font-mono text-sm font-medium">{camera.name}</h2>
                   <Badge tone={STATUS_TONE[camera.status]}>{camera.status}</Badge>
                 </div>
                 {/* Said in words because OFFLINE on a camera that was set up an
@@ -274,7 +274,7 @@ export default function Cameras() {
                   : 'Could not delete.'}
               </p>
             )}
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <Button
                 onClick={() => {
                   setConfirmingDelete(null)
@@ -349,7 +349,7 @@ function WeaponThresholdPanel() {
   return (
     <Panel as="section">
       <PanelHeader>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <ShieldAlert className="text-ink-3 size-4 shrink-0" aria-hidden />
           <h2 className="text-ink text-sm font-semibold">Weapon detection threshold</h2>
         </div>

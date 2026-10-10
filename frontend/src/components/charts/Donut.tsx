@@ -61,7 +61,7 @@ export function Donut({
   let cursor = 0
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-x-7 gap-y-4', className)}>
+    <div className={cn('flex flex-wrap items-center gap-x-8 gap-y-4', className)}>
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <svg
           viewBox={`0 0 ${BOX} ${BOX}`}
@@ -113,7 +113,7 @@ export function Donut({
             <div className="text-ink tabular text-[1.4rem] leading-none font-light tracking-tight">
               {format(shown ? shown.value : whole)}
             </div>
-            <div className="text-ink-3 mt-1.5 truncate text-[11px]">
+            <div className="text-ink-3 mt-1 truncate text-[11px]">
               {shown ? shown.label : (totalLabel ?? 'Total')}
             </div>
           </div>
@@ -123,7 +123,7 @@ export function Donut({
       {/* The legend is always present, and it is also the hover surface. A ring
           this size has segments too thin to be reliable click targets, and the
           label is what the reader is looking for anyway. */}
-      <ul className="min-w-0 flex-1 space-y-1.5">
+      <ul className="min-w-0 flex-1 space-y-2">
         {segments.map((s, i) => (
           <li key={s.label}>
             <button
@@ -133,7 +133,7 @@ export function Donut({
               onFocus={() => setActive(i)}
               onBlur={() => setActive(null)}
               className={cn(
-                'rounded-control ease-soft flex w-full cursor-default items-center gap-2.5 px-2 py-1 text-left transition-colors duration-150',
+                'rounded-control ease-soft flex w-full cursor-default items-center gap-2 px-2 py-1 text-left transition-colors duration-150',
                 active === i ? 'bg-panel-2' : 'hover:bg-panel-2/60',
               )}
             >

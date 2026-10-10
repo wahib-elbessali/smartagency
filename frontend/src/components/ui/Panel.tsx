@@ -55,14 +55,10 @@ export function Panel({
           ? /* An alert panel earns a real border. It is the one case where the
                outline is the point rather than decoration. */
             'border-warn/30 bg-warn/6 border'
-          : cn(
-              'surface-glass',
-              /* Lift on hover, don't just brighten. Two pixels of travel plus a
-                 deeper shadow reads as the card coming toward you; a colour
-                 change alone reads as a state toggle, which is the wrong
-                 message for something that is merely being pointed at. */
-              'ease-soft hover:shadow-raised transition-[box-shadow,transform] duration-300 hover:-translate-y-px',
-            ),
+          : /* No hover state. Most panels are not clickable, and a card
+               that lifts or lights up under the pointer promises an action
+               it does not have. Clickable cards style their own hover. */
+            'surface-glass',
         className,
       )}
     >
@@ -85,13 +81,28 @@ export function Panel({
  */
 export function PanelHeader({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-1">
+    <div className="flex items-start justify-between gap-3 px-6 pt-4 pb-1">
       <div className="min-w-0">{children}</div>
       {action && <div className="shrink-0">{action}</div>}
     </div>
   )
 }
 
-export function PanelBody({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('px-5 py-4', className)}>{children}</div>
+/**
+ * `flush` drops the padding for content that runs edge to edge - a table whose
+ * own cells carry the 24px inset, so its first column lines up with the panel
+ * title. A prop rather than `className="px-0"`, because `cn` only joins class
+ * names: `px-0` and `px-6` both land on the element and the later one in the
+ * stylesheet (`px-6`) wins, which left every table double-inset.
+ */
+export function PanelBody({
+  children,
+  className,
+  flush = false,
+}: {
+  children: ReactNode
+  className?: string
+  flush?: boolean
+}) {
+  return <div className={cn(!flush && 'px-6 py-4', className)}>{children}</div>
 }

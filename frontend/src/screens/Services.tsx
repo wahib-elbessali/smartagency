@@ -168,7 +168,7 @@ export default function Services() {
                 <PanelHeader
                   action={
                     canWrite && (
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -197,7 +197,7 @@ export default function Services() {
                     )
                   }
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2">
                     <Layers className="text-ink-3 size-4 shrink-0" aria-hidden />
                     <h2 className="text-ink truncate text-sm font-semibold">{service.name}</h2>
                     <Badge tone="neutral">{service.code}</Badge>
@@ -261,7 +261,7 @@ export default function Services() {
                   : 'Could not delete.'}
               </p>
             )}
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <Button
                 onClick={() => {
                   setConfirmingDelete(null)
@@ -299,7 +299,7 @@ export default function Services() {
               return (
                 <div
                   key={counter.id}
-                  className="border-line flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5"
+                  className="border-line flex items-center justify-between gap-3 rounded-lg border px-4 py-3"
                 >
                   <div className="min-w-0">
                     <p className="text-ink text-sm font-medium">

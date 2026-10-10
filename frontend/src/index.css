@@ -8,189 +8,140 @@
    nothing else, and eight screens can't drift into eight different greys.
 
    DARK IS THE DEFAULT, not the only option. This is a wall-mounted security
-   dashboard glanced at to answer "is anything wrong right now?", and that is
-   what the values in @theme below describe. A light theme now exists too, as a
-   block of overrides further down - see the LIGHT THEME section for how the
-   two are kept from drifting apart.
-
-   Because every component was written against token names rather than colours,
-   the light theme is that one block and nothing else: no component branches on
+   dashboard glanced at to answer "is anything wrong right now?". A light theme
+   exists too, as a block of overrides further down. No component branches on
    the theme, and none should start.
 
-   VISION UI: deep navy surfaces with a bright blue accent.
+   RESTRAINED (2026-10-10). Neutral graphite, one solid blue, no gradients, no
+   glows, no decorative background. An earlier pass the same day went the
+   other way - blue-to-violet gradients, glowing chips, an aurora, a dot grid -
+   and the verdict was that it looked machine-made. That look IS the default
+   output of every generated dashboard, which is exactly why it reads that
+   way. What reads as professional is restraint: colour only where it carries
+   meaning (the selection, a status, a chart series), and surfaces that are
+   separated by a hairline rather than by light.
 
-   Taken from the Vision UI Dashboard design. These are its published values,
-   not an impression of them - the canvas is read from the Figma frame's own
-   fill and the rest from the theme the design ships with. If this palette is
-   revisited, take the values again rather than nudging them; a set of hues
-   drifts fast once individual ones start being adjusted in isolation.
+   Opaque surfaces stay from that pass for a different reason: Vision UI's
+   translucent cards with a 120px backdrop blur were expensive enough to stall
+   the renderer.
 
-   The surfaces are navy rather than neutral, and each step up in lightness
-   also gains a little blue, which is what stops a stack of dark panels reading
-   as flat. Ink follows the same rule: the muted steps are blue-greys.
-
-   ONE DEPARTURE, and it is deliberate. Every colour below is Vision UI's
-   except the four chart-series colours further down. Vision UI keeps its whole
-   identity in the cool half of the wheel and reserves its warm colours for
-   status, and four series drawn from blues and violets alone are not
-   distinguishable - measured, its own blue and indigo sit at a separation of
-   14.7 where 15 is the floor for NORMAL colour vision, before colourblindness
-   is even considered. The theme is its; the series colours are not.
+   The four chart-series colours are unchanged: they were validated for
+   colour-blind separation on dark and light and still pass on these greys.
 --------------------------------------------------------------------------- */
 @theme {
-  /* Surfaces, darkest to lightest. Navy, not neutral.
+  /* Surfaces, darkest to lightest. A faint blue cast (palette sheet,
+     2026-10-10) - enough to tie the greys to the blue accent, not enough to
+     read as a coloured theme. */
+  --color-canvas: #090b0f;
+  --color-panel: #0f1217;
+  --color-panel-2: #161a21;
+  --color-line: #222730;
+  --color-line-strong: #39404c;
 
-     `canvas` is the value the live Vision UI serves from its root element, and
-     it is darker than the one the Figma frame carries. That is not a
-     discrepancy to split the difference on: the cards are translucent, so the
-     canvas shows THROUGH them, and a lighter canvas would wash every card out
-     at once.
+  /* The border of an input, select or other control. Separate from `line`
+     because a field's edge is how you find it: WCAG 1.4.11 wants 3:1 for it
+     against its surroundings, which a divider-grey does not reach. Measured
+     3.75:1 on panel, 3.48:1 on panel-2. */
+  --color-line-control: #667080;
 
-     `panel` is the solid fallback. The real card surface is --gradient-panel
-     below; this is what shows where a translucent fill would be wrong - inside
-     an already-translucent card, or on a browser without backdrop-filter. */
-  --color-canvas: #030c1d;
-  --color-panel: #0f1535;
-  --color-panel-2: #1a1f37;
-  --color-line: #242b4d;
-  --color-line-strong: #56577a;
+  /* The outline every panel carries. Fainter than `line`: a card edge should
+     be quieter than a divider inside the card. */
+  --color-edge: rgb(255 255 255 / 0.07);
 
-  /* Text, most to least prominent. Vision UI sets its headings in pure white
-     rather than an off-white, and on this navy it does not vibrate the way
-     pure white on near-black does - the surface is light enough to take it. */
-  --color-ink: #ffffff;
-  --color-ink-2: #a0aec0;
-  --color-ink-3: #718096;
+  /* Text, most to least prominent. Off-white rather than pure white, which
+     vibrates on near-black. ink-3 is the lightest muted step that still clears
+     4.5:1 on panel-2. */
+  --color-ink: #eceef2;
+  --color-ink-2: #9ea4b0;
+  --color-ink-3: #7f8694;
 
-  /* One accent, used only for interactive and active states. Vision UI's brand
-     blue, which is what its buttons, active nav and lit marks are built from.
-     `accent-ink` is the lighter step of the same hue, for accent-coloured text
-     where the solid accent would be too dark to read against the canvas. */
-  --color-accent: #0075ff;
-  --color-accent-ink: #3993fe;
+  /* One accent, solid, for interactive and selected states only. White text
+     on it clears 4.5:1, which is why labels on it use `on-accent` and not
+     the off-white `ink`. `accent-ink` is the step for accent-coloured TEXT
+     and icons on the dark ground. */
+  --color-accent: #2f6feb;
+  --color-accent-ink: #7aa7ff;
+  --color-on-accent: #ffffff;
 
-  /* The categorical chart ramp - series identity, nothing else.
+  /* The categorical chart ramp - series identity, nothing else. Assign in
+     order, never cycled; a fifth series folds into "Other".
 
-     Sampled from the reference's own expenses legend, in its order: a
-     blue-violet, a purple, a pink, a coral. Assign in order, never cycled; a
-     fifth series folds into "Other" rather than getting a generated hue.
+     Replaced 2026-10-10 (palette sheet). The previous set had an amber and a
+     brick red that read as `warn` and `danger` - a chart series looked like
+     a status. This set is teal-green, violet, steel blue, deep teal: nearest
+     to any status colour is now dE 21 (the old brick was dE 7 from danger),
+     for a small loss in worst-case colour-blind separation (dE 26 -> 23).
+     data-1 and data-3 are only 3:1 on white, and data-2 and data-4 about
+     3.3:1 on the dark panel: fine for marks, but keep direct labels on charts
+     rather than relying on colour alone. Checked as a set; do not nudge one
+     in isolation. */
+  --color-data-1: #12a588;
+  --color-data-2: #655aaf;
+  --color-data-3: #8394c3;
+  --color-data-4: #29707a;
 
-     THE ONE PLACE THIS FILE DOES NOT USE VISION UI'S COLOURS, and the reason
-     is measured rather than aesthetic. Vision UI's palette is cool from end to
-     end - blue, cyan, indigo, violet - because its warm colours are all spoken
-     for as status. Three different four-series sets drawn from it were checked
-     against this card surface and all three failed: its blue against its
-     indigo separates by 14.7 where 15 is the floor for normal colour vision,
-     its blue against its violet drops to 5.8 under protanopia, and its indigo
-     sits at 2.39:1 against the card, close to invisible. Four categories
-     cannot be built from one half of the colour wheel.
+  /* The single highlighted mark - one lit bar against muted peers. */
+  --color-data-lit: #2f6feb;
 
-     So these four are kept from the previous palette and re-checked against
-     the navy surface: every pair passes, not just adjacent ones, which is what
-     a donut needs since it puts each category next to all the others.
+  /* Status. Desaturated a step from neon: these mark real conditions, and a
+     dashboard where "ok" glows as brightly as "danger" has no hierarchy.
 
-     No green slot - green is the `ok` status colour, and a categorical green
-     also lands on top of the categorical red for a red-green colourblind
-     reader. Lightness varies across the four on purpose; hue alone does not
-     separate them for everyone and a value difference costs nothing. */
-  --color-data-1: #c18703;
-  --color-data-2: #009298;
-  --color-data-3: #c24d4f;
-  --color-data-4: #7152b5;
+     `info` is deliberately NEUTRAL (the ink-2 grey). A blue or cyan info
+     competed with the accent, and blue has one meaning here: interactive or
+     selected. Informational badges therefore look close to neutral ones;
+     that is the trade, made on purpose. */
+  --color-ok: #3fb950;
+  --color-warn: #e3a008;
+  --color-danger: #f0524a;
+  --color-info: #9ea4b0;
 
-  /* The single highlighted mark - one lit bar against muted peers. Vision UI's
-     brand blue, which is the accent: a highlight is not a peer series, it is
-     the answer to "which one am I looking at", so it borrows the colour the
-     rest of the interface uses for "this one". */
-  --color-data-lit: #0075ff;
-
-  /* Status. Spend boldness on alerts, not on everything.
-
-     All four are Vision UI's own status colours. `danger` is its error.focus
-     rather than error.main: the main #e31a1a reaches only 3.95:1 against the
-     canvas, and this token is mostly worn by text - a refusal message, the
-     label on a destructive button - where that is not enough. The lighter step
-     is the same red, and reads. */
-  --color-ok: #01b574;
-  --color-warn: #ffb547;
-  --color-danger: #ee5d50;
-  --color-info: #21d4fd;
-
-  /* Three radii, all taken from the live design: 20px cards, 12px controls.
-
-     20px is a lot, and it is load-bearing rather than decorative. A
-     translucent card with a tight radius reads as a cut-out in the page; the
-     same fill with a soft one reads as a pane of glass resting on it. Halve
-     this and the glass effect stops working. */
-  --radius-panel: 1.25rem;
-  --radius-control: 0.75rem;
+  --radius-panel: 0.75rem;
+  --radius-control: 0.5rem;
   --radius-pill: 999px;
 
-  /* The live design's own card shadow: wide, far below the card, and very
-     faint. It is not there to darken anything - on a near-black page a
-     conventional shadow is invisible - it is there to keep the bottom edge of
-     a translucent pane from merging into the canvas. */
-  --shadow-panel: 0 20px 27px 0 rgb(0 0 0 / 0.05);
-  --shadow-raised: 0 24px 34px 0 rgb(0 0 0 / 0.18);
+  /* Shadows are contact shadows only. On near-black a long soft shadow is
+     invisible anyway; what separates a card here is its edge. */
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-raised: 0 8px 24px -8px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.3);
+  /* Kept as a name so nothing breaks, but no longer a glow. */
+  --shadow-glow: 0 1px 2px rgb(0 0 0 / 0.3);
 
-  /* The well cut into a form control. A token rather than a literal because it
-     is one of the few shadows that has to be re-tuned per theme: a quarter-
-     opacity black reads as depth on navy and as grime on white. */
-  --shadow-control-inset: inset 0 1px 2px rgb(0 0 0 / 0.25);
+  --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 0.25);
 
-  /* THE CARD SURFACE, and the single most important value in this file.
+  /* The surface "gradients" are flat now. Kept as tokens because the
+     utilities below are built on them; `none` means the panel colour alone. */
+  --gradient-panel: none;
+  --gradient-panel-2: none;
+  --gradient-lit: none;
 
-     Vision UI's cards are not filled - they are translucent glass. The fill is
-     a diagonal gradient from 94% opaque at the top-left to 49% at the
-     bottom-right, so the page shows through the far corner of every card, and
-     a heavy backdrop blur turns what shows through into diffuse light rather
-     than a legible background.
+  /* Solid fills under the old gradient names, so no screen has to change to
+     lose the gradient. */
+  --gradient-accent: linear-gradient(#2f6feb, #2f6feb);
+  --gradient-ok: linear-gradient(#238636, #238636);
+  --gradient-danger: linear-gradient(#da3633, #da3633);
+  --gradient-violet: linear-gradient(#6e40c9, #6e40c9);
 
-     That translucency is the entire look. Swap this for an opaque fill of the
-     average colour and the result is a competent dark theme that looks nothing
-     like the design - which is exactly what the previous palette-only pass
-     produced. Angles and stops are the design's own. */
-  --gradient-panel: linear-gradient(
-    127.09deg,
-    rgb(6 11 40 / 0.94) 19.41%,
-    rgb(10 14 35 / 0.49) 76.65%
-  );
-
-  /* The same treatment, denser, for a surface sitting INSIDE a card - a nested
-     well, an icon chip's backing, a recessed row. Nested glass at the outer
-     opacity disappears into its parent. */
-  --gradient-panel-2: linear-gradient(
-    126.97deg,
-    rgb(6 11 40 / 0.74) 28.26%,
-    rgb(10 14 35 / 0.71) 91.2%
-  );
-
-  /* The lit top edge of a raised surface. Kept for the few opaque surfaces
-     left; the glass cards carry their own light in the gradient above. */
-  --gradient-lit: linear-gradient(to bottom, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0) 42%);
-
-  /* Exactly one gradient accent, for the one primary action on a screen. One
-     is modern; a screen of them is a themed template.
-
-     Vision UI's own button gradient, angle included. 310deg puts the cyan in
-     one corner rather than across the middle, which is what keeps a white
-     label readable over most of the sweep.
-
-     Be careful editing this. White on #0075ff is about 4.25:1 and on #21d4fd
-     far less, so a label centred over the cyan end would fail outright. It
-     works here because at 310deg across a wide control the cyan is a corner
-     glint and the text sits over blue. Change the angle, or squeeze the button
-     narrow enough that the cyan reaches the middle, and the label stops being
-     readable. The status gradients below share the angle for the same reason
-     and are used on chips, which carry icons rather than text. */
-  --gradient-accent: linear-gradient(310deg, #0075ff, #21d4fd);
-  --gradient-ok: linear-gradient(310deg, #01b574, #c9fbd5);
-  --gradient-danger: linear-gradient(310deg, #f53939, #fbcf33);
-  --gradient-violet: linear-gradient(310deg, #4318ff, #9f7aea);
+  /* Type, three faces with three jobs (2026-10-10):
+       sans     IBM Plex Sans - everything people read AND the titles. Page
+                and card titles, sidebar labels and stat numbers are the
+                same face at semibold (600): hierarchy comes from size and
+                weight, not from a second display face. Space Grotesk did
+                that job briefly and was dropped - one family reads calmer.
+       mono     IBM Plex Mono - timestamps, IDs, ticket numbers, camera
+                names: the record-keeping voice of CCTV overlays and access
+                logs, and digits that line up down a column. Same family as
+                the sans, so the data areas read as one system.
+       display  Oxanium - the SmartAgency wordmark only.
+     All bundled (see main.tsx), so the fallbacks only matter for the instant
+     before the font file is parsed. */
+  --font-sans: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --font-display: 'Oxanium Variable', 'IBM Plex Sans Variable', ui-sans-serif, sans-serif;
 
   --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  --animate-fade-rise: fade-rise 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* Short and small. A page transition that can be watched is too long. */
+  --animate-fade-rise: fade-rise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-shimmer: shimmer 1.6s linear infinite;
 }
 
@@ -207,26 +158,14 @@
   background-image: var(--gradient-lit);
 }
 
-/* The glass card. Gradient plus blur together, because either alone is wrong:
-   the gradient without the blur shows a legible page through the card, and the
-   blur without the gradient has nothing to tint what it blurs.
-
-   The background-color fallback matters. backdrop-filter is unsupported in a
-   few engines and disabled outright by some privacy settings, and without a
-   fallback those users get a card that is 50% transparent over a dark page -
-   text on text. Declaring the solid panel colour first means they lose the
-   effect and keep the legibility. */
+/* The card. Kept under its old name so no screen had to change: everything
+   that asked for glass now gets the opaque panel with a lit hairline edge.
+   The border is real (not a box-shadow ring) so it never fights the shadow
+   utilities a card also carries. */
 @utility surface-glass {
   background-color: var(--color-panel);
   background-image: var(--gradient-panel);
-  backdrop-filter: blur(120px);
-}
-
-@supports (backdrop-filter: blur(1px)) {
-  /* Only drop to the translucent fill where the blur will actually run. */
-  .surface-glass {
-    background-color: transparent;
-  }
+  border: 1px solid var(--color-edge);
 }
 
 @utility surface-glass-2 {
@@ -238,21 +177,24 @@
   background-image: var(--gradient-accent);
 }
 
+/* A scroll container that still scrolls but draws no bar - for the rail,
+   where a scrollbar beside a column of round chips reads as a rendering bug. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Cursor-tracked edge glow.
 
    Lights the BORDER of a surface with a soft pool of accent that follows the
-   pointer, brightening as the cursor approaches. The position and intensity
-   arrive as custom properties from useCursorGlow - this rule only draws them.
-
-   The mask is the whole trick. A radial gradient fills the element, then two
-   masks are composited so only the padding box survives: one covers the full
-   box, the other covers the content box, and `exclude` subtracts the second
-   from the first. What is left is a 1px ring. Without this the gradient would
-   wash over the entire card and drown the form sitting on it.
-
-   Falls back safely: a browser without mask-composite shows the gradient over
-   the card, which the low opacity keeps subtle rather than broken.
+   pointer. The position and intensity arrive as custom properties from
+   useCursorGlow - this rule only draws them. Two masks composited with
+   `exclude` leave only a 1px ring, so the gradient never washes over the
+   content sitting on the card.
 --------------------------------------------------------------------------- */
 @utility glow-edge {
   position: relative;
@@ -260,13 +202,12 @@
   &::before {
     content: '';
     position: absolute;
-    inset: 0;
+    inset: -1px;
     border-radius: inherit;
-    /* Ring thickness - also the mask's content-box inset. */
     padding: 1px;
     background: radial-gradient(
-      240px circle at var(--glow-x, 50%) var(--glow-y, 50%),
-      var(--color-accent),
+      260px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+      var(--color-line-strong),
       transparent 70%
     );
     -webkit-mask:
@@ -278,8 +219,6 @@
       linear-gradient(#000 0 0);
     mask-composite: exclude;
     opacity: var(--glow-strength, 0);
-    /* Short, because the strength itself is already eased by proximity - a
-       long transition here would lag the cursor rather than smooth it. */
     transition: opacity 0.2s var(--ease-soft);
     pointer-events: none;
   }
@@ -288,7 +227,7 @@
 @keyframes fade-rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -306,104 +245,61 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Base
---------------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------------
    LIGHT THEME
 
-   The tokens above are the DARK values and remain the defaults - this is a
-   wall-mounted dashboard and dark is what it runs in. This block re-points the
-   same names for light, so every component is themed without touching a single
-   component file: they were already written against `bg-panel` and `text-ink`
-   rather than against colours.
-
-   Only one selector, keyed on an explicit data-theme. The usual second copy
-   inside a prefers-color-scheme media query is not here on purpose: the
-   provider resolves "system" in script and always stamps a concrete light or
-   dark, so there is exactly one place these values live and no way for the two
-   copies to drift apart.
+   The tokens above are the DARK values and remain the defaults. This block
+   re-points the same names for light, keyed on an explicit data-theme that the
+   provider always stamps (it resolves "system" in script), so there is one
+   copy of these values and nothing to drift.
 
    It sits in `base` rather than in `@theme` because Tailwind emits @theme into
-   the `theme` cascade layer, and `base` comes after it - so these win on layer
-   order rather than on specificity, which would otherwise be a tie.
+   the `theme` cascade layer and `base` comes after it - these win on layer
+   order rather than on specificity.
 
-   Every text pair here was checked for contrast rather than picked by eye. The
-   muted step is #59697d and not something lighter because the obvious choice
-   measured 4.43:1 on the canvas, just under the 4.5 bar.
+   Text pairs were checked for contrast, not picked by eye.
 --------------------------------------------------------------------------- */
 @layer base {
   :root[data-theme='light'] {
-    /* Surfaces, lightest to darkest - the inverse of the dark stack. `panel`
-       is pure white so cards read as paper on a tinted desk; the canvas keeps
-       a blue cast so the theme still belongs to the same family. */
-    --color-canvas: #eef1f8;
+    --color-canvas: #f5f7fa;
     --color-panel: #ffffff;
-    --color-panel-2: #f2f5fb;
-    --color-line: #e2e8f0;
-    --color-line-strong: #cbd5e0;
+    --color-panel-2: #f0f2f6;
+    --color-line: #e2e6ec;
+    --color-line-strong: #cbd1da;
+    --color-line-control: #7b8493;
+    --color-edge: rgb(16 24 40 / 0.09);
 
-    /* Ink is the brand navy rather than black - pure black on white is as
-       harsh as pure white on black, and this keeps the two themes related. */
-    --color-ink: #0f1535;
-    --color-ink-2: #4a5568;
-    --color-ink-3: #59697d;
+    --color-ink: #0f1728;
+    --color-ink-2: #455468;
+    --color-ink-3: #5d6a7d;
 
-    /* The accent holds: #0075ff works on both grounds. `accent-ink` has to
-       change though - the light step used for text on dark is far too pale
-       against white, so it becomes a darker step of the same hue. */
-    --color-accent: #0075ff;
-    --color-accent-ink: #0057c4;
+    --color-accent: #2f6feb;
+    --color-accent-ink: #1f5ad6;
+    --color-on-accent: #ffffff;
 
-    /* Status colours are re-stepped, not re-hued. The dark-theme values are
-       tuned to glow against near-black and several of them - the amber above
-       all - are close to invisible on white. */
-    --color-ok: #01875a;
-    --color-warn: #a35a00;
-    --color-danger: #c81e1e;
-    --color-info: #0e7490;
+    /* Status re-stepped, not re-hued: the dark values are tuned for a black
+       ground and several are too pale to read on white. */
+    --color-ok: #1a7f37;
+    /* warn darkened a step: the old #9a6700 measured 4.3:1 on panel-2,
+       this is 4.9:1. */
+    --color-warn: #8f5f00;
+    --color-danger: #cf222e;
+    --color-info: #455468;
 
-    /* Chart series are UNCHANGED across themes, which is not a shortcut: the
-       four were re-run through the same validation against a white surface and
-       pass every pair there too, colourblind separation included. Keeping one
-       set means a screenshot of a chart means the same thing in either mode. */
+    --shadow-panel: 0 1px 2px rgb(16 24 40 / 0.05);
+    --shadow-raised: 0 8px 20px -6px rgb(16 24 40 / 0.12), 0 1px 2px rgb(16 24 40 / 0.05);
+    --shadow-glow: 0 1px 2px rgb(16 24 40 / 0.08);
+    --shadow-control-inset: inset 0 1px 1px rgb(16 24 40 / 0.04);
 
-    /* Glass inverts: white panes over a light ground rather than navy over a
-       dark one. Same geometry, same blur, so cards keep their shape. */
-    --gradient-panel: linear-gradient(
-      127.09deg,
-      rgb(255 255 255 / 0.94) 19.41%,
-      rgb(242 245 251 / 0.62) 76.65%
-    );
-    --gradient-panel-2: linear-gradient(
-      126.97deg,
-      rgb(242 245 251 / 0.9) 28.26%,
-      rgb(226 232 240 / 0.85) 91.2%
-    );
-    /* The lit edge flips from a white highlight to a soft shadow: on a light
-       surface a brighter top edge is invisible, and what reads as "raised" is
-       the underside darkening instead. */
-    --gradient-lit: linear-gradient(to bottom, rgb(15 21 53 / 0.03), rgb(15 21 53 / 0) 42%);
-
-    /* Shadows have to do real work here. On near-black a shadow is nearly
-       invisible and the fill separates the card; on white it is the only thing
-       that does, so both steps go several times darker. */
-    --shadow-panel: 0 12px 24px -8px rgb(15 21 53 / 0.12);
-    --shadow-raised: 0 18px 32px -10px rgb(15 21 53 / 0.2);
-    --shadow-control-inset: inset 0 1px 2px rgb(15 21 53 / 0.06);
-
-    /* Avatar discs invert: a light tint carrying dark initials. See the
-       matching :root defaults for why these are lightness numbers rather than
-       colours. */
+    /* Avatar discs invert: a light tint carrying dark initials. */
     --avatar-bg-l: 0.91;
     --avatar-fg-l: 0.4;
   }
 }
 
 @layer base {
-  /* Avatar disc lightness, as OKLCH L values rather than colours.
-     The disc's HUE is derived per person at runtime, so the theme cannot
-     supply a finished colour here - only how light the fill and the initials
-     should be. Two numbers instead of two palettes. */
+  /* Avatar disc lightness, as OKLCH L values rather than colours. The disc's
+     HUE is derived per person at runtime, so the theme can only supply how
+     light the fill and the initials should be. */
   :root {
     --avatar-bg-l: 0.32;
     --avatar-fg-l: 0.86;
@@ -413,87 +309,44 @@
     color-scheme: dark;
   }
 
-  /* Tells the browser to render its own chrome - form controls, scrollbars,
-     the caret - in the matching mode. Without it a light page keeps dark
-     dropdowns, which is the most common tell that a theme was bolted on. */
+  /* Browser chrome - form controls, scrollbars, the caret - in the matching
+     mode. Without it a light page keeps dark dropdowns. */
   html[data-theme='light'] {
     color-scheme: light;
   }
 
-  /* THE GLOW. Without it the palette is right and the page still looks wrong:
-     the cards are translucent, so if there is nothing behind them to show
-     through, "glass" renders as flat dark rectangles and the whole surface
-     treatment is wasted. The glow is what the glass is glass OVER.
-
-     The design ships this as a 1920x1328 PNG. Reproduced here as three radial
-     gradients instead, for two reasons that matter for this product: it runs
-     on one machine with no network, so a fetched image is a blank background
-     the day something goes wrong, and gradients re-tint from the tokens above
-     while a baked PNG would have to be re-exported.
-
-     Placement and colour are measured off the rendered design, not guessed -
-     near-black at the top (#0e091f), blooming toward the bottom, brightest
-     low-right (#344aac) with a second indigo bloom bottom-left (#272587).
-
-     `fixed` so it does not slide away as the roster scrolls: it is meant to be
-     the room the dashboard sits in, not part of the document. */
+  /* A plain canvas. No glow, no texture: decoration behind the data is the
+     most recognisable trait of a generated dashboard, and it competes with
+     the one thing on screen that matters. */
   body {
     background-color: var(--color-canvas);
-    background-image:
-      radial-gradient(ellipse 70% 58% at 80% 98%, rgb(62 88 196 / 1), transparent 72%),
-      radial-gradient(ellipse 55% 50% at 6% 100%, rgb(45 40 150 / 0.95), transparent 70%),
-      linear-gradient(to bottom, transparent 12%, rgb(42 48 155 / 0.68) 100%);
-    background-attachment: fixed;
-    background-repeat: no-repeat;
     color: var(--color-ink);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* No webfont on purpose. The whole product runs on one local machine with
-       no cloud, so a CDN font would be a blank screen the day the network is
-       out. Self-hosting one is a dependency change and belongs in its own PR.
-       Until then the system stack is tuned rather than replaced. */
-    font-family:
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      'Segoe UI Variable Text',
-      'Segoe UI',
-      Roboto,
-      'Helvetica Neue',
-      Arial,
-      sans-serif;
-    /* Slightly open by default. Dark text on light tightens; light text on
-       dark blooms, and needs the extra room to stay legible. */
-    letter-spacing: 0.005em;
+    font-family: var(--font-sans);
   }
 
-  /* The glow, restated for light. Same three sources in the same places, at
-     roughly a tenth of the strength and in the accent's own hue rather than
-     the deep indigo. The dark values here would not read as a bloom on a light
-     ground - they would read as a stain. */
-  :root[data-theme='light'] body {
-    background-image:
-      radial-gradient(ellipse 70% 58% at 80% 98%, rgb(0 117 255 / 0.13), transparent 72%),
-      radial-gradient(ellipse 55% 50% at 6% 100%, rgb(67 24 255 / 0.1), transparent 70%),
-      linear-gradient(to bottom, transparent 12%, rgb(0 117 255 / 0.07) 100%);
+  /* Headings are the sans at semibold, and they tighten as they grow -
+     uniform tracking across sizes looks machine-assembled. The weight here
+     is the default; a heading that sets its own weight class keeps it. */
+  h1,
+  h2,
+  h3 {
+    font-weight: 600;
   }
 
-  /* Headings tighten as they grow. Uniform tracking across sizes is one of the
-     things that makes an interface look machine-assembled - real typography
-     compensates, because the same spacing reads loose at 24px and cramped at
-     12px. */
   h1 {
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
   }
 
   h2,
   h3 {
-    letter-spacing: -0.011em;
+    letter-spacing: -0.012em;
   }
 
   /* Small uppercase labels need the opposite treatment or they set solid. */
   .tracked {
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
@@ -505,38 +358,41 @@
     font-variant-numeric: tabular-nums;
   }
 
-  code {
-    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* Timestamps and codes in the mono face. <time> is how every timestamp in
+     the app is rendered (ui/Time.tsx, the top-bar clock), so this one rule
+     covers them all. Slightly smaller, because Plex Mono runs wide next to
+     Plex Sans at the same nominal size. */
+  code,
+  kbd,
+  samp,
+  time {
+    font-family: var(--font-mono);
+    font-size: 0.94em;
   }
 
-  /* Selects and date inputs render their own control chrome from the OS, which
-     on a dark surface arrives light unless told otherwise. */
   select,
   input[type='date'] {
     color-scheme: dark;
   }
 
-  /* One focus treatment everywhere, and it is always visible.
+  html[data-theme='light'] select,
+  html[data-theme='light'] input[type='date'] {
+    color-scheme: light;
+  }
 
-     The offset matters as much as the ring: drawn flush, an outline reads as
-     part of the control's border and gets lost. Held two pixels off, it reads
-     as a separate thing pointing at the control. */
+  /* One focus treatment everywhere, always visible, held two pixels off so it
+     reads as pointing at the control rather than as its border. */
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent-ink);
     outline-offset: 2px;
     border-radius: 4px;
   }
 
-  /* Selection picks up the accent instead of the browser's default blue,
-     which is otherwise the one un-themed thing on the whole screen. */
   ::selection {
-    background-color: color-mix(in oklab, var(--color-accent) 30%, transparent);
+    background-color: color-mix(in oklab, var(--color-accent) 35%, transparent);
     color: var(--color-ink);
   }
 
-  /* A dark scrollbar. The default light one on a near-black page is the single
-     most obvious sign that a theme stopped at the content and never reached
-     the chrome. */
   * {
     scrollbar-color: var(--color-line-strong) transparent;
     scrollbar-width: thin;
@@ -546,26 +402,10 @@
      Modal enter and exit.
 
      A native <dialog> is display:none when closed, and you cannot transition
-     from display:none - which is why modals so often snap in while everything
-     else on the page animates. The fix is three modern pieces working
-     together, and all three are needed:
-
-       @starting-style        gives the browser a "before" to animate FROM on
-                              the frame the dialog is first shown
-       display allow-discrete keeps display:none from applying until the exit
-                              transition has finished
-       overlay allow-discrete does the same for the top layer, without which
-                              the dialog vanishes from view at frame one and
-                              fades out somewhere nobody can see
-
-     Done in CSS rather than with a JS animation library, so it costs nothing
-     and cannot desynchronise from the open state. Browsers without
-     @starting-style simply show the dialog immediately, which is the current
-     behaviour - it degrades to exactly what we have today.
-
-     Motion is small on purpose: half a rem of rise and 3% of scale. A modal
-     that flies in from the edge or bounces draws attention to the animation;
-     this draws attention to the dialog.
+     from display:none. @starting-style gives the browser a "before" to
+     animate from; `display` and `overlay` with allow-discrete keep the
+     dialog in the top layer until its exit has finished. Browsers without
+     @starting-style just show the dialog immediately.
   --------------------------------------------------------------------- */
   dialog {
     opacity: 0;

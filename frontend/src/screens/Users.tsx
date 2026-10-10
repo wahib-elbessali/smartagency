@@ -194,14 +194,14 @@ export default function Users() {
           </PanelHeader>
 
           {inlineError && (
-            <div className="border-line border-b px-5 py-3">
+            <div className="border-line border-b px-6 py-3">
               <p role="alert" className="text-warn text-sm">
                 {inlineError}
               </p>
             </div>
           )}
 
-          <PanelBody className="px-0 py-0">
+          <PanelBody flush>
             <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">
@@ -209,19 +209,19 @@ export default function Users() {
                 </caption>
                 <thead>
                   <tr className="text-ink-3 tracked border-line/70 border-b text-left text-[10px] font-medium">
-                    <th scope="col" className="px-5 py-2.5 font-medium">
+                    <th scope="col" className="px-6 py-3 font-medium">
                       Account
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-medium">
+                    <th scope="col" className="px-6 py-3 font-medium">
                       Role
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-medium">
+                    <th scope="col" className="px-6 py-3 font-medium">
                       Agency
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-medium">
+                    <th scope="col" className="px-6 py-3 font-medium">
                       Employee
                     </th>
-                    <th scope="col" className="px-5 py-2.5 text-right font-medium">
+                    <th scope="col" className="px-6 py-3 text-right font-medium">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -239,7 +239,7 @@ export default function Users() {
                         key={account.id}
                         className="border-line/70 hover:bg-panel-2/60 ease-soft border-b transition-colors duration-150 last:border-b-0"
                       >
-                        <th scope="row" className="px-5 py-3 text-left font-normal">
+                        <th scope="row" className="px-6 py-3 text-left font-normal">
                           <div className="flex items-center gap-3">
                             <Avatar name={account.full_name} />
                             <div className="min-w-0">
@@ -254,7 +254,7 @@ export default function Users() {
                           </div>
                         </th>
 
-                        <td className="px-5 py-3">
+                        <td className="px-6 py-3">
                           <div className="flex items-center gap-2">
                             {/* Read-only. Roles are set when an account is
                                 created and are not edited here at all, so this
@@ -268,7 +268,7 @@ export default function Users() {
                           </div>
                         </td>
 
-                        <td className="px-5 py-3">
+                        <td className="px-6 py-3">
                           {isAdminRow ? (
                             /* Not a disabled control: an admin has no agency to
                                show, and offering one would suggest a value could
@@ -282,7 +282,7 @@ export default function Users() {
                           ) : (
                             <select
                               aria-label={`Agency for ${account.full_name}`}
-                              className="border-line bg-panel-2 text-ink rounded-lg border px-2 py-1 text-xs"
+                              className="border-line-control bg-panel-2 text-ink rounded-lg border px-2 py-1 text-xs"
                               value={account.agency_id ?? ''}
                               disabled={changeAccess.isPending}
                               /* Role stays as it is; only the agency half moves. */
@@ -303,7 +303,7 @@ export default function Users() {
                           )}
                         </td>
 
-                        <td className="text-ink-2 px-5 py-3">
+                        <td className="text-ink-2 px-6 py-3">
                           {account.employee ? (
                             <span>
                               {account.employee.first_name} {account.employee.last_name}
@@ -315,8 +315,8 @@ export default function Users() {
                           )}
                         </td>
 
-                        <td className="px-5 py-3">
-                          <div className="flex justify-end gap-1.5">
+                        <td className="px-6 py-3">
+                          <div className="flex justify-end gap-2">
                             {/* One admin does not administer another. Their own
                                 row keeps Edit - a name, an email and a password
                                 are yours to change - and every other control on
@@ -401,7 +401,7 @@ export default function Users() {
                 point: the two confirmations look alike and mean very different
                 things, and overstating this one teaches people to click past
                 the one that matters. */}
-            <div className="border-line bg-panel-2 flex gap-3 rounded-lg border p-3.5">
+            <div className="border-line bg-panel-2 flex gap-3 rounded-lg border p-4">
               <AlertTriangle className="text-ink-3 mt-0.5 size-4 shrink-0" aria-hidden />
               <div className="text-sm leading-relaxed">
                 <p className="text-ink font-medium">
@@ -424,7 +424,7 @@ export default function Users() {
               </p>
             )}
 
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <Button
                 onClick={() => {
                   setConfirmingDelete(null)

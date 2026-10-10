@@ -121,7 +121,7 @@ function VisitorQueueBoard() {
         </PanelHeader>
 
         {assignError && (
-          <div className="border-line border-b px-5 py-3">
+          <div className="border-line border-b px-6 py-3">
             <p role="alert" className="text-warn text-sm">
               {assignError}
             </p>

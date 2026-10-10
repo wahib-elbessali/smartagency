@@ -55,12 +55,12 @@ export function Field({
       })}
 
       {hint && !error && (
-        <p id={hintId} className="text-ink-3 mt-1.5 text-xs">
+        <p id={hintId} className="text-ink-3 mt-2 text-xs">
           {hint}
         </p>
       )}
       {error && (
-        <p id={errorId} className="text-danger mt-1.5 text-xs">
+        <p id={errorId} className="text-danger mt-2 text-xs">
           {error}
         </p>
       )}

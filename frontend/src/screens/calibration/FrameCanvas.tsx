@@ -173,9 +173,9 @@ export function FrameCanvas({
   return (
     <Panel as="section">
       <PanelHeader>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <Ruler className="text-ink-3 size-4 shrink-0" aria-hidden />
-          <h2 className="text-ink truncate text-sm font-semibold">{camera.name}</h2>
+          <h2 className="text-ink truncate font-mono text-sm font-medium">{camera.name}</h2>
         </div>
         <p className="text-ink-3 mt-1 text-xs leading-relaxed">{hint}</p>
         <p className="text-ink-3 mt-1 text-xs">
@@ -189,7 +189,7 @@ export function FrameCanvas({
         </p>
       </PanelHeader>
 
-      <PanelBody className="p-0">
+      <PanelBody flush>
         <div className="bg-ink/90 relative aspect-video w-full overflow-hidden">
           {src && !noFrame ? (
             <img

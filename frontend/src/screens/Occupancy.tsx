@@ -118,7 +118,7 @@ export default function Occupancy() {
           {scopeError ? (
             <div role="alert" className="py-2">
               <p className="text-ink text-sm font-medium">Could not tell which zones are yours</p>
-              <p className="text-ink-2 mt-1.5 text-sm leading-relaxed">
+              <p className="text-ink-2 mt-2 text-sm leading-relaxed">
                 The feed covers every branch, and the list of this branch's zones did not load, so
                 nothing is shown rather than another branch's counts.
               </p>
@@ -128,7 +128,7 @@ export default function Occupancy() {
               <p className="text-ink text-sm font-medium">
                 {status === 'open' ? 'No zones configured' : 'Waiting for the feed'}
               </p>
-              <p className="text-ink-2 mt-1.5 text-sm leading-relaxed">
+              <p className="text-ink-2 mt-2 text-sm leading-relaxed">
                 {status === 'open'
                   ? 'Zones are drawn on the Zones screen. Until at least one exists there is nothing to count.'
                   : 'Nothing here reflects the connection, not the building.'}
@@ -141,7 +141,7 @@ export default function Occupancy() {
               const ready = zone.people_tracking_ready
               return (
                 <div key={name}>
-                  <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                  <div className="mb-2 flex items-baseline justify-between gap-3">
                     <span className="text-ink text-sm">{name}</span>
                     {ready ? (
                       <span className="text-ink tabular text-sm font-medium">{zone.count}</span>
@@ -153,7 +153,7 @@ export default function Occupancy() {
                       empty zone reads as "measured, and empty". */}
                   <div className="bg-panel-2 border-line h-2 overflow-hidden rounded-full border">
                     <div
-                      className="bg-accent h-full rounded-full transition-all duration-300"
+                      className="bg-accent h-full rounded-full transition-all duration-500"
                       style={{ width: ready ? share(zone.count, busiest) : '0%' }}
                     />
                   </div>

@@ -8,6 +8,13 @@ import { ScopeProvider } from '@/agency/scope'
 import { ThemeProvider } from '@/theme/theme'
 import { ApiError } from '@/api/errors'
 import './mocks'
+/* Fonts are bundled, not fetched from a CDN: the dashboard runs on one local
+   machine with no guaranteed network, and a font server being unreachable
+   must not change what the screen looks like. Only the weights in use. */
+import '@fontsource-variable/ibm-plex-sans'
+import '@fontsource-variable/oxanium'
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
 import './index.css'
 
 const queryClient = new QueryClient({

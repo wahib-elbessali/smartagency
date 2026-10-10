@@ -1,12 +1,11 @@
 import { type FormEvent, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { ShieldCheck } from 'lucide-react'
 import { useSession } from '@/auth/SessionContext'
 import { USE_MOCKS } from '@/api/config'
 import { ApiError, describeApiError } from '@/api/errors'
+import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
 import { Panel, PanelBody } from '@/components/ui/Panel'
-import { ParticleField } from '@/components/ParticleField'
 import { ThemeToggle } from '@/components/ThemeToggle'
 
 /**
@@ -61,15 +60,13 @@ export default function Login() {
   }
 
   const field =
-    'w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-ink placeholder:text-ink-3 transition-colors duration-150 focus:border-accent/60'
+    'w-full rounded-lg border border-line-control bg-panel-2 px-3 py-2 text-sm text-ink placeholder:text-ink-3 transition-colors duration-150 focus:border-accent/60'
 
   return (
     /* `relative` and `isolate`: the canvas is positioned against this element
        and the stacking context is closed here, so a negative z-index on the
        field cannot slip behind the page background and disappear. */
     <div className="relative isolate flex min-h-screen items-center justify-center overflow-hidden px-6">
-      <ParticleField className="pointer-events-none absolute inset-0 -z-10 h-full w-full" />
-
       {/* Top-right, away from the form. The theme control belongs here for the
           same reason it sits by the account block once you are signed in: it
           is about the application rather than about the task in front of you,
@@ -80,20 +77,23 @@ export default function Login() {
       </div>
 
       <div className="animate-fade-rise w-full max-w-sm">
-        <div className="mb-6 flex items-center justify-center gap-2.5">
-          <ShieldCheck className="text-accent size-5" aria-hidden />
-          <span className="text-ink font-semibold tracking-tight">SmartAgency</span>
+        <div className="mb-8 flex items-center justify-center gap-3">
+          {/* The same mark the sidebar carries, so signing in and the app
+              read as one product. */}
+          <Logo size={32} />
+          <span className="text-ink font-display text-lg font-semibold tracking-wide">
+            Smart<span className="text-ink-3 font-normal">Agency</span>
+          </span>
         </div>
 
-        {/* The one card the whole screen is about, so it earns the glow. */}
-        <Panel glow>
+        <Panel>
           <PanelBody className="py-6">
             <h1 className="text-ink text-base font-semibold">Sign in</h1>
             <p className="text-ink-3 mt-1 text-sm">Agency operations dashboard.</p>
 
-            <form onSubmit={onSubmit} className="mt-5 space-y-4">
+            <form onSubmit={onSubmit} className="mt-6 space-y-4">
               <div>
-                <label htmlFor="email" className="text-ink-2 mb-1.5 block text-sm">
+                <label htmlFor="email" className="text-ink-2 mb-2 block text-sm">
                   Email
                 </label>
                 <input
@@ -114,7 +114,7 @@ export default function Login() {
               </div>
 
               <div>
-                <label htmlFor="password" className="text-ink-2 mb-1.5 block text-sm">
+                <label htmlFor="password" className="text-ink-2 mb-2 block text-sm">
                   Password
                 </label>
                 <input
@@ -156,7 +156,7 @@ export default function Login() {
               <p className="text-ink-3 mt-1 text-xs leading-relaxed">
                 No backend is connected. Any password works - the email below picks the role.
               </p>
-              <ul className="mt-3 space-y-1.5">
+              <ul className="mt-3 space-y-2">
                 {MOCK_ACCOUNTS.map((account) => (
                   <li
                     key={account.email}

@@ -127,7 +127,7 @@ export default function Agencies() {
             <Panel as="section" key={agency.id}>
               <PanelHeader
                 action={
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-2">
                     {/* Only an admin has more than one branch to move between,
                         so only an admin is offered the move. A manager is
                         already inside theirs and always was. */}
@@ -165,7 +165,7 @@ export default function Agencies() {
                   </div>
                 }
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <Building2 className="text-ink-3 size-4 shrink-0" aria-hidden />
                   {/* Plain text, not a link: "Open" already scopes every
                       screen to this agency, so a separate detail page for it
@@ -191,7 +191,7 @@ export default function Agencies() {
                     called to it - and a closed counter is a 409 the visitor
                     queue has to explain. */}
                 {agency.counters.length > 0 && (
-                  <ul className="mt-4 flex flex-wrap gap-1.5">
+                  <ul className="mt-4 flex flex-wrap gap-2">
                     {agency.counters.map((counter) => (
                       <li key={counter.id}>
                         <Badge tone={counter.is_open ? 'ok' : 'neutral'}>
@@ -204,7 +204,7 @@ export default function Agencies() {
                 )}
 
                 {agency.zones.length > 0 && (
-                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                  <ul className="mt-2 flex flex-wrap gap-2">
                     {agency.zones.map((zone) => (
                       <li key={zone.id}>
                         <Badge tone={zone.is_private ? 'warn' : 'info'}>
@@ -319,7 +319,7 @@ function DeleteConfirmation({
 
   return (
     <div>
-      <div className="border-danger/40 bg-danger/10 flex gap-3 rounded-lg border p-3.5">
+      <div className="border-danger/40 bg-danger/10 flex gap-3 rounded-lg border p-4">
         <AlertTriangle className="text-danger mt-0.5 size-4 shrink-0" aria-hidden />
         <div className="text-sm leading-relaxed">
           <p className="text-danger font-medium">
@@ -358,7 +358,7 @@ function DeleteConfirmation({
         </p>
       )}
 
-      <div className="mt-5 flex flex-wrap justify-end gap-2">
+      <div className="mt-6 flex flex-wrap justify-end gap-2">
         <Button onClick={onCancel}>Cancel</Button>
         <Button onClick={onDeactivate}>
           <PowerOff className="size-3.5" aria-hidden />

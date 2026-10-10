@@ -216,13 +216,13 @@ export default function Alerts() {
         </Panel>
       ) : (
         <Panel as="section">
-          <PanelBody className="flex gap-4 py-5">
+          <PanelBody className="flex gap-4 py-6">
             <Icon className="text-ink-3 mt-0.5 size-5 shrink-0" aria-hidden />
             <div role="status">
               <h2 className="text-ink text-sm font-semibold">
                 {status === 'open' ? 'All clear' : 'Nothing to show yet'}
               </h2>
-              <p className="text-ink-2 mt-1.5 text-sm leading-relaxed">
+              <p className="text-ink-2 mt-2 text-sm leading-relaxed">
                 {status === 'open'
                   ? `No ${FEATURE_LABEL[feature].toLowerCase()} detections on any camera.`
                   : 'Waiting for the feed. Nothing here means the connection, not the cameras.'}

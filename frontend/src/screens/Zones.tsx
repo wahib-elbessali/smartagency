@@ -533,7 +533,7 @@ function Drawing({
           </Button>
         }
       >
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <Pentagon className="text-ink-3 size-4 shrink-0" aria-hidden />
           <h2 className="text-ink truncate text-sm font-semibold">{camera.name}</h2>
         </div>
@@ -547,7 +547,7 @@ function Drawing({
         </p>
       </PanelHeader>
 
-      <PanelBody className="p-0">
+      <PanelBody flush>
         <div className="bg-ink/90 relative aspect-video w-full overflow-hidden">
           {src && !noFrame ? (
             <img
@@ -731,7 +731,7 @@ function NameForm({
         </p>
       )}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-6 flex justify-end gap-2">
         <Button type="button" onClick={onCancel}>
           Cancel
         </Button>

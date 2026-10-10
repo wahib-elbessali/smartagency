@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it } from 'vitest'
@@ -100,15 +100,21 @@ describe('AppShell navigation', () => {
   it('leaves the unguarded screens for every role', () => {
     renderShell('TECHNICIAN')
     expect(navLink(/manual controls/i)).toBeInTheDocument()
+    expect(navLink(/help/i)).toBeInTheDocument()
+    expect(navLink(/settings/i)).toBeInTheDocument()
   })
 
   /* The alert streams refuse anyone outside ADMIN, MANAGER and SECURITY
-     (contracts/api.md §13), so the link would lead only to a refusal. */
+     (contracts/api.md §13), so the link would lead only to a refusal. Two
+     links lead there now - the sidebar entry and the top bar's alerts bell -
+     and a technician must get neither. */
   it('offers alerts to security and not to a technician', () => {
     renderShell('SECURITY')
-    expect(navLink(/alerts/i)).toBeInTheDocument()
+    const sidebar = screen.getByRole('navigation', { name: 'Main' })
+    expect(within(sidebar).getByRole('link', { name: /alerts/i })).toBeInTheDocument()
+    cleanup()
     renderShell('TECHNICIAN')
-    expect(screen.queryAllByRole('link', { name: /alerts/i })).toHaveLength(1)
+    expect(screen.queryAllByRole('link', { name: /alerts/i })).toHaveLength(0)
   })
 })
 

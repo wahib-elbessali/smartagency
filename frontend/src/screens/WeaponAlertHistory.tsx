@@ -84,11 +84,15 @@ function lasted(fromIso: string, toIso: string): string {
 
 function AlertRow({ alert }: { alert: StoredAlert }) {
   return (
-    <li className="border-line bg-panel-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border p-3">
+    <li className="border-line bg-panel-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border p-3">
       <span className="text-ink min-w-0 flex-1 truncate text-sm font-medium">
         {/* camera_name is null once the camera has been deleted; the alert
             outlives it on purpose. */}
-        {alert.camera_name ?? <span className="text-ink-3 font-normal">A deleted camera</span>}
+        {alert.camera_name ? (
+          <span className="font-mono">{alert.camera_name}</span>
+        ) : (
+          <span className="text-ink-3 font-normal">A deleted camera</span>
+        )}
       </span>
       <Badge tone={SEVERITY_TONE[alert.severity]}>{alert.severity}</Badge>
       <Badge tone={STATUS_TONE[alert.status]}>{alert.status}</Badge>

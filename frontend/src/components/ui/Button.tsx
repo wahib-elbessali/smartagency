@@ -23,13 +23,12 @@ type Shape = 'control' | 'pill'
  * up looking generated: everything shouts, so nothing leads.
  */
 const VARIANTS: Record<Variant, string> = {
-  primary:
-    'bg-accent bg-accent-gradient text-ink font-bold hover:brightness-110 active:brightness-95',
+  primary: 'bg-accent text-on-accent font-medium hover:brightness-110 active:brightness-95',
   /* Secondary is glass rather than a ring on nothing. Against translucent
      cards a bare outlined button reads as a gap in the surface; the same
      treatment as the cards, one step denser, reads as a control resting on
      them. */
-  secondary: 'text-ink surface-glass-2 hover:brightness-125',
+  secondary: 'text-ink bg-panel-2 border-line hover:border-line-strong hover:bg-line/60 border',
   ghost: 'text-ink-2 hover:surface-glass-2 hover:text-ink',
   danger: 'text-danger ring-danger/40 hover:bg-danger/12 ring-1',
 }
