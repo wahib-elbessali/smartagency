@@ -143,6 +143,10 @@
   /* Short and small. A page transition that can be watched is too long. */
   --animate-fade-rise: fade-rise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-shimmer: shimmer 1.6s linear infinite;
+  /* The sign-in mark's status light (Logo `pulse`). Slow on purpose: a
+     heartbeat, not an alert. The only decorative looping animation in the
+     app (the skeleton shimmer loops too, but only while data is loading). */
+  --animate-beacon: beacon 3.5s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
 }
 
 /* ---------------------------------------------------------------------------
@@ -232,6 +236,20 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* A ring leaves the dot and fades. It is invisible again by 70% and rests
+   there, so each beat is followed by a pause rather than a constant throb. */
+@keyframes beacon {
+  0% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
   }
 }
 

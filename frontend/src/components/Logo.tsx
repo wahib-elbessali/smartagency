@@ -50,6 +50,7 @@ export function Logo({
   variant = 'colour',
   className,
   title,
+  pulse = false,
 }: {
   /** Rendered width and height in px. */
   size?: number
@@ -57,6 +58,16 @@ export function Logo({
   className?: string
   /** Accessible name. Omit when a visible wordmark sits next to the mark. */
   title?: string
+  /**
+   * The status light "breathes": a faint ring leaves the dot and fades every
+   * few seconds - the system is on and watching. For the large sign-in mark
+   * ONLY. In the sidebar or any working screen a moving dot would read as
+   * "something is happening", the opposite of what the mark should say there.
+   * The arcs never move: rotating them would make the mark a loading spinner.
+   * Under prefers-reduced-motion the global rule in index.css stops it on its
+   * final, invisible frame, leaving a still dot.
+   */
+  pulse?: boolean
 }) {
   return (
     <svg
@@ -76,6 +87,21 @@ export function Logo({
       {ARC_PATHS.map((d) => (
         <path key={d} d={d} />
       ))}
+      {pulse && (
+        /* Same size and colour as the dot, scaled out to just inside the arcs
+           (2.2x = radius 5.5; the nearest arc edge is ~5.6), so the light
+           stays enclosed by them. */
+        <circle
+          cx="12"
+          cy="12"
+          r="2.5"
+          stroke="none"
+          className={cn(
+            'animate-beacon origin-center [transform-box:fill-box]',
+            variant === 'colour' ? 'fill-accent' : 'fill-current',
+          )}
+        />
+      )}
       <circle
         cx="12"
         cy="12"
