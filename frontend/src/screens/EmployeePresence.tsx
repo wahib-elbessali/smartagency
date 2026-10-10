@@ -120,7 +120,7 @@ export default function EmployeePresence() {
         </>
       }
     >
-      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatTile
           label="In the building"
           value={attendance.totals.present}
@@ -172,7 +172,7 @@ export default function EmployeePresence() {
           the table below renders - no extra request, and nothing on screen can
           disagree with anything else on screen. */}
       {arrivals.length > 0 && (
-        <div className="mb-5 grid grid-cols-1 gap-3 lg:grid-cols-5">
+        <div className="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-5">
           <Panel as="section" className="lg:col-span-3">
             <PanelHeader>
               <h2 className="text-ink text-sm font-semibold">Arrivals through the day</h2>
@@ -230,7 +230,7 @@ export default function EmployeePresence() {
               </span>
             </div>
           </PanelHeader>
-          <PanelBody className="px-0 py-0">
+          <PanelBody flush>
             <RosterTable
               entries={entries}
               employeeById={employeeById}
@@ -277,8 +277,8 @@ export default function EmployeePresence() {
  */
 function StaleNotice() {
   return (
-    <Panel tone="alert" className="mb-5">
-      <PanelBody className="flex gap-3 py-3.5">
+    <Panel tone="alert" className="mb-6">
+      <PanelBody className="flex gap-3 py-4">
         <AlertTriangle className="text-warn mt-0.5 size-4 shrink-0" aria-hidden />
         <p className="text-warn/90 text-sm leading-relaxed" role="status">
           <span className="font-medium">Not receiving live updates.</span> These rows are from the
@@ -308,19 +308,19 @@ function RosterTable({
         </caption>
         <thead>
           <tr className="text-ink-3 tracked border-line/70 border-b text-left text-[10px] font-medium">
-            <th scope="col" className="px-5 py-2.5 font-medium">
+            <th scope="col" className="px-6 py-3 font-medium">
               Employee
             </th>
-            <th scope="col" className="px-5 py-2.5 font-medium">
+            <th scope="col" className="px-6 py-3 font-medium">
               Position
             </th>
-            <th scope="col" className="px-5 py-2.5 font-medium">
+            <th scope="col" className="px-6 py-3 font-medium">
               In
             </th>
-            <th scope="col" className="px-5 py-2.5 font-medium">
+            <th scope="col" className="px-6 py-3 font-medium">
               Out
             </th>
-            <th scope="col" className="px-5 py-2.5 font-medium">
+            <th scope="col" className="px-6 py-3 font-medium">
               Status
             </th>
           </tr>
@@ -336,7 +336,7 @@ function RosterTable({
                 key={`${entry.employee_id}|${entry.check_in}`}
                 className="border-line/70 hover:bg-panel-2/60 ease-soft border-b transition-colors duration-150 last:border-b-0"
               >
-                <th scope="row" className="px-5 py-3 text-left font-normal">
+                <th scope="row" className="px-6 py-3 text-left font-normal">
                   {/* A button, not a row click: the history is a real
                       navigation and has to be reachable from the keyboard.
                       Wrapping the whole row instead would swallow any future
@@ -351,14 +351,14 @@ function RosterTable({
                     <div className="min-w-0">
                       <div className="text-ink truncate font-medium">{entry.employee_name}</div>
                       {employee?.rfid_uid && (
-                        <div className="text-ink-3 tabular truncate text-xs">
+                        <div className="text-ink-3 truncate font-mono text-xs">
                           {employee.rfid_uid}
                         </div>
                       )}
                     </div>
                   </button>
                 </th>
-                <td className="text-ink-2 px-5 py-3">
+                <td className="text-ink-2 px-6 py-3">
                   {/* Two different unknowns, deliberately worded differently.
                       Attendance can name someone the employees list doesn't
                       cover, because a MANAGER's scope is set by the backend and
@@ -374,14 +374,14 @@ function RosterTable({
                     <span className="text-ink-3">No position set</span>
                   )}
                 </td>
-                <td className="text-ink-2 px-5 py-3">
+                <td className="text-ink-2 px-6 py-3">
                   <Clock iso={entry.check_in} />
                 </td>
-                <td className="text-ink-2 px-5 py-3">
+                <td className="text-ink-2 px-6 py-3">
                   <Clock iso={entry.check_out} />
                 </td>
-                <td className="px-5 py-3">
-                  <div className="flex flex-wrap items-center gap-1.5">
+                <td className="px-6 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
                     {stillIn ? <Badge tone="ok">In</Badge> : <Badge tone="neutral">Out</Badge>}
                     {late === true && <Badge tone="warn">Late</Badge>}
                     <Badge tone="neutral">{entry.method}</Badge>

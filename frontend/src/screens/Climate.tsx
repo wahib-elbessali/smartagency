@@ -216,7 +216,7 @@ function AgencyWeatherCard({ agency }: { agency: Agency }) {
           )}
         </div>
         {agency.address !== null && (
-          <span className="bg-accent-gradient text-ink grid size-11 shrink-0 place-items-center rounded-[0.75rem]">
+          <span className="text-ink-3 grid size-5 shrink-0 place-items-center self-start [&_svg]:size-4">
             <Icon className="size-5" aria-hidden />
           </span>
         )}

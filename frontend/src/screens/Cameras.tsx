@@ -77,10 +77,13 @@ export default function Cameras() {
   })
 
   const [pickedAgencyId, setPickedAgencyId] = useState<string | null>(null)
-  /* Same order of preference as Services: what an admin picked here, then
-     the branch open elsewhere, then the first branch. Everyone else has one. */
+  /* An admin who has opened a branch (Agencies -> Open, the "Working inside"
+     bar) is working in that branch on every screen, so it wins and the
+     picker below is hidden - choosing it again here was the inconsistency.
+     With no branch open the picker decides, then the first branch once the
+     list arrives. Everyone else has exactly one agency and never sees it. */
   const agencyId = isAdmin
-    ? (pickedAgencyId ?? scope.agencyId ?? agencies.data?.[0]?.id ?? null)
+    ? (scope.agencyId ?? pickedAgencyId ?? agencies.data?.[0]?.id ?? null)
     : (user?.agency_id ?? null)
 
   const cameras = useQuery({
@@ -135,7 +138,7 @@ export default function Cameras() {
         ) : undefined
       }
     >
-      {isAdmin && (
+      {isAdmin && !scope.agencyId && (
         <div className="mb-4 max-w-xs">
           <label
             htmlFor="cameras_agency"
@@ -176,7 +179,7 @@ export default function Cameras() {
             <Panel as="section" key={camera.id}>
               <PanelHeader
                 action={
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-2">
                     {/* The live picture lives one level down (CameraView.tsx)
                         rather than on this card: a grid of six polling images
                         is a lot of requests for a screen whose job is the
@@ -209,9 +212,9 @@ export default function Cameras() {
                   </div>
                 }
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <CameraIcon className="text-ink-3 size-4 shrink-0" aria-hidden />
-                  <h2 className="text-ink truncate text-sm font-semibold">{camera.name}</h2>
+                  <h2 className="text-ink truncate font-mono text-sm font-medium">{camera.name}</h2>
                   <Badge tone={STATUS_TONE[camera.status]}>{camera.status}</Badge>
                 </div>
                 {/* Said in words because OFFLINE on a camera that was set up an
@@ -274,7 +277,7 @@ export default function Cameras() {
                   : 'Could not delete.'}
               </p>
             )}
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <Button
                 onClick={() => {
                   setConfirmingDelete(null)
@@ -349,7 +352,7 @@ function WeaponThresholdPanel() {
   return (
     <Panel as="section">
       <PanelHeader>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <ShieldAlert className="text-ink-3 size-4 shrink-0" aria-hidden />
           <h2 className="text-ink text-sm font-semibold">Weapon detection threshold</h2>
         </div>

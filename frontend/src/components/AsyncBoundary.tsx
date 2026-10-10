@@ -60,11 +60,11 @@ export function AsyncBoundary({
   if (isForbidden(error)) {
     return (
       <Panel>
-        <PanelBody className="flex gap-4 py-5">
+        <PanelBody className="flex gap-4 py-6">
           <Lock className="text-ink-3 mt-0.5 size-5 shrink-0" aria-hidden />
           <div role="status">
             <h2 className="text-ink text-sm font-semibold">Not available to your role</h2>
-            <p className="text-ink-2 mt-1.5 text-sm leading-relaxed">
+            <p className="text-ink-2 mt-2 text-sm leading-relaxed">
               {forbiddenMessage ?? 'Your role does not have access to this.'}
             </p>
           </div>
@@ -79,14 +79,14 @@ export function AsyncBoundary({
 
     return (
       <Panel tone="alert">
-        <PanelBody className="py-5">
+        <PanelBody className="py-6">
           <div className="flex gap-4">
             <AlertTriangle className="text-warn mt-0.5 size-5 shrink-0" aria-hidden />
             <div role="alert">
               <h2 className="text-warn text-sm font-semibold">Could not load this panel</h2>
-              <p className="text-warn/85 mt-1.5 text-sm leading-relaxed">{message}</p>
+              <p className="text-warn/85 mt-2 text-sm leading-relaxed">{message}</p>
               {onRetry && (
-                <Button size="sm" onClick={onRetry} className="mt-3.5">
+                <Button size="sm" onClick={onRetry} className="mt-4">
                   Try again
                 </Button>
               )}
@@ -100,7 +100,7 @@ export function AsyncBoundary({
   if (isEmpty) {
     return (
       <Panel>
-        <PanelBody className="flex flex-col items-center gap-2.5 py-12 text-center">
+        <PanelBody className="flex flex-col items-center gap-3 py-12 text-center">
           <Inbox className="text-ink-3 size-6" aria-hidden />
           <p className="text-ink-2 text-sm">{emptyMessage}</p>
         </PanelBody>

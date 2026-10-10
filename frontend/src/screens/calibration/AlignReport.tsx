@@ -57,9 +57,9 @@ export function AlignReport({ result, cameras }: { result: AlignResult; cameras:
                   {value.aligned ? 'aligned' : 'not aligned'}
                 </Badge>
               </div>
-              {value.error && <p className="text-ink-2 mt-1.5 text-xs">{value.error}</p>}
+              {value.error && <p className="text-ink-2 mt-2 text-xs">{value.error}</p>}
               {value.aligned && !value.reference && (
-                <p className="text-ink-3 mt-1.5 text-xs">
+                <p className="text-ink-3 mt-2 text-xs">
                   Tied to {nameOf(value.via ?? '')} with {value.n_points} shared spot
                   {value.n_points === 1 ? '' : 's'}
                   {value.order_reversed && ' — point order was reversed to fit better'}.

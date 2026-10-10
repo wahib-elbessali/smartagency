@@ -138,10 +138,13 @@ export default function Staffing() {
   })
 
   const [pickedAgencyId, setPickedAgencyId] = useState<string | null>(null)
-  /* Same order of preference as Zones: what an admin picked here, then the
-     branch open elsewhere, then the first branch. Everyone else has one. */
+  /* An admin who has opened a branch (Agencies -> Open, the "Working inside"
+     bar) is working in that branch on every screen, so it wins and the
+     picker below is hidden - choosing it again here was the inconsistency.
+     With no branch open the picker decides, then the first branch once the
+     list arrives. Everyone else has exactly one agency and never sees it. */
   const agencyId = isAdmin
-    ? (pickedAgencyId ?? scope.agencyId ?? agencies.data?.[0]?.id ?? null)
+    ? (scope.agencyId ?? pickedAgencyId ?? agencies.data?.[0]?.id ?? null)
     : (user?.agency_id ?? null)
 
   const stations = useQuery({
@@ -247,7 +250,7 @@ export default function Staffing() {
         </div>
       }
     >
-      {isAdmin && (
+      {isAdmin && !scope.agencyId && (
         <div className="mb-4 max-w-xs">
           <label
             htmlFor="staffing_agency"
@@ -319,7 +322,7 @@ export default function Staffing() {
                   </Button>
                 }
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <StatusIcon status={station.status} />
                   <h2 className="text-ink min-w-0 truncate text-sm font-semibold">
                     {station.name}
@@ -543,7 +546,7 @@ function BindForm({
         </p>
       )}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-6 flex justify-end gap-2">
         <Button type="button" onClick={onCancel}>
           Cancel
         </Button>

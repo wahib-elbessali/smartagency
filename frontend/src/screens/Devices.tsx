@@ -140,7 +140,7 @@ export default function Devices() {
             <Panel as="section" key={device.id}>
               <PanelHeader
                 action={
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="ghost"
@@ -179,7 +179,7 @@ export default function Devices() {
                   </div>
                 }
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <Cpu className="text-ink-3 size-4 shrink-0" aria-hidden />
                   <h2 className="text-ink truncate text-sm font-semibold">{device.name}</h2>
                   <Badge tone={STATUS_TONE[device.status]}>{device.status}</Badge>
@@ -285,7 +285,7 @@ export default function Devices() {
               For <span className="text-ink-2">{revealedKey.name}</span>, topic{' '}
               <span className="text-ink-2">{revealedKey.mqtt_topic}</span>.
             </p>
-            <div className="mt-5 flex justify-end">
+            <div className="mt-6 flex justify-end">
               <Button variant="primary" onClick={() => setRevealedKey(null)}>
                 I've stored it
               </Button>
@@ -390,7 +390,7 @@ function ThresholdsPanel({ device }: { device: Device }) {
           {rows.map((threshold) => (
             <div
               key={threshold.id}
-              className="border-line flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5"
+              className="border-line flex items-center justify-between gap-3 rounded-lg border px-4 py-3"
             >
               <div className="min-w-0">
                 <p className="text-ink text-sm font-medium">{threshold.sensor_type}</p>

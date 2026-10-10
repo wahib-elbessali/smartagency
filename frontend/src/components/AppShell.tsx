@@ -1,36 +1,101 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router'
-import { Building2, FlaskConical, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
+import {
+  Building2,
+  CircleHelp,
+  FlaskConical,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { MOCK_SCENARIO, USE_MOCKS } from '@/api/config'
 import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
 import { canReach } from '@/auth/access'
 import { landingPathFor } from '@/auth/landing'
-import { SCREENS } from '@/auth/screens'
-import { ThemeToggle } from '@/components/ThemeToggle'
-import { Avatar } from '@/components/ui/Avatar'
+import { SCREEN_SECTIONS, SCREENS } from '@/auth/screens'
+import { CommandPalette, type PaletteEntry } from '@/components/CommandPalette'
+import { setRailPinned, useRailPinned } from '@/components/railPinned'
+import { AccountMenu } from '@/components/AccountMenu'
+import { AlertsBell } from '@/components/AlertsBell'
+import { Logo } from '@/components/Logo'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
+
+/** Rail entries that are not in SCREENS, so the phone bar and the search can
+ *  still name them. */
+const UTILITY: readonly PaletteEntry[] = [
+  {
+    to: '/settings',
+    label: 'Settings',
+    description: 'Theme, sidebar and your account.',
+    icon: Settings,
+    section: 'General',
+  },
+  {
+    to: '/help',
+    label: 'Help',
+    description: 'What each screen is for.',
+    icon: CircleHelp,
+    section: 'General',
+  },
+]
+
+/** Shown on the search button, so the shortcut is learnable from the rail. */
+const SHORTCUT =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
 
 export function AppShell() {
   // Keying the main region on pathname replays the enter animation per route,
   // so navigation reads as a transition rather than an instant swap.
   const { pathname } = useLocation()
-  const { user, signOut } = useSession()
+  const { user } = useSession()
   const scope = useScope()
+  const pinned = useRailPinned()
 
   /* Only what this role can actually use. A link that answers with a refusal
      is not a link, and the nav is the one place that has to be true. */
   const nav = SCREENS.filter(({ to }) => canReach(user?.role, to))
+  /* Every reachable screen is on the rail, in sections. An empty section is
+     dropped, so an agent's three screens do not sit under three headings. */
+  const sections = SCREEN_SECTIONS.map((section) => ({
+    ...section,
+    screens: nav.filter(({ group }) => group === section.group),
+  })).filter(({ screens }) => screens.length > 0)
+  const searchable: PaletteEntry[] = [
+    ...sections.flatMap(({ title, screens }) =>
+      screens.map((entry) => ({ ...entry, section: title })),
+    ),
+    ...UTILITY,
+  ]
+  const [searchOpen, setSearchOpen] = useState(false)
 
   /* Below md the nav is a full-screen menu behind a button rather than a
-     column. Laid out inline it wrapped into a block of fifteen links that
-     pushed every screen's content most of the way down a phone, and the
-     account block (with Sign out) had to be hidden to make room - leaving a
-     phone with no way to sign out at all. */
+     column. Laid out inline it wrapped into a block of links that pushed every
+     screen's content most of the way down a phone. */
   const [menuOpen, setMenuOpen] = useState(false)
-  const current = nav.find(({ to }) => pathname === to || pathname.startsWith(`${to}/`))
+  const closeMenu = () => setMenuOpen(false)
+  const isAt = (to: string) => pathname === to || pathname.startsWith(`${to}/`)
+  const current = searchable.find(({ to }) => isAt(to))
+
+  /* Ctrl+K anywhere, Cmd+K on a Mac. Taken even from inside a text field:
+     no screen here uses the combination for anything else. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setMenuOpen(false)
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -57,7 +122,7 @@ export function AppShell() {
     <div className="flex min-h-screen flex-col md:flex-row">
       <a
         href="#main"
-        className="bg-accent bg-accent-gradient text-ink sr-only rounded-md px-3 py-2 text-sm font-medium focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50"
+        className="bg-accent text-on-accent sr-only rounded-md px-3 py-2 text-sm font-medium focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50"
       >
         Skip to content
       </a>
@@ -66,8 +131,8 @@ export function AppShell() {
           while the page scrolls under it, and glass over moving content reads
           as a smear. The current screen's name sits here because the menu
           that would otherwise show it is closed. */}
-      <div className="bg-canvas/95 border-line sticky top-0 z-40 flex items-center gap-3 border-b px-4 py-2.5 backdrop-blur md:hidden">
-        <ShieldCheck className="text-accent size-[1.15rem] shrink-0" aria-hidden />
+      <div className="bg-canvas/95 border-line sticky top-0 z-40 flex items-center gap-3 border-b px-4 py-3 backdrop-blur md:hidden">
+        <Logo size={20} />
         <span className="text-ink min-w-0 flex-1 truncate text-sm font-medium">
           {current?.label ?? 'SmartAgency'}
         </span>
@@ -87,130 +152,182 @@ export function AppShell() {
         </Button>
       </div>
 
-      {/* The sidebar has no surface of its own and no dividing rule - it sits
-          directly on the canvas, and the only lit thing in it is the active
-          item. A navigation panel with its own fill competes with the cards it
-          frames; leaving it transparent lets the glass do all the layering. */}
-      {/* Pinned to the viewport rather than scrolling with the page. The
-          sidebar's bottom section - the theme control, the account, sign out -
-          used to sit at the end of a document that is several screens tall, so
-          reaching it meant scrolling past the whole roster. Those three are
-          the controls least related to the data being read, which makes
-          "scroll to the end of the data" exactly the wrong way to get to them.
+      {/* Desktop: a slim floating rail of icon chips - search, then every
+          screen this role can open in labelled sections, Help and Settings
+          at the foot, the pin button under them.
+          Unpinned, it widens to show labels while hovered (or while KEYBOARD
+          focus is inside it, so tabbing gets them too) and slides OVER the page,
+          because a layout that reflows whenever the pointer drifts left makes
+          every chart jump. Pinned, it stays wide and the reserved column
+          widens with it, so nothing sits underneath.
 
-          h-screen with its own overflow, so a long nav scrolls inside the
-          column instead of pushing the account block off the bottom. */}
+          :focus-visible, not :focus-within. Clicking a link leaves focus on
+          it, so with focus-within the rail stayed open after the pointer
+          left; a mouse click never sets focus-visible, so it now closes the
+          moment the pointer does, while Tab still opens it.
+
+          The <nav> itself is only the reserved column; the visible panel is
+          the fixed child. On a phone neither applies: the nav is a sheet under
+          the top bar, and every rail rule below is md:-prefixed. */}
       <nav
         id="main-nav"
         aria-label="Main"
         className={cn(
-          'shrink-0 md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col md:overflow-y-auto',
-          /* On a phone: hidden until the menu button opens it, then a sheet
-             under the top bar. md:flex above wins back the sidebar either way. */
+          'md:ease-soft shrink-0 md:block md:transition-[width] md:duration-300',
+          pinned ? 'md:w-[16.25rem]' : 'md:w-[5.5rem]',
           menuOpen
             ? 'bg-canvas fixed inset-x-0 top-[3.3rem] bottom-0 z-30 flex flex-col overflow-y-auto pt-3'
             : 'hidden',
         )}
       >
-        <div className="hidden items-center gap-2.5 px-5 pt-6 pb-7 md:flex">
-          <ShieldCheck className="text-accent size-[1.15rem]" aria-hidden />
-          <span className="text-ink text-[0.95rem] font-medium tracking-tight">
-            Smart<span className="text-ink-2">Agency</span>
-          </span>
-        </div>
-
-        <ul className="flex flex-col gap-0.5 px-3 pb-4">
-          {nav.map(({ to, label, icon: Icon }) => (
-            <li key={to}>
-              <NavLink
-                to={to}
-                onClick={() => setMenuOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    'group ease-soft relative flex items-center gap-3 rounded-[0.9375rem] p-2.5 text-sm transition-all duration-200',
-                    /* The selected item is a SOLID panel, not glass, and that
-                       is measured from the design rather than assumed. Glass
-                       here would be wrong twice over: the sidebar sits on the
-                       darkest part of the page, so there is nothing behind it
-                       worth showing through, and a translucent selection on a
-                       transparent column reads as a smudge rather than a
-                       press. Solid gives the item a definite edge. */
-                    isActive
-                      ? 'bg-panel-2 text-ink shadow-panel font-medium'
-                      : 'text-ink-2 hover:text-ink',
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {/* The icon lives in a chip, and the chip is what carries
-                        the state - a flat accent fill when selected, the panel
-                        colour when not. Flat rather than the gradient the
-                        buttons use: at 32px a two-stop gradient reads as a
-                        muddle, and the design keeps its gradients for surfaces
-                        big enough to show them.
-
-                        Marking selection on a small square of colour rather
-                        than on the label keeps the text at full contrast in
-                        both states, which a highlighted row never manages. */}
-                    <span
-                      className={cn(
-                        'ease-soft grid size-8 shrink-0 place-items-center rounded-[0.75rem] transition-all duration-200',
-                        isActive
-                          ? 'bg-accent text-ink'
-                          : 'bg-panel-2 text-ink-2 group-hover:text-ink',
-                      )}
-                    >
-                      <Icon className="size-4" aria-hidden />
-                    </span>
-                    {label}
-                  </>
-                )}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-
-        {user && (
-          /* Role is shown because several endpoints are role-scoped, so "why
-             can't I see the other agency?" has a visible answer instead of
-             looking like a bug. */
-          <div className="border-line mt-auto border-t px-3 pt-3 pb-4 md:border-t-0">
-            {/* Sits with the account block rather than in the page header:
-                it is a preference about the whole app, not about this screen,
-                and putting it beside the sign-out control groups it with the
-                other things that are about "you" rather than about the data. */}
-            <ThemeToggle className="mb-3 ml-1" />
-            <div className="flex items-center gap-2.5 px-1 py-1">
-              <Avatar name={user.full_name} />
-              <div className="min-w-0 flex-1">
-                <div className="text-ink truncate text-[0.8125rem] font-medium">
-                  {user.full_name}
-                </div>
-                {/* The role is set as a small tracked label rather than body
-                    text, so it reads as metadata about the name above it
-                    instead of a second, competing line. */}
-                <div className="text-ink-3 tracked truncate text-[10px]">{user.role}</div>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={signOut}
-              className="mt-1 w-full justify-start"
-            >
-              <LogOut className="size-3.5" aria-hidden />
-              Sign out
-            </Button>
+        {/* Its own opaque surface: expanded, it overlays the page, and labels
+            over card text would be unreadable. No visible scrollbar: an
+            admin's fifteen screens fit on a 1080p display, and on a shorter
+            one the rail still scrolls - a bar beside a column of round chips
+            just reads as a rendering fault. */}
+        <div
+          data-pinned={pinned}
+          className={cn(
+            'group/rail flex flex-1 flex-col pb-4',
+            'md:bg-panel md:border-edge md:shadow-panel md:scrollbar-none md:fixed md:top-3 md:bottom-3 md:left-3 md:z-40 md:overflow-x-hidden md:overflow-y-auto md:rounded-xl md:border md:py-3',
+            'md:ease-soft md:transition-[width,box-shadow] md:duration-300',
+            pinned
+              ? 'md:w-60'
+              : 'md:hover:shadow-raised md:has-[:focus-visible]:shadow-raised md:w-16 md:has-[:focus-visible]:w-60 md:hover:w-60',
+          )}
+        >
+          <div className="hidden items-center gap-3 px-2 pb-3 md:flex">
+            <span className="mx-2 grid size-8 shrink-0 place-items-center">
+              <Logo size={24} />
+            </span>
+            <Label className="text-ink font-display text-[0.95rem] font-semibold tracking-wide">
+              Smart<span className="text-ink-3 font-normal">Agency</span>
+            </Label>
           </div>
-        )}
+
+          {/* Phone only. On a desktop the top bar's search is the one search -
+              two controls for the same palette read as two features. A phone
+              has no top bar, so the sheet keeps its own. */}
+          <div className="px-3 pb-1 md:hidden">
+            <button
+              type="button"
+              onClick={() => {
+                closeMenu()
+                setSearchOpen(true)
+              }}
+              aria-keyshortcuts="Control+K Meta+K"
+              className={cn(
+                RAIL_ROW,
+                'text-ink-2 hover:text-ink hover:bg-panel-2/70 w-full cursor-pointer',
+              )}
+            >
+              <span className="grid size-8 shrink-0 place-items-center">
+                <Search className="size-[0.95rem]" aria-hidden />
+              </span>
+              <Label className="flex flex-1 items-center justify-between gap-2 pr-1">
+                Search
+                <kbd className="border-edge text-ink-3 rounded-md border px-1 py-0.5 text-[10px]">
+                  {SHORTCUT}
+                </kbd>
+              </Label>
+            </button>
+          </div>
+
+          {sections.map(({ group, title, screens }) => (
+            <div key={group} role="group" aria-label={title}>
+              <SectionHeading title={title} />
+              <ul className="flex flex-col gap-0.5 px-3 md:px-2">
+                {screens.map(({ to, label, icon }) => (
+                  <li key={to}>
+                    <RailLink to={to} label={label} icon={icon} onNavigate={closeMenu} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+
+          <ul className="mt-auto flex flex-col gap-0.5 px-3 pt-4 md:px-2">
+            <li>
+              <RailLink to="/help" label="Help" icon={CircleHelp} onNavigate={closeMenu} />
+            </li>
+            <li>
+              <RailLink to="/settings" label="Settings" icon={Settings} onNavigate={closeMenu} />
+            </li>
+            {/* Desktop only: a phone has no rail to pin. */}
+            <li className="hidden md:block">
+              <button
+                type="button"
+                onClick={() => setRailPinned(!pinned)}
+                aria-pressed={pinned}
+                aria-label="Keep sidebar expanded"
+                className={cn(RAIL_ROW, 'text-ink-3 hover:text-ink w-full cursor-pointer')}
+              >
+                <span className="grid size-8 shrink-0 place-items-center">
+                  {pinned ? (
+                    <PanelLeftClose className="size-[0.95rem]" aria-hidden />
+                  ) : (
+                    <PanelLeftOpen className="size-[0.95rem]" aria-hidden />
+                  )}
+                </span>
+                <Label>{pinned ? 'Collapse' : 'Keep expanded'}</Label>
+              </button>
+            </li>
+          </ul>
+        </div>
       </nav>
 
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} entries={searchable} />
+
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Desktop top bar. Sticky and opaque. It holds the things about the
+            SESSION rather than the screen: whether the data is real, the
+            time, search, open alerts, who is signed in. Below lg the clock
+            and the scenario name drop out and the search narrows, so the
+            row never overflows on a laptop. */}
+        <header className="bg-canvas border-line sticky top-0 z-20 hidden h-14 items-center gap-4 border-b px-8 md:flex">
+          {USE_MOCKS ? (
+            /* Always visible while mocking. A screen of fake numbers must
+               never be mistakable for a live one. */
+            <span className="bg-warn/10 text-warn ring-warn/25 inline-flex items-center gap-2 rounded-md px-3 py-1 text-xs ring-1 ring-inset">
+              <FlaskConical className="size-3.5" aria-hidden />
+              Fixture data
+              <span className="text-warn/70 hidden lg:inline">
+                · scenario <span className="tabular">{MOCK_SCENARIO}</span>
+              </span>
+            </span>
+          ) : (
+            <span className="text-ok inline-flex items-center gap-2 text-xs">
+              <span className="size-2 rounded-full bg-current" aria-hidden />
+              Connected
+            </span>
+          )}
+
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            <Clock />
+
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              aria-keyshortcuts="Control+K Meta+K"
+              className="border-edge bg-panel/60 text-ink-3 hover:text-ink-2 hover:border-line-strong ease-soft flex h-8 w-48 min-w-0 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm transition-colors duration-200 lg:w-64"
+            >
+              <Search className="size-4 shrink-0" aria-hidden />
+              <span className="truncate">Search screens…</span>
+              <kbd className="border-edge ml-auto shrink-0 rounded-md border px-1 py-0.5 text-[10px]">
+                {SHORTCUT}
+              </kbd>
+            </button>
+
+            {canReach(user?.role, '/alerts') && <AlertsBell />}
+
+            <span className="bg-line mx-1 h-5 w-px" aria-hidden />
+
+            <AccountMenu />
+          </div>
+        </header>
+
         {USE_MOCKS && (
-          /* Always visible while mocking. A screen of fake numbers must never
-             be mistakable for a live one. */
-          <div className="bg-warn/8 flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 py-2 md:px-6">
+          <div className="bg-warn/8 flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 md:hidden">
             <Badge tone="warn" icon={<FlaskConical className="size-3.5" aria-hidden />}>
               Fixture data
             </Badge>
@@ -225,8 +342,8 @@ export function AppShell() {
             failure this control could cause, so the state it puts them in is
             never off-screen. */}
         {scope.agencyName && (
-          <div className="border-accent/25 bg-accent/8 flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 md:px-6">
-            <Building2 className="text-accent size-3.5 shrink-0" aria-hidden />
+          <div className="border-accent/25 bg-accent/8 flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 md:px-8">
+            <Building2 className="text-accent-ink size-3.5 shrink-0" aria-hidden />
             <span className="text-ink text-xs">
               Working inside <span className="font-medium">{scope.agencyName}</span> — everything
               below is this branch only.
@@ -237,18 +354,114 @@ export function AppShell() {
           </div>
         )}
 
-        <main id="main" className="min-w-0 flex-1 px-4 py-5 md:px-6 md:py-7">
-          {/* Wider than the old 5xl. A measure that suits prose starves a
-              dashboard: the charts and the roster both want horizontal room,
-              and on the wall display this runs on, a third of the panel sitting
-              empty is the most visible thing on screen. Still capped, because
-              a table stretched across an ultrawide is unreadable in the other
-              direction. */}
-          <div key={pathname} className="animate-fade-rise mx-auto max-w-7xl">
+        <main id="main" className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
+          {/* Capped, because a table stretched across an ultrawide is
+              unreadable; wide, because charts and the roster want room. */}
+          <div key={pathname} className="animate-fade-rise mx-auto max-w-[88rem]">
             <Outlet />
           </div>
         </main>
       </div>
     </div>
+  )
+}
+
+/* Shared by every rail row so the chip column lines up exactly: 8px of rail
+   padding plus 8px of row padding centres a 32px chip in the 64px rail. */
+const RAIL_ROW =
+  'group ease-soft flex items-center gap-3 rounded-lg px-2 py-1 text-sm font-semibold transition-colors duration-150'
+
+/* Hours and minutes. A wall display is often the only clock in the room, and
+   "how stale is this" is easier to judge with the current time beside it. */
+function Clock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 15_000)
+    return () => window.clearInterval(id)
+  }, [])
+  return (
+    <time
+      dateTime={now.toISOString()}
+      className="text-ink-3 tabular mr-2 hidden text-sm whitespace-nowrap lg:inline"
+    >
+      {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      <span className="text-ink-3 ml-2 text-xs">
+        {now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+      </span>
+    </time>
+  )
+}
+
+function RailLink({
+  to,
+  label,
+  icon: Icon,
+  onNavigate,
+}: {
+  to: string
+  label: string
+  icon: LucideIcon
+  onNavigate: () => void
+}) {
+  return (
+    <NavLink
+      to={to}
+      onClick={onNavigate}
+      className={({ isActive }) =>
+        cn(
+          RAIL_ROW,
+          /* Solid, not glass: a translucent selection on the rail reads as a
+             smudge rather than a press. Collapsed, the fill is a ring round
+             the chip; expanded, a pill. */
+          isActive ? 'bg-panel-2 text-ink' : 'text-ink-2 hover:text-ink hover:bg-panel-2/60',
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {/* The chip carries the state, so the selection is still visible
+              with the labels hidden. */}
+          <span
+            className={cn(
+              'ease-soft grid size-8 shrink-0 place-items-center transition-colors duration-150',
+              isActive ? 'text-accent-ink' : 'text-ink-3 group-hover:text-ink',
+            )}
+          >
+            <Icon className="size-[0.95rem]" aria-hidden />
+          </span>
+          <Label>{label}</Label>
+        </>
+      )}
+    </NavLink>
+  )
+}
+
+/* A section title on the expanded rail. Collapsed, there is no room for a
+   word, so a short rule marks where the section starts instead and the two
+   cross-fade. Hidden from assistive tech: the surrounding role="group" already
+   carries the title as its name. */
+function SectionHeading({ title }: { title: string }) {
+  return (
+    <div aria-hidden className="relative mt-3 mb-1 h-4 px-3 md:mx-2 md:px-2">
+      <span className="bg-line-strong ease-soft absolute top-1/2 left-1/2 hidden h-px w-5 -translate-x-1/2 transition-opacity duration-200 md:block md:group-has-[:focus-visible]/rail:opacity-0 md:group-hover/rail:opacity-0 md:group-data-[pinned=true]/rail:opacity-0" />
+      <Label className="text-ink-3 tracked block text-[9.5px] leading-4 font-medium">{title}</Label>
+    </div>
+  )
+}
+
+/* A rail label: always shown in the phone sheet, faded out on the collapsed
+   desktop rail and back in while it is expanded or pinned. Faded rather than
+   unmounted, so it stays the link's accessible name either way. */
+function Label({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        'ease-soft truncate whitespace-nowrap transition-opacity duration-200',
+        'md:opacity-0 md:group-has-[:focus-visible]/rail:opacity-100 md:group-hover/rail:opacity-100 md:group-data-[pinned=true]/rail:opacity-100',
+        className,
+      )}
+    >
+      {children}
+    </span>
   )
 }

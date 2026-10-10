@@ -114,7 +114,7 @@ export default function AgentQueue() {
         forbiddenMessage="Assignments are read by the signed-in agent only."
         onRetry={() => void assignment.refetch()}
       >
-        <Panel as="section" glow>
+        <Panel as="section">
           <PanelBody className="flex flex-col items-center gap-6 py-12 text-center">
             <div>
               <p className="text-ink-3 text-xs font-semibold tracking-wide uppercase">
@@ -122,7 +122,7 @@ export default function AgentQueue() {
               </p>
               {current ? (
                 <>
-                  <p className="text-ink tabular mt-2 text-3xl font-bold">
+                  <p className="text-ink mt-2 font-mono text-4xl font-medium">
                     {current.ticket_number}
                   </p>
                   <p className="text-ink-2 mt-1 text-lg">{current.visitor_name}</p>
@@ -197,8 +197,8 @@ export default function AgentQueue() {
                 >
                   <span className="text-ink-3 tabular w-5 shrink-0 text-sm">{index + 1}</span>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <span className="text-ink tabular text-sm font-medium">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-ink font-mono text-[0.8125rem] font-medium">
                         {ticket.ticket_number}
                       </span>
                       <span className="text-ink truncate text-sm">{ticket.visitor_name}</span>

@@ -28,6 +28,8 @@ const Agencies = lazy(() => import('@/screens/Agencies'))
 const Services = lazy(() => import('@/screens/Services'))
 const Devices = lazy(() => import('@/screens/Devices'))
 const Users = lazy(() => import('@/screens/Users'))
+const Settings = lazy(() => import('@/screens/Settings'))
+const Help = lazy(() => import('@/screens/Help'))
 const Login = lazy(() => import('@/screens/Login'))
 
 function RouteFallback() {
@@ -87,6 +89,8 @@ export function App() {
           <Route path="calibration" element={<Calibration />} />
           <Route path="cameras/:id" element={<CameraView />} />
           <Route path="controls" element={<ManualControls />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="help" element={<Help />} />
           {/* An unknown path is not a reason to show someone a screen their
               role is refused from, so it resolves the same way "/" does. */}
           <Route path="*" element={<Landing />} />

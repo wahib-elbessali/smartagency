@@ -84,11 +84,15 @@ function lasted(fromIso: string, toIso: string): string {
 
 function AlertRow({ alert }: { alert: StoredAlert }) {
   return (
-    <li className="border-line bg-panel-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border p-3">
+    <li className="border-line bg-panel-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border p-3">
       <span className="text-ink min-w-0 flex-1 truncate text-sm font-medium">
         {/* camera_name is null once the camera has been deleted; the alert
             outlives it on purpose. */}
-        {alert.camera_name ?? <span className="text-ink-3 font-normal">A deleted camera</span>}
+        {alert.camera_name ? (
+          <span className="font-mono">{alert.camera_name}</span>
+        ) : (
+          <span className="text-ink-3 font-normal">A deleted camera</span>
+        )}
       </span>
       <Badge tone={SEVERITY_TONE[alert.severity]}>{alert.severity}</Badge>
       <Badge tone={STATUS_TONE[alert.status]}>{alert.status}</Badge>
@@ -113,10 +117,13 @@ export function WeaponAlertHistory({ pushed }: { pushed: StoredAlertsById }) {
   })
 
   const [pickedAgencyId, setPickedAgencyId] = useState<string | null>(null)
-  /* Same order of preference as Cameras: what an admin picked here, then the
-     branch open elsewhere, then the first branch. Everyone else has one. */
+  /* An admin who has opened a branch (Agencies -> Open, the "Working inside"
+     bar) is working in that branch on every screen, so it wins and the
+     picker below is hidden - choosing it again here was the inconsistency.
+     With no branch open the picker decides, then the first branch once the
+     list arrives. Everyone else has exactly one agency and never sees it. */
   const agencyId = isAdmin
-    ? (pickedAgencyId ?? scope.agencyId ?? agencies.data?.[0]?.id ?? null)
+    ? (scope.agencyId ?? pickedAgencyId ?? agencies.data?.[0]?.id ?? null)
     : (user?.agency_id ?? null)
 
   const stored = useQuery({
@@ -149,7 +156,7 @@ export function WeaponAlertHistory({ pushed }: { pushed: StoredAlertsById }) {
       </PanelHeader>
 
       <PanelBody className="space-y-4">
-        {isAdmin && (
+        {isAdmin && !scope.agencyId && (
           <div className="max-w-xs">
             <label
               htmlFor="weapon_alerts_agency"

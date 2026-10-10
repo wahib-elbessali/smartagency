@@ -40,7 +40,7 @@ export function Badge({
         /* Tighter and smaller than before. A badge is an annotation, and the
            old one was sized like a control - which made every table row look
            like it had buttons in it. */
-        'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium',
         TONES[tone],
         className,
       )}

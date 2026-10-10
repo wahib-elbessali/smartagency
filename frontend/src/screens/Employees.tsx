@@ -137,25 +137,25 @@ export default function Employees() {
               </span>
             </div>
           </PanelHeader>
-          <PanelBody className="px-0 py-0">
+          <PanelBody flush>
             <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">Employees, with their card and status</caption>
                 <thead>
                   <tr className="text-ink-3 tracked border-line/70 border-b text-left text-[10px] font-medium">
-                    <th scope="col" className="px-5 py-2.5 font-medium">
+                    <th scope="col" className="px-6 py-3 font-medium">
                       Name
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-medium">
+                    <th scope="col" className="px-6 py-3 font-medium">
                       Position
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-medium">
+                    <th scope="col" className="px-6 py-3 font-medium">
                       Card
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-medium">
+                    <th scope="col" className="px-6 py-3 font-medium">
                       Status
                     </th>
-                    <th scope="col" className="px-5 py-2.5 text-right font-medium">
+                    <th scope="col" className="px-6 py-3 text-right font-medium">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -168,7 +168,7 @@ export default function Employees() {
                         key={employee.id}
                         className="border-line/70 hover:bg-panel-2/60 ease-soft border-b transition-colors duration-150 last:border-b-0"
                       >
-                        <th scope="row" className="px-5 py-3 text-left font-normal">
+                        <th scope="row" className="px-6 py-3 text-left font-normal">
                           <div className="flex items-center gap-3">
                             <Avatar name={name} />
                             <div className="min-w-0">
@@ -179,23 +179,26 @@ export default function Employees() {
                             </div>
                           </div>
                         </th>
-                        <td className="text-ink-2 px-5 py-3">
+                        <td className="text-ink-2 px-6 py-3">
                           {employee.position ?? <span className="text-ink-3">—</span>}
                         </td>
-                        <td className="text-ink-2 tabular px-5 py-3">
+                        <td className="text-ink-2 px-6 py-3 font-mono text-[0.8125rem]">
                           {employee.rfid_uid ?? (
-                            <span className="text-ink-3" title="Cannot check in without a card">
+                            <span
+                              className="text-ink-3 font-sans"
+                              title="Cannot check in without a card"
+                            >
                               No card
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-3">
+                        <td className="px-6 py-3">
                           <Badge tone={STATUS_TONE[employee.status] ?? 'neutral'}>
                             {employee.status}
                           </Badge>
                         </td>
-                        <td className="px-5 py-3">
-                          <div className="flex justify-end gap-1.5">
+                        <td className="px-6 py-3">
+                          <div className="flex justify-end gap-2">
                             <Button
                               size="sm"
                               variant="ghost"
@@ -257,7 +260,7 @@ export default function Employees() {
             {/* The API hard-deletes, and Employee.attendance cascades with it.
                 Saying so plainly matters more than the confirmation step: most
                 people clicking this want INACTIVE, which keeps the history. */}
-            <div className="border-danger/40 bg-danger/10 flex gap-3 rounded-lg border p-3.5">
+            <div className="border-danger/40 bg-danger/10 flex gap-3 rounded-lg border p-4">
               <AlertTriangle className="text-danger mt-0.5 size-4 shrink-0" aria-hidden />
               <div className="text-sm leading-relaxed">
                 <p className="text-danger font-medium">
@@ -287,7 +290,7 @@ export default function Employees() {
               </p>
             )}
 
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <Button
                 onClick={() => {
                   setConfirmingDelete(null)

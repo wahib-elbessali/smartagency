@@ -70,7 +70,7 @@ export function BarSeries({
           across a wide panel gives each bar ninety pixels of flex, at which
           point the 4px corner radius is invisible and the result looks like a
           block diagram. Marks stay thin; the leftover space becomes margin. */}
-      <div className="flex items-end justify-center gap-1.5">
+      <div className="flex items-end justify-center gap-2">
         {data.map((d, i) => {
           const lit = i === litIndex
           const isActive = active === i
@@ -114,7 +114,7 @@ export function BarSeries({
                   <span
                     id={`${id}-tip-${i}`}
                     role="tooltip"
-                    className="bg-panel-2 ring-line-strong text-ink shadow-raised pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 rounded-[0.5rem] px-2.5 py-1.5 text-xs whitespace-nowrap ring-1"
+                    className="bg-panel-2 ring-line-strong text-ink shadow-raised pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 rounded-[0.5rem] px-3 py-2 text-xs whitespace-nowrap ring-1"
                   >
                     <span className="text-ink-3">{d.label}</span>{' '}
                     <span className="tabular font-medium">{format(d.value)}</span>

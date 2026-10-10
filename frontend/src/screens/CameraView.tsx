@@ -103,7 +103,7 @@ export default function CameraView() {
       actions={
         <Link
           to="/cameras"
-          className="text-ink-2 hover:text-ink ease-soft inline-flex items-center gap-1.5 text-sm transition-colors duration-150"
+          className="text-ink-2 hover:text-ink ease-soft inline-flex items-center gap-2 text-sm transition-colors duration-150"
         >
           <ArrowLeft className="size-3.5" aria-hidden />
           All cameras
@@ -156,16 +156,16 @@ function LiveView({ camera }: { camera: Camera }) {
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
       <Panel as="section">
         <PanelHeader action={<StreamStatusBadge status={status} />}>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <CameraIcon className="text-ink-3 size-4 shrink-0" aria-hidden />
-            <h2 className="text-ink truncate text-sm font-semibold">{camera.name}</h2>
+            <h2 className="text-ink truncate font-mono text-sm font-medium">{camera.name}</h2>
             <Badge tone={STATUS_TONE[camera.status]}>{camera.status}</Badge>
           </div>
           <p className="text-ink-3 mt-1 truncate font-mono text-xs">
             {camera.stream_url ?? 'No stream URL'}
           </p>
         </PanelHeader>
-        <PanelBody className="p-0">
+        <PanelBody flush>
           {/* 16:9, the shape of the fixture frame and of most IP cameras; a
               real frame of another shape letterboxes inside it, and the
               overlay letterboxes identically because both use "meet". */}

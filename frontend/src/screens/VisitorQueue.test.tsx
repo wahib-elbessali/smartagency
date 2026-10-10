@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 import VisitorQueue from './VisitorQueue'
+import { ScopeProvider } from '@/agency/scope'
 import { SessionProvider } from '@/auth/session'
 import { useSession } from '@/auth/SessionContext'
 import { resetAssignmentStore } from '@/mocks/assignmentStore'
@@ -25,11 +26,13 @@ function renderScreen() {
   return render(
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
-        <MemoryRouter>
-          <SignIn>
-            <VisitorQueue />
-          </SignIn>
-        </MemoryRouter>
+        <ScopeProvider>
+          <MemoryRouter>
+            <SignIn>
+              <VisitorQueue />
+            </SignIn>
+          </MemoryRouter>
+        </ScopeProvider>
       </SessionProvider>
     </QueryClientProvider>,
   )

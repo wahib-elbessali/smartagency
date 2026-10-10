@@ -6,6 +6,7 @@ import { createOccupancyStream } from '@/api/endpoints/streams'
 import { fetchZones, zonesOnCameras } from '@/api/endpoints/zones'
 import { applyOccupancyFrame, totalAcrossZones, type ZonesByName } from '@/api/streamMerge'
 import type { OccupancyFrame } from '@/api/types'
+import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
 import { useStream } from '@/hooks/useStream'
 import { Badge } from '@/components/ui/Badge'
@@ -54,8 +55,12 @@ function share(count: number, busiest: number): string {
 
 export default function Occupancy() {
   const { user } = useSession()
+  const scope = useScope()
   const isAdmin = user?.role === 'ADMIN'
-  const agencyId = isAdmin ? null : (user?.agency_id ?? null)
+  /* Whose zones to show: the caller's own branch, or for an admin the branch
+     they have open ("Working inside"). An admin with no branch open sees every
+     zone, which is the one feed that exists (no agency on a zone upstream). */
+  const agencyId = isAdmin ? scope.agencyId : (user?.agency_id ?? null)
 
   const { state: allZones, status } = useStream<OccupancyFrame, ZonesByName>(
     'occupancy',
@@ -64,8 +69,8 @@ export default function Occupancy() {
     () => ({}),
   )
 
-  /* Which zones are this branch's - only needed, and only fetched, for a
-     caller who is not an ADMIN. */
+  /* Which zones are this branch's - only needed, and only fetched, when
+     there is a branch to narrow to. */
   const cameras = useQuery({
     queryKey: ['cameras', agencyId],
     queryFn: ({ signal }) => fetchCameras(agencyId as string, signal),
@@ -78,12 +83,12 @@ export default function Occupancy() {
   })
 
   const zones: ZonesByName = useMemo(() => {
-    if (isAdmin) return allZones
+    if (agencyId === null) return allZones
     if (!cameras.data || !drawn.data) return {}
     const mine = new Set(zonesOnCameras(drawn.data, cameras.data).map((zone) => zone.name))
     return Object.fromEntries(Object.entries(allZones).filter(([name]) => mine.has(name)))
-  }, [isAdmin, allZones, cameras.data, drawn.data])
-  const scopeError = !isAdmin && (cameras.isError || drawn.isError)
+  }, [agencyId, allZones, cameras.data, drawn.data])
+  const scopeError = agencyId !== null && (cameras.isError || drawn.isError)
 
   const names = useMemo(() => Object.keys(zones).sort(), [zones])
   const total = useMemo(() => totalAcrossZones(zones), [zones])
@@ -118,7 +123,7 @@ export default function Occupancy() {
           {scopeError ? (
             <div role="alert" className="py-2">
               <p className="text-ink text-sm font-medium">Could not tell which zones are yours</p>
-              <p className="text-ink-2 mt-1.5 text-sm leading-relaxed">
+              <p className="text-ink-2 mt-2 text-sm leading-relaxed">
                 The feed covers every branch, and the list of this branch's zones did not load, so
                 nothing is shown rather than another branch's counts.
               </p>
@@ -128,7 +133,7 @@ export default function Occupancy() {
               <p className="text-ink text-sm font-medium">
                 {status === 'open' ? 'No zones configured' : 'Waiting for the feed'}
               </p>
-              <p className="text-ink-2 mt-1.5 text-sm leading-relaxed">
+              <p className="text-ink-2 mt-2 text-sm leading-relaxed">
                 {status === 'open'
                   ? 'Zones are drawn on the Zones screen. Until at least one exists there is nothing to count.'
                   : 'Nothing here reflects the connection, not the building.'}
@@ -141,7 +146,7 @@ export default function Occupancy() {
               const ready = zone.people_tracking_ready
               return (
                 <div key={name}>
-                  <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                  <div className="mb-2 flex items-baseline justify-between gap-3">
                     <span className="text-ink text-sm">{name}</span>
                     {ready ? (
                       <span className="text-ink tabular text-sm font-medium">{zone.count}</span>
@@ -153,7 +158,7 @@ export default function Occupancy() {
                       empty zone reads as "measured, and empty". */}
                   <div className="bg-panel-2 border-line h-2 overflow-hidden rounded-full border">
                     <div
-                      className="bg-accent h-full rounded-full transition-all duration-300"
+                      className="bg-accent h-full rounded-full transition-all duration-500"
                       style={{ width: ready ? share(zone.count, busiest) : '0%' }}
                     />
                   </div>

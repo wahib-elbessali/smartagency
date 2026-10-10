@@ -5,6 +5,7 @@ import { fetchQueue } from '@/api/endpoints/tickets'
 import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchServices } from '@/api/endpoints/services'
 import { assignAgent, assignmentErrorMessage, fetchAgents } from '@/api/endpoints/assignments'
+import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { controlClass } from '@/components/ui/control'
@@ -55,13 +56,16 @@ function VisitorQueueBoard() {
   })
 
   /* Counters live nested inside their agency and nowhere else. A MANAGER
-     gets exactly one agency back, so this resolves to their own; an ADMIN
-     resolves to the first, same as the rest of this screen always has. */
+     gets exactly one agency back, so this resolves to their own. An ADMIN
+     gets the branch they have open ("Working inside"); it used to be always
+     the first branch, so opening Rabat still showed Casablanca's counters.
+     With no branch open an admin still lands on the first. */
+  const scope = useScope()
   const myAgency = useMemo(() => {
     const list = agencies.data ?? []
-    const mine = isAdmin ? list : list.filter((a) => a.id === user?.agency_id)
-    return mine[0] ?? null
-  }, [agencies.data, isAdmin, user?.agency_id])
+    if (isAdmin) return list.find((a) => a.id === scope.agencyId) ?? list[0] ?? null
+    return list.find((a) => a.id === user?.agency_id) ?? null
+  }, [agencies.data, isAdmin, scope.agencyId, user?.agency_id])
 
   const services = useQuery({
     queryKey: ['services', myAgency?.id],
@@ -121,7 +125,7 @@ function VisitorQueueBoard() {
         </PanelHeader>
 
         {assignError && (
-          <div className="border-line border-b px-5 py-3">
+          <div className="border-line border-b px-6 py-3">
             <p role="alert" className="text-warn text-sm">
               {assignError}
             </p>

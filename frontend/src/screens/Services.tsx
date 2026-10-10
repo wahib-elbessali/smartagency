@@ -51,12 +51,13 @@ export default function Services() {
   })
 
   const [pickedAgencyId, setPickedAgencyId] = useState<string | null>(null)
-  /* An admin's choice, in order: whatever they just picked here, the branch
-     they have open elsewhere (Agencies screen), or the first branch once the
-     list arrives. Everyone else has exactly one agency and never sees the
-     picker at all. */
+  /* An admin who has opened a branch (Agencies -> Open, the "Working inside"
+     bar) is working in that branch on every screen, so it wins and the
+     picker below is hidden - choosing it again here was the inconsistency.
+     With no branch open the picker decides, then the first branch once the
+     list arrives. Everyone else has exactly one agency and never sees it. */
   const agencyId = isAdmin
-    ? (pickedAgencyId ?? scope.agencyId ?? agencies.data?.[0]?.id ?? null)
+    ? (scope.agencyId ?? pickedAgencyId ?? agencies.data?.[0]?.id ?? null)
     : (user?.agency_id ?? null)
 
   const services = useQuery({
@@ -128,7 +129,7 @@ export default function Services() {
         ) : undefined
       }
     >
-      {isAdmin && (
+      {isAdmin && !scope.agencyId && (
         <div className="mb-4 max-w-xs">
           <label
             htmlFor="services_agency"
@@ -168,7 +169,7 @@ export default function Services() {
                 <PanelHeader
                   action={
                     canWrite && (
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -197,7 +198,7 @@ export default function Services() {
                     )
                   }
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2">
                     <Layers className="text-ink-3 size-4 shrink-0" aria-hidden />
                     <h2 className="text-ink truncate text-sm font-semibold">{service.name}</h2>
                     <Badge tone="neutral">{service.code}</Badge>
@@ -261,7 +262,7 @@ export default function Services() {
                   : 'Could not delete.'}
               </p>
             )}
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <Button
                 onClick={() => {
                   setConfirmingDelete(null)
@@ -299,7 +300,7 @@ export default function Services() {
               return (
                 <div
                   key={counter.id}
-                  className="border-line flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5"
+                  className="border-line flex items-center justify-between gap-3 rounded-lg border px-4 py-3"
                 >
                   <div className="min-w-0">
                     <p className="text-ink text-sm font-medium">

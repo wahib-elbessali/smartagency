@@ -79,9 +79,9 @@ export function Dialog({
       onClick={(event) => {
         if (event.target === ref.current) onClose()
       }}
-      className="border-line bg-panel text-ink shadow-panel m-auto w-[min(34rem,calc(100vw-2rem))] rounded-2xl border p-0 backdrop:bg-black/60"
+      className="border-edge bg-panel text-ink shadow-raised m-auto w-[min(34rem,calc(100vw-2rem))] rounded-2xl border p-0 backdrop:bg-black/55 backdrop:backdrop-blur-sm"
     >
-      <div className="border-line flex items-start justify-between gap-4 border-b px-5 py-4">
+      <div className="border-line flex items-start justify-between gap-4 border-b px-6 py-4">
         <div>
           <h2 id="dialog-title" className="text-ink text-sm font-semibold">
             {visible.title}
@@ -92,7 +92,7 @@ export function Dialog({
           <X className="size-4" aria-hidden />
         </Button>
       </div>
-      <div className="px-5 py-4">{visible.children}</div>
+      <div className="px-6 py-4">{visible.children}</div>
     </dialog>
   )
 }
