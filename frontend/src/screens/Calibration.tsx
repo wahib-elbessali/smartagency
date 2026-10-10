@@ -75,8 +75,13 @@ export default function Calibration() {
   })
 
   const [pickedAgencyId, setPickedAgencyId] = useState<string | null>(null)
+  /* An admin who has opened a branch (Agencies -> Open, the "Working inside"
+     bar) is working in that branch on every screen, so it wins and the
+     picker below is hidden - choosing it again here was the inconsistency.
+     With no branch open the picker decides, then the first branch once the
+     list arrives. Everyone else has exactly one agency and never sees it. */
   const agencyId = isAdmin
-    ? (pickedAgencyId ?? scope.agencyId ?? agencies.data?.[0]?.id ?? null)
+    ? (scope.agencyId ?? pickedAgencyId ?? agencies.data?.[0]?.id ?? null)
     : (user?.agency_id ?? null)
 
   const cameras = useQuery({
@@ -108,7 +113,7 @@ export default function Calibration() {
       description="Teaching the cameras where the floor is, so they can agree on where somebody is standing."
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        {isAdmin && (
+        {isAdmin && !scope.agencyId && (
           <div className="max-w-xs flex-1">
             <label
               htmlFor="calibration_agency"

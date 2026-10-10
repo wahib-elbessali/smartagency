@@ -12,6 +12,7 @@ import { fetchAgencies } from '@/api/endpoints/agencies'
 import { fetchEmployees } from '@/api/endpoints/employees'
 import { ApiError, describeApiError } from '@/api/errors'
 import { type Role, type UserAccount, type UserCreate } from '@/api/types'
+import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { Avatar } from '@/components/ui/Avatar'
@@ -151,7 +152,14 @@ export default function Users() {
     },
   })
 
-  const rows = useMemo(() => users.data ?? [], [users.data])
+  /* With a branch open ("Working inside"), only that branch's accounts.
+     Admin accounts belong to no branch, so they drop out until the admin
+     leaves it - the bar at the top says which view this is. */
+  const scope = useScope()
+  const rows = useMemo(() => {
+    const all = users.data ?? []
+    return scope.agencyId === null ? all : all.filter((a) => a.agency_id === scope.agencyId)
+  }, [users.data, scope.agencyId])
 
   const formOpen = creating || editing !== null
   const inlineError = inlineErrorMessage(changeAccess.error)
@@ -178,7 +186,7 @@ export default function Users() {
         isPending={users.isPending}
         error={users.error}
         isEmpty={rows.length === 0}
-        emptyMessage="No accounts yet."
+        emptyMessage={scope.agencyId ? 'No accounts in this branch yet.' : 'No accounts yet.'}
         forbiddenMessage="User accounts are managed by administrators only. Ask an administrator if you need access."
         onRetry={() => void users.refetch()}
         skeletonRows={6}
@@ -186,7 +194,9 @@ export default function Users() {
         <Panel as="section">
           <PanelHeader>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-ink text-sm font-semibold">All accounts</h2>
+              <h2 className="text-ink text-sm font-semibold">
+                {scope.agencyName ?? 'All accounts'}
+              </h2>
               <span className="text-ink-3 tabular text-xs">
                 {rows.length} {rows.length === 1 ? 'account' : 'accounts'}
               </span>

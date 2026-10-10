@@ -6,6 +6,7 @@ import { createOccupancyStream } from '@/api/endpoints/streams'
 import { fetchZones, zonesOnCameras } from '@/api/endpoints/zones'
 import { applyOccupancyFrame, totalAcrossZones, type ZonesByName } from '@/api/streamMerge'
 import type { OccupancyFrame } from '@/api/types'
+import { useScope } from '@/agency/ScopeContext'
 import { useSession } from '@/auth/SessionContext'
 import { useStream } from '@/hooks/useStream'
 import { Badge } from '@/components/ui/Badge'
@@ -54,8 +55,12 @@ function share(count: number, busiest: number): string {
 
 export default function Occupancy() {
   const { user } = useSession()
+  const scope = useScope()
   const isAdmin = user?.role === 'ADMIN'
-  const agencyId = isAdmin ? null : (user?.agency_id ?? null)
+  /* Whose zones to show: the caller's own branch, or for an admin the branch
+     they have open ("Working inside"). An admin with no branch open sees every
+     zone, which is the one feed that exists (no agency on a zone upstream). */
+  const agencyId = isAdmin ? scope.agencyId : (user?.agency_id ?? null)
 
   const { state: allZones, status } = useStream<OccupancyFrame, ZonesByName>(
     'occupancy',
@@ -64,8 +69,8 @@ export default function Occupancy() {
     () => ({}),
   )
 
-  /* Which zones are this branch's - only needed, and only fetched, for a
-     caller who is not an ADMIN. */
+  /* Which zones are this branch's - only needed, and only fetched, when
+     there is a branch to narrow to. */
   const cameras = useQuery({
     queryKey: ['cameras', agencyId],
     queryFn: ({ signal }) => fetchCameras(agencyId as string, signal),
@@ -78,12 +83,12 @@ export default function Occupancy() {
   })
 
   const zones: ZonesByName = useMemo(() => {
-    if (isAdmin) return allZones
+    if (agencyId === null) return allZones
     if (!cameras.data || !drawn.data) return {}
     const mine = new Set(zonesOnCameras(drawn.data, cameras.data).map((zone) => zone.name))
     return Object.fromEntries(Object.entries(allZones).filter(([name]) => mine.has(name)))
-  }, [isAdmin, allZones, cameras.data, drawn.data])
-  const scopeError = !isAdmin && (cameras.isError || drawn.isError)
+  }, [agencyId, allZones, cameras.data, drawn.data])
+  const scopeError = agencyId !== null && (cameras.isError || drawn.isError)
 
   const names = useMemo(() => Object.keys(zones).sort(), [zones])
   const total = useMemo(() => totalAcrossZones(zones), [zones])

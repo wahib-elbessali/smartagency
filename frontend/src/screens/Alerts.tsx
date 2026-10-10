@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Flame, ShieldAlert, Smile, UserSearch } from 'lucide-react'
 import { fetchWeaponThreshold } from '@/api/endpoints/aiAlerts'
+import { fetchCameras } from '@/api/endpoints/cameras'
 import { createAlertStream } from '@/api/endpoints/streams'
 import {
   applyAlertFrame,
@@ -17,6 +18,8 @@ import {
   type AlertFeature,
   type AlertFrame,
 } from '@/api/types'
+import { useScope } from '@/agency/ScopeContext'
+import { useSession } from '@/auth/SessionContext'
 import { useStream } from '@/hooks/useStream'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -131,7 +134,27 @@ export default function Alerts() {
     applyFeedFrame,
     () => ({ cameras: {}, stored: {} }),
   )
-  const alerts = feed.cameras
+  /* An admin's socket carries every branch's cameras. With a branch open
+     ("Working inside"), keep only that branch's - matched by name against its
+     own camera list, since a detection frame names the camera but not its
+     branch. Until that list arrives nothing is shown rather than everything:
+     another branch's detection briefly on screen would be the wrong alarm.
+     Admins only: a manager or guard has one branch and no "Working inside"
+     choice to honour - what their socket carries is the backend's call. */
+  const { user } = useSession()
+  const scope = useScope()
+  const scopedAgency = user?.role === 'ADMIN' ? scope.agencyId : null
+  const branchCameras = useQuery({
+    queryKey: ['cameras', scopedAgency],
+    queryFn: ({ signal }) => fetchCameras(scopedAgency as string, signal),
+    enabled: scopedAgency !== null,
+  })
+  const alerts = useMemo(() => {
+    if (scopedAgency === null) return feed.cameras
+    if (!branchCameras.data) return {}
+    const names = new Set(branchCameras.data.map((camera) => camera.name))
+    return Object.fromEntries(Object.entries(feed.cameras).filter(([name]) => names.has(name)))
+  }, [scopedAgency, feed.cameras, branchCameras.data])
 
   const threshold = useQuery({
     queryKey: ['weaponThreshold'],

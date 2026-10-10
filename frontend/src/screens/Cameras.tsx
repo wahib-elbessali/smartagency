@@ -77,10 +77,13 @@ export default function Cameras() {
   })
 
   const [pickedAgencyId, setPickedAgencyId] = useState<string | null>(null)
-  /* Same order of preference as Services: what an admin picked here, then
-     the branch open elsewhere, then the first branch. Everyone else has one. */
+  /* An admin who has opened a branch (Agencies -> Open, the "Working inside"
+     bar) is working in that branch on every screen, so it wins and the
+     picker below is hidden - choosing it again here was the inconsistency.
+     With no branch open the picker decides, then the first branch once the
+     list arrives. Everyone else has exactly one agency and never sees it. */
   const agencyId = isAdmin
-    ? (pickedAgencyId ?? scope.agencyId ?? agencies.data?.[0]?.id ?? null)
+    ? (scope.agencyId ?? pickedAgencyId ?? agencies.data?.[0]?.id ?? null)
     : (user?.agency_id ?? null)
 
   const cameras = useQuery({
@@ -135,7 +138,7 @@ export default function Cameras() {
         ) : undefined
       }
     >
-      {isAdmin && (
+      {isAdmin && !scope.agencyId && (
         <div className="mb-4 max-w-xs">
           <label
             htmlFor="cameras_agency"

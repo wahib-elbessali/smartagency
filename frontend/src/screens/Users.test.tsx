@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Users from './Users'
+import { ScopeProvider } from '@/agency/scope'
 import { SessionContext } from '@/auth/SessionContext'
 import { clearSession, setSession } from '@/api/tokenStore'
 import type { User } from '@/api/types'
@@ -42,9 +43,11 @@ function renderAs(user: User) {
           signOut: () => {},
         }}
       >
-        <MemoryRouter>
-          <Users />
-        </MemoryRouter>
+        <ScopeProvider>
+          <MemoryRouter>
+            <Users />
+          </MemoryRouter>
+        </ScopeProvider>
       </SessionContext>
     </QueryClientProvider>,
   )

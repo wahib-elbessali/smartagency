@@ -220,9 +220,11 @@ function renderOccupancyAs(role: Role) {
   return render(
     <QueryClientProvider client={queryClient}>
       <SessionContext value={session}>
-        <MemoryRouter>
-          <Occupancy />
-        </MemoryRouter>
+        <ScopeProvider>
+          <MemoryRouter>
+            <Occupancy />
+          </MemoryRouter>
+        </ScopeProvider>
       </SessionContext>
     </QueryClientProvider>,
   )
