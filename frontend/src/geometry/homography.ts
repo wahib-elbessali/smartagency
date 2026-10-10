@@ -157,3 +157,39 @@ export function reversedCameras(
     )
     .map(([camera]) => camera)
 }
+
+/**
+ * The homography taking four source points to four destination points
+ * (direct linear transform, h33 fixed at 1). Null when the points are
+ * degenerate - three of them collinear.
+ */
+export function solveHomography(src: Point[], dst: Point[]): Matrix3 | null {
+  if (src.length !== 4 || dst.length !== 4) return null
+  const A: number[][] = []
+  for (let k = 0; k < 4; k += 1) {
+    const [x, y] = src[k]
+    const [u, v] = dst[k]
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y, u])
+    A.push([0, 0, 0, x, y, 1, -v * x, -v * y, v])
+  }
+  /* Gaussian elimination with partial pivoting on the 8x9 augmented system. */
+  for (let col = 0; col < 8; col += 1) {
+    let pivot = col
+    for (let row = col + 1; row < 8; row += 1) {
+      if (Math.abs(A[row][col]) > Math.abs(A[pivot][col])) pivot = row
+    }
+    if (Math.abs(A[pivot][col]) < 1e-10) return null
+    ;[A[col], A[pivot]] = [A[pivot], A[col]]
+    for (let row = 0; row < 8; row += 1) {
+      if (row === col) continue
+      const factor = A[row][col] / A[col][col]
+      for (let k = col; k < 9; k += 1) A[row][k] -= factor * A[col][k]
+    }
+  }
+  const h = A.map((row, i) => row[8] / row[i])
+  return [
+    [h[0], h[1], h[2]],
+    [h[3], h[4], h[5]],
+    [h[6], h[7], 1],
+  ]
+}

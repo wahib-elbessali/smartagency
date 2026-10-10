@@ -1146,6 +1146,46 @@ export interface AlignResult {
   }>
 }
 
+/**
+ * POST /api/agencies/{agency_id}/ai/calibration/cross-check - the AI
+ * service's /calibration/cross_check, passed through by
+ * backend/app/api/ai_calibration.py (CalibrationCrossCheckRequest: a
+ * camera-name -> [px, py] map, 2 or more). Read-only: nothing is saved.
+ *
+ * `worlds` is where each camera puts the clicked spot on the shared floor,
+ * `pairs` how far apart each two of them put it. For a correct alignment the
+ * distances are small - it is the same physical point. 422 when any camera
+ * named is uncalibrated or not yet aligned.
+ */
+export interface CrossCheckResult {
+  worlds: Record<string, [number, number]>
+  pairs: Array<{ cam_a: string; cam_b: string; distance_cm: number }>
+}
+
+/**
+ * POST .../ai/calibration/gates - CalibrationGatesRequest. Entry/exit gates
+ * as PIXEL clicks, per camera; the AI service converts them to floor
+ * coordinates through that camera's current Hinv. The list REPLACES every
+ * gate on the site, so a screen resends all of them each time.
+ */
+export interface CalibrationGatesRequest {
+  gates: Array<{ camera: string; points: Array<[number, number]> }>
+}
+
+/**
+ * GET .../ai/calibration/gates answers `{ gates }` in floor coordinates; the
+ * POST and DELETE add how many and where the AI service wrote them.
+ */
+export interface CalibrationGates {
+  gates: Array<[number, number]>
+}
+
+export interface CalibrationGatesSaved extends CalibrationGates {
+  n: number
+  /** A server path, not for display. */
+  saved: string
+}
+
 /** GET /api/attendance/today, and the check-in / check-out responses. */
 export interface AttendanceRecord {
   id: string

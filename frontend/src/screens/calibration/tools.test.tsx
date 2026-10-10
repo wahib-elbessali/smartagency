@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CalibrateMode } from './CalibrateMode'
 import { AlignMode } from './AlignMode'
+import { GatesMode } from './GatesMode'
 import { clearSession, setSession } from '@/api/tokenStore'
 import type { Camera, CameraCalibration } from '@/api/types'
 import { mockUserForRole } from '@/mocks/currentUser'
@@ -311,6 +312,170 @@ describe('calibration tools', () => {
       clickAt(a, 500, 500)
 
       expect(await screen.findByText(/bends \d+% off straight/)).toBeInTheDocument()
+    })
+  })
+
+  /* The mock solves real (if simple) geometry, so these round trips are
+     real arithmetic, not canned answers. */
+  const SQUARE: Array<[number, number]> = [
+    [100, 100],
+    [500, 100],
+    [500, 500],
+    [100, 500],
+  ]
+  function byCameraFromStore(): Map<string, CameraCalibration> {
+    return new Map(
+      Object.entries(calibrationStore.listCalibration()).map(([camera, entry]) => [
+        camera,
+        { camera, Hinv: entry.Hinv, diagnostics: entry.diagnostics },
+      ]),
+    )
+  }
+
+  describe('cross-check', () => {
+    it('refuses a camera that is not aligned yet', () => {
+      calibrationStore.calibrateRect({
+        camera: 'cam-lobby',
+        points: SQUARE,
+        img_w: 1920,
+        img_h: 1080,
+      })
+      calibrationStore.calibrateRect({
+        camera: 'cam-counter',
+        points: SQUARE,
+        img_w: 1920,
+        img_h: 1080,
+      })
+      expect(() =>
+        calibrationStore.crossCheck({ 'cam-lobby': [200, 200], 'cam-counter': [200, 200] }),
+      ).toThrowError(/not aligned yet/)
+    })
+
+    it('reports how far apart aligned cameras place the same spot', async () => {
+      const user = userEvent.setup()
+      calibrationStore.calibrateRect({
+        camera: 'cam-lobby',
+        points: SQUARE,
+        img_w: 1920,
+        img_h: 1080,
+      })
+      calibrationStore.calibrateRect({
+        camera: 'cam-counter',
+        points: SQUARE,
+        img_w: 1920,
+        img_h: 1080,
+      })
+      /* cam-counter sees the room shifted 50 px right. */
+      calibrationStore.alignCameras([
+        { 'cam-lobby': [100, 100], 'cam-counter': [150, 100] },
+        { 'cam-lobby': [400, 300], 'cam-counter': [450, 300] },
+      ])
+      wrap(
+        <AlignMode
+          agencyId={AGENCY_ID}
+          cameras={[getCamera(CAMERA_ID_COUNTER), getCamera(CAMERA_ID_LOBBY)]}
+          byCamera={byCameraFromStore()}
+          onAligned={() => {}}
+        />,
+      )
+      await loadPictures(2)
+      clickAt(canvasFor('cam-lobby'), 250, 200)
+      clickAt(canvasFor('cam-counter'), 300, 200)
+      await user.click(screen.getByRole('button', { name: 'Cross-check this spot' }))
+
+      /* The shift the alignment learned is exactly the shift clicked, so a
+         consistent spot lands in the same place: 0.0 cm apart. */
+      expect(await screen.findByText('0.0 cm apart', {}, WAIT)).toBeInTheDocument()
+    })
+  })
+
+  describe('gates', () => {
+    function renderGates() {
+      calibrationStore.calibrateRect({
+        camera: 'cam-lobby',
+        points: SQUARE,
+        img_w: 1920,
+        img_h: 1080,
+      })
+      return wrap(
+        <GatesMode
+          agencyId={AGENCY_ID}
+          cameras={[getCamera(CAMERA_ID_LOBBY)]}
+          byCamera={byCameraFromStore()}
+        />,
+      )
+    }
+
+    it('adds a gate without moving the ones already saved', async () => {
+      const user = userEvent.setup()
+      calibrationStore.calibrateRect({
+        camera: 'cam-lobby',
+        points: SQUARE,
+        img_w: 1920,
+        img_h: 1080,
+      })
+      calibrationStore.saveGates({ gates: [{ camera: 'cam-lobby', points: [[300, 300]] }] })
+      const before = calibrationStore.getGates().gates[0]
+      renderGates()
+
+      expect(await screen.findByText('gate 1', { selector: 'span' }, WAIT)).toBeInTheDocument()
+      await loadPictures()
+      clickAt(canvasFor('cam-lobby'), 450, 420)
+      await user.click(screen.getByRole('button', { name: 'Save 1 gate' }))
+
+      await waitFor(() => expect(calibrationStore.getGates().gates).toHaveLength(2), WAIT)
+      const [kept] = calibrationStore.getGates().gates
+      expect(kept[0]).toBeCloseTo(before[0], 6)
+      expect(kept[1]).toBeCloseTo(before[1], 6)
+    })
+
+    it('removes one gate and keeps the rest', async () => {
+      const user = userEvent.setup()
+      calibrationStore.calibrateRect({
+        camera: 'cam-lobby',
+        points: SQUARE,
+        img_w: 1920,
+        img_h: 1080,
+      })
+      calibrationStore.saveGates({
+        gates: [
+          {
+            camera: 'cam-lobby',
+            points: [
+              [300, 300],
+              [450, 420],
+            ],
+          },
+        ],
+      })
+      const second = calibrationStore.getGates().gates[1]
+      renderGates()
+
+      await user.click(await screen.findByRole('button', { name: 'Remove gate 1' }, WAIT))
+      await waitFor(() => expect(calibrationStore.getGates().gates).toHaveLength(1), WAIT)
+      expect(calibrationStore.getGates().gates[0][0]).toBeCloseTo(second[0], 6)
+    })
+
+    /* Gates are site-wide; clearing is everyone's, so it asks first. */
+    it('asks before clearing every gate on the site', async () => {
+      const user = userEvent.setup()
+      calibrationStore.calibrateRect({
+        camera: 'cam-lobby',
+        points: SQUARE,
+        img_w: 1920,
+        img_h: 1080,
+      })
+      calibrationStore.saveGates({ gates: [{ camera: 'cam-lobby', points: [[300, 300]] }] })
+      renderGates()
+
+      await user.click(
+        await screen.findByRole('button', { name: /Clear every gate on the site/ }, WAIT),
+      )
+      expect(screen.getByText(/other branches' included/)).toBeInTheDocument()
+      expect(calibrationStore.getGates().gates).toHaveLength(1)
+
+      await user.click(screen.getByRole('button', { name: 'Clear every gate' }))
+      await waitFor(() => expect(calibrationStore.getGates().gates).toHaveLength(0), WAIT)
     })
   })
 })

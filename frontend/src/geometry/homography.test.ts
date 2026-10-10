@@ -6,6 +6,7 @@ import {
   lineDiagnostics,
   multiply,
   reversedCameras,
+  solveHomography,
   type Matrix3,
 } from './homography'
 
@@ -122,5 +123,48 @@ describe('lineDiagnostics', () => {
     expect(reversedCameras(diagnostics, new Set(['a', 'b']))).toEqual(['b'])
     /* Not comparable until both are aligned. */
     expect(reversedCameras(diagnostics, new Set(['a']))).toEqual([])
+  })
+})
+
+describe('solveHomography', () => {
+  it('maps four points exactly onto four others', () => {
+    const src: Array<[number, number]> = [
+      [100, 100],
+      [500, 120],
+      [520, 400],
+      [90, 380],
+    ]
+    const dst: Array<[number, number]> = [
+      [0, 0],
+      [200, 0],
+      [200, 100],
+      [0, 100],
+    ]
+    const H = solveHomography(src, dst)
+    expect(H).not.toBeNull()
+    src.forEach((p, i) => {
+      const [x, y] = applyH(H as Matrix3, p)
+      expect(x).toBeCloseTo(dst[i][0])
+      expect(y).toBeCloseTo(dst[i][1])
+    })
+  })
+
+  it('refuses collinear points', () => {
+    expect(
+      solveHomography(
+        [
+          [0, 0],
+          [1, 1],
+          [2, 2],
+          [3, 3],
+        ],
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ],
+      ),
+    ).toBeNull()
   })
 })

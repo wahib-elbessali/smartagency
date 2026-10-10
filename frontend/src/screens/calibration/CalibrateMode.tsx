@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { controlClass } from '@/components/ui/control'
-import { completeParallelogram, type Point } from '../homography'
+import { completeParallelogram, type Point } from '@/geometry/homography'
 import { FrameCanvas } from './FrameCanvas'
 
 /**

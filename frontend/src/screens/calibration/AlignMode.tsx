@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { AlertTriangle, Undo2 } from 'lucide-react'
-import { alignCameras } from '@/api/endpoints/calibration'
+import { alignCameras, crossCheck } from '@/api/endpoints/calibration'
 import { ApiError, describeApiError } from '@/api/errors'
-import type { Camera, CameraCalibration, SharedPoint } from '@/api/types'
+import type { Camera, CameraCalibration, CrossCheckResult, SharedPoint } from '@/api/types'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Panel, PanelBody } from '@/components/ui/Panel'
-import { lineDiagnostics, reversedCameras, type Matrix3, type Point } from '../homography'
+import { lineDiagnostics, reversedCameras, type Matrix3, type Point } from '@/geometry/homography'
 import { AlignReport } from './AlignReport'
 import { FrameCanvas } from './FrameCanvas'
 
@@ -42,6 +42,13 @@ type Method = 'spots' | 'lines'
  * live checks come along too: each camera's own points should fall on a
  * straight line once projected (tests that camera's calibration alone), and
  * aligned cameras should agree on the line's length (tests the alignment).
+ *
+ * CROSS-CHECK. The same spot-clicking, sent to a read-only endpoint instead:
+ * where each ALIGNED camera puts the spot on the floor, and how far apart.
+ * It is the check that an alignment actually took, so it wants spots that
+ * were NOT used to align - checking a fit against its own points proves
+ * nothing - and it is only offered once every camera marked is aligned (the
+ * service refuses otherwise, and rightly).
  */
 export function AlignMode({
   agencyId,
@@ -81,7 +88,12 @@ export function AlignMode({
     onSuccess: () => onAligned(),
   })
 
+  const check = useMutation({
+    mutationFn: (spot: SharedPoint) => crossCheck(agencyId, spot),
+  })
+
   const pendingCount = Object.keys(pending).length
+  const pendingUnaligned = Object.keys(pending).filter((camera) => !alignedNames.has(camera))
 
   /**
    * How many recorded spots each pair of cameras has in common - the number
@@ -207,12 +219,34 @@ export function AlignMode({
                 <Button size="sm" disabled={pendingCount === 0} onClick={() => setPending({})}>
                   Clear this spot
                 </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pendingCount < 2 || pendingUnaligned.length > 0 || check.isPending}
+                  onClick={() => check.mutate(pending)}
+                >
+                  {check.isPending ? 'Checking…' : 'Cross-check this spot'}
+                </Button>
                 <p role="status" aria-live="polite" className="text-ink-3 text-xs">
                   {pendingCount > 0
-                    ? `This spot is marked in ${pendingCount} camera${pendingCount === 1 ? '' : 's'} — 2 needed to record it.`
+                    ? `This spot is marked in ${pendingCount} camera${pendingCount === 1 ? '' : 's'} — 2 needed to record or cross-check it.`
                     : 'Click the same spot in two or more cameras.'}
+                  {pendingCount >= 2 &&
+                    pendingUnaligned.length > 0 &&
+                    ` Cross-check waits until ${pendingUnaligned.join(', ')} ${pendingUnaligned.length === 1 ? 'is' : 'are'} aligned.`}
                 </p>
               </div>
+              {check.error != null && (
+                <p
+                  role="alert"
+                  className="border-warn/30 bg-warn/8 text-warn mt-3 rounded-lg border p-3 text-sm"
+                >
+                  {check.error instanceof ApiError
+                    ? describeApiError(check.error)
+                    : 'Could not cross-check this spot.'}
+                </p>
+              )}
+              {check.data && <CrossCheckReport result={check.data} />}
             </>
           ) : (
             <>
@@ -454,6 +488,36 @@ function LineChecks({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Where each camera put the one spot, and how far apart - the raw numbers,
+ * not a pass mark. What counts as close enough depends on the room and the
+ * cameras, so it is described, not judged.
+ */
+function CrossCheckReport({ result }: { result: CrossCheckResult }) {
+  const worst = Math.max(0, ...result.pairs.map((pair) => pair.distance_cm))
+  return (
+    <div className="border-line bg-panel-2 mt-3 rounded-lg border p-3">
+      <h3 className="text-ink text-sm font-semibold">Cross-check</h3>
+      <ul className="mt-2 space-y-1 text-sm">
+        {result.pairs.map((pair) => (
+          <li key={`${pair.cam_a}|${pair.cam_b}`} className="flex items-center gap-2">
+            <span className="text-ink-2 min-w-0 flex-1 truncate">
+              {pair.cam_a} ↔ {pair.cam_b}
+            </span>
+            <span className="text-ink tabular">{pair.distance_cm.toFixed(1)} cm apart</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-ink-3 mt-2 text-xs leading-relaxed">
+        The same physical spot, placed by each camera on the shared floor. Up to {worst.toFixed(1)}{' '}
+        cm between them. A few centimetres is agreement; tens of centimetres or more means the
+        alignment has not taken for at least one of these cameras. Check with spots you did not use
+        to align — a fit always agrees with its own points.
+      </p>
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { ApiError, describeApiError } from '@/api/errors'
 import type { Camera } from '@/api/types'
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel'
 import { useCameraFrame } from '@/hooks/useCameraFrame'
-import type { Point } from '../homography'
+import type { Point } from '@/geometry/homography'
 
 export interface Marker {
   point: Point

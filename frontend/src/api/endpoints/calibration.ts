@@ -2,9 +2,13 @@ import { fetchJson } from '../client'
 import type {
   AlignResult,
   CalibrationEntry,
+  CalibrationGates,
+  CalibrationGatesRequest,
+  CalibrationGatesSaved,
   CalibrationRectRequest,
   CalibrationRectResult,
   CameraCalibration,
+  CrossCheckResult,
   SharedPoint,
 } from '../types'
 
@@ -25,9 +29,6 @@ import type {
  *     DELETE /calibration/{camera}; the gateway does not proxy it, so there
  *     is no way to do it from this dashboard. Re-calibrating replaces a
  *     camera's fit, which covers the common case. Raised with backend.
- *   - Gates and cross-check, which the gateway does proxy: gates are a
- *     tracking prior nothing here reads, and cross-check belongs with a
- *     bird's-eye view that is not built.
  */
 
 /** The gateway's name-keyed map, folded into a list - the one place that happens. */
@@ -94,5 +95,71 @@ export function alignCameras(
       auth: true,
     },
     { signal, body: { points } },
+  )
+}
+
+/**
+ * The same real spot, clicked in 2+ ALIGNED cameras: where each puts it on the
+ * floor and how far apart. Read-only - the check that an alignment took.
+ */
+export function crossCheck(
+  agencyId: string,
+  points: SharedPoint,
+  signal?: AbortSignal,
+): Promise<CrossCheckResult> {
+  return fetchJson<CrossCheckResult>(
+    {
+      key: 'POST /api/agencies/{id}/ai/calibration/cross-check',
+      path: `/api/agencies/${agencyId}/ai/calibration/cross-check`,
+      method: 'POST',
+      auth: true,
+    },
+    { signal, body: { points } },
+  )
+}
+
+/**
+ * Every entry/exit gate on the SITE, in floor coordinates. The gateway checks
+ * the caller may use this agency but cannot narrow the list - a floor
+ * coordinate belongs to no camera - so another branch's gates are in it too.
+ */
+export function fetchGates(agencyId: string, signal?: AbortSignal): Promise<CalibrationGates> {
+  return fetchJson<CalibrationGates>(
+    {
+      key: 'GET /api/agencies/{id}/ai/calibration/gates',
+      path: `/api/agencies/${agencyId}/ai/calibration/gates`,
+      auth: true,
+    },
+    { signal },
+  )
+}
+
+/** Replaces EVERY gate on the site with these (pixel clicks per camera). */
+export function saveGates(
+  agencyId: string,
+  body: CalibrationGatesRequest,
+  signal?: AbortSignal,
+): Promise<CalibrationGatesSaved> {
+  return fetchJson<CalibrationGatesSaved>(
+    {
+      key: 'POST /api/agencies/{id}/ai/calibration/gates',
+      path: `/api/agencies/${agencyId}/ai/calibration/gates`,
+      method: 'POST',
+      auth: true,
+    },
+    { signal, body },
+  )
+}
+
+/** Clears every gate on the site, not only this branch's. */
+export function clearGates(agencyId: string, signal?: AbortSignal): Promise<CalibrationGatesSaved> {
+  return fetchJson<CalibrationGatesSaved>(
+    {
+      key: 'DELETE /api/agencies/{id}/ai/calibration/gates',
+      path: `/api/agencies/${agencyId}/ai/calibration/gates`,
+      method: 'DELETE',
+      auth: true,
+    },
+    { signal },
   )
 }

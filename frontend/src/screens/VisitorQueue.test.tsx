@@ -130,5 +130,7 @@ describe('VisitorQueue', () => {
       await screen.findByText(/no longer has an active service/i, {}, WAIT),
     ).toBeInTheDocument()
     expect(screen.queryByText(/ticket has already been handled/i)).not.toBeInTheDocument()
-  })
+    /* Several sequential waits (agents, services, the picker, the refusal);
+       under a loaded full-suite run they can together pass the 5 s default. */
+  }, 15_000)
 })
