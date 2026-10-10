@@ -28,11 +28,14 @@ describe('canReach', () => {
     }
   })
 
-  /* Attendance is ADMIN, MANAGER and SECURITY - security staff read the roster
-     even though they cannot administer the people on it. */
-  it('includes security on presence', () => {
-    expect(canReach('SECURITY', '/presence')).toBe(true)
+  /* Stricter than the API on purpose: attendance still takes SECURITY, but who
+     is on the payroll is not a guard's screen. */
+  it('keeps presence to admins and managers', () => {
+    expect(canReach('ADMIN', '/presence')).toBe(true)
+    expect(canReach('MANAGER', '/presence')).toBe(true)
+    expect(canReach('SECURITY', '/presence')).toBe(false)
     expect(canReach('AGENT', '/presence')).toBe(false)
+    expect(canReach('TECHNICIAN', '/presence')).toBe(false)
   })
 
   /* No role-guarded endpoint behind these, so no role is kept out. One is

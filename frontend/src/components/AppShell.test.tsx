@@ -82,10 +82,10 @@ describe('AppShell navigation', () => {
     expect(navLink(/visitor queue/i)).toBeInTheDocument()
   })
 
-  /* Security reads the roster but administers nobody on it. */
-  it('offers presence to security but not employees', () => {
+  /* The attendance API would let a guard read the roster; the nav does not. */
+  it('offers neither presence nor employees to security', () => {
     renderShell('SECURITY')
-    expect(navLink(/employee presence/i)).toBeInTheDocument()
+    expect(navLink(/employee presence/i)).not.toBeInTheDocument()
     expect(navLink(/employees/i)).not.toBeInTheDocument()
   })
 
