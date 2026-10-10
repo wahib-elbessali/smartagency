@@ -49,6 +49,13 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    /* Above the longest wait any test is written to allow. Alerts and
+       CameraView wait up to 8s for a simulated stream (`{ timeout: 8000 }`),
+       but Vitest's default per-test limit is 5s, so on a loaded CI runner a
+       test was killed at 5s while still validly waiting - a random red build
+       with nothing wrong. Raise a test's own wait past 12s and this has to
+       move with it. */
+    testTimeout: 15_000,
     /* Pin the environment the suite runs in.
     
        Vitest loads .env.local like Vite does, so without this the tests inherit
