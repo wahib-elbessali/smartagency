@@ -14,8 +14,8 @@ network.
 **Configuration is a file, not environment variables.** The service reads none. Tunables
 (detector backend/confidence, image sizes, poll intervals, the wanted-list threshold) live in
 `ai/features/config.json` and are read once at startup — see `GET /config`. File locations are fixed
-inside the package and are not configurable at all. The only value changeable at runtime is
-`PUT /wanted/threshold`.
+inside the package and are not configurable at all. The only values changeable at runtime are
+`PUT /wanted/threshold` and `PUT /weapon/threshold`.
 
 **Everything the service writes** — zones, calibration, gates, both face galleries, employee
 workstations — goes to `ai/features/data/`, a fixed path relative to the package. It does **not** follow
@@ -65,7 +65,7 @@ fresh install starts empty.
 {"config": {
    "detector": {"backend": "auto"},
    "zoning":  {"weights": null, "imgsz": 1280, "conf": 0.25, "update_interval": 2.0},
-   "weapon":  {"conf": 0.25, "imgsz": 640,  "update_interval": 2.0},
+   "weapon":  {"conf": 0.6, "imgsz": 640,  "update_interval": 2.0},
    "fire":    {"conf": 0.25, "imgsz": 1280, "update_interval": 2.0},
    "emotion": {"det_size": 640, "update_interval": 2.0},
    "wanted":  {"threshold": 0.5, "min_face_px": 30, "det_size": 640,
@@ -81,7 +81,7 @@ fresh install starts empty.
  "data_dir":    "…/ai/features/data",
  "models_dir":  "…/ai/features/models"}
 ```
-**Notes:** Read-only — the effective settings, and where the service keeps its data and weights. `config.json` is edited on disk and read once at startup, so this is also how you confirm a running service is actually using the config you think it is. `detector.backend` picks the runtime for the shared person detector (`auto` chooses CUDA/OpenVINO/ncnn/CPU by what's present — all backends produce identical boxes, this is a hardware-utilisation choice, not an accuracy tradeoff). The only value changeable without a restart is the wanted threshold (`PUT /wanted/threshold`).
+**Notes:** Read-only — the effective settings, and where the service keeps its data and weights. `config.json` is edited on disk and read once at startup, so this is also how you confirm a running service is actually using the config you think it is. `detector.backend` picks the runtime for the shared person detector (`auto` chooses CUDA/OpenVINO/ncnn/CPU by what's present — all backends produce identical boxes, this is a hardware-utilisation choice, not an accuracy tradeoff). The only values changeable without a restart are the wanted threshold (`PUT /wanted/threshold`) and the weapon detector confidence (`PUT /weapon/threshold`); `GET /config` keeps showing their startup values.
 
 ---
 
@@ -369,6 +369,17 @@ differs.
 
 ### /weapon classes
 `pistol`, `knife`. (The underlying model also sees `smartphone`, `monedero`, `billete`, `tarjeta` as lookalike-distractor training classes, but this feature only ever alerts on the two weapon classes.) Known flicker: pistol↔smartphone label can flip frame-to-frame on the same object — treat presence as reliable over a short window, not on one frame.
+
+### GET /weapon/threshold
+**Owner:** · **Type:** REST · **Payload:** none
+**Returns:** `{"conf": 0.6, "startup_default": 0.6, "applies_within_seconds": 2.0}`
+
+### PUT /weapon/threshold
+**Owner:**
+**Type:** REST
+**Payload:** `{"conf": 0.7}` — `0 < conf <= 1`, otherwise `422`.
+**Returns:** `{"conf": 0.7, "previous": 0.6, "startup_default": 0.6, "applies_within_seconds": 2.0}`
+**Notes:** Changes the detector confidence used by `model.predict` from the next detection call, with no restart. Detections below it never leave the AI, so a confidence crossing it changes the class set and is pushed on `/weapon/alerts/stream`. **Not persisted:** a restart returns to `config.json`'s `weapon.conf`. The backend owns the value (`PUT /api/ai-alerts/thresholds/weapon`) and re-applies it each time it reconnects.
 
 ### /fire classes
 `fire`, `smoke`.

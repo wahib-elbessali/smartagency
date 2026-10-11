@@ -51,7 +51,7 @@ DEFAULTS = {
         # docstring. fuse_dist/min_cameras used to live here; the equivalent
         # knobs are now person_tracking's own (gate_pw, cam_support_min, etc).
     },
-    "weapon": {"conf": 0.25, "imgsz": 640, "update_interval": 2.0},
+    "weapon": {"conf": 0.6, "imgsz": 640, "update_interval": 2.0},
     "fire": {"conf": 0.25, "imgsz": 1280, "update_interval": 2.0},   # 1280 is measured, see engine
     "emotion": {"det_size": 640, "update_interval": 2.0},
     "face": {
