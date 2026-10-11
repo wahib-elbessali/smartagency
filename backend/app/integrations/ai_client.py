@@ -246,6 +246,9 @@ class AIClient:
     def put(self, path: str, *, payload: Any = None) -> Any:
         return self.request_json("PUT", path, payload=payload)
 
+    def patch(self, path: str, *, payload: Any = None) -> Any:
+        return self.request_json("PATCH", path, payload=payload)
+
     def delete(self, path: str) -> Any:
         return self.request_json("DELETE", path)
 
@@ -254,6 +257,23 @@ class AIClient:
 
     def get_config(self) -> Any:
         return self.get("/config")
+
+    def patch_config(
+        self,
+        changes: Mapping[str, Mapping[str, Any]],
+        persist: bool = False,
+    ) -> Any:
+        """Change live AI tunables, e.g. ``{"weapon": {"conf": 0.7}}``.
+
+        The AI applies the whole change set or nothing (422 on any invalid
+        value). ``persist`` stays false for backend-owned values: PostgreSQL is
+        their durable source and they are re-applied after an AI restart.
+        """
+        payload = {
+            "changes": {section: dict(values) for section, values in changes.items()},
+            "persist": persist,
+        }
+        return self.patch("/config", payload=payload)
 
     def list_cameras(self) -> Any:
         return self.get("/cameras")

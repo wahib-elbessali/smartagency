@@ -1701,8 +1701,10 @@ returned. Non-ADMIN users receive only their agency's entries.
 ~~~
 
 **Notes:** At least one field is required. The update is applied through AI
-and the threshold value is persisted by the backend. A wanted match is only
-evidence for human review and never triggers an automatic action.
+and the threshold value is persisted by the backend only after AI accepted it;
+the persisted threshold is re-applied to AI each time the wanted consumer
+reconnects. A wanted match is only evidence for human review and never
+triggers an automatic action.
 
 ### REST gateway security rules
 
@@ -1755,8 +1757,14 @@ evidence for human review and never triggers an automatic action.
 
 **Success status:** `200 OK`
 **Notes:** The value is global and must be strictly greater than `0` and less
-than or equal to `1`. It is persisted in PostgreSQL and applied immediately
-by the backend consumer. It is separate from the AI model's own `conf` value.
+than or equal to `1` (a boolean is rejected with `422`). It is first applied to
+the AI service's live `weapon.conf` (`PATCH /config`, `persist=false`), then
+persisted in PostgreSQL and applied to the backend consumer's own filter, so
+both use the same value. If the AI service refuses or cannot be reached, the
+stored value is unchanged and the AI error is returned (`503` unreachable,
+`502` upstream failure, `422` rejected value). PostgreSQL is the durable value:
+it is re-applied to the AI service each time the weapon consumer reconnects.
+`GET` returns the stored value, or the default `0.6`, without writing anything.
 
 The backend consumes `WS /weapon/alerts/stream`, registers all configured
 camera names and stream URLs with the AI service, filters detections below this

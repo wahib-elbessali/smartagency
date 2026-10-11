@@ -12,11 +12,16 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.ai_alerts.thresholds import (
+    commit_threshold,
+    restore_ai_threshold,
+    store_threshold,
+    threshold_lock,
+)
 from app.core.security import get_current_user, require_roles
 from app.database.connection import get_db
 from app.integrations.ai_client import ai_client
 from app.models.entities import (
-    AIAlertThreshold,
     Agency,
     AuditLog,
     RoleName,
@@ -301,29 +306,36 @@ def update_watchlist_threshold(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> WantedThresholdResponse:
-    response = _threshold_response(
-        ai_client.update_wanted_threshold(payload.model_dump(exclude_none=True))
-    )
-
-    persisted = db.scalar(
-        select(AIAlertThreshold).where(AIAlertThreshold.alert_type == "wanted")
-    )
-    if persisted is None:
-        persisted = AIAlertThreshold(alert_type="wanted", confidence=response.threshold)
-        db.add(persisted)
-    else:
-        persisted.confidence = response.threshold
-    _audit(
-        db,
-        user=current_user,
-        agency_id=current_user.agency_id if current_user.role.name != RoleName.ADMIN else None,
-        action="WANTED_THRESHOLD_UPDATE",
-        entity_id=persisted.id,
-        details={
-            "threshold": response.threshold,
-            "min_face_px": response.min_face_px,
-            "warnings": response.warnings,
-        },
-    )
-    db.commit()
+    # The AI PUT /wanted/threshold route is kept here because its response
+    # (previous, warnings, floor...) is the public contract; it writes the same
+    # AI state as PATCH /config, which the consumer uses to restore the value.
+    with threshold_lock("wanted"):
+        response = _threshold_response(
+            ai_client.update_wanted_threshold(payload.model_dump(exclude_none=True))
+        )
+        previous_ai_value = (response.previous or {}).get("threshold")
+        try:
+            persisted = store_threshold(db, "wanted", response.threshold)
+            _audit(
+                db,
+                user=current_user,
+                agency_id=current_user.agency_id if current_user.role.name != RoleName.ADMIN else None,
+                action="WANTED_THRESHOLD_UPDATE",
+                entity_id=persisted.id,
+                details={
+                    "threshold": response.threshold,
+                    "min_face_px": response.min_face_px,
+                    "warnings": response.warnings,
+                },
+            )
+        except Exception:
+            db.rollback()
+            restore_ai_threshold("wanted", previous_ai_value)
+            raise
+        commit_threshold(
+            db,
+            "wanted",
+            response.threshold,
+            previous_ai_value=previous_ai_value,
+        )
     return response

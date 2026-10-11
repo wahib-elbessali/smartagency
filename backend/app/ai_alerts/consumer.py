@@ -26,6 +26,7 @@ from app.ai_alerts.classifier import (
     definir_seuil_confiance_arme,
     filtrer_detections_armes,
 )
+from app.ai_alerts.thresholds import THRESHOLDS, sync_thresholds
 from app.core.config import settings
 from app.database.connection import SessionLocal
 from app.integrations.ai_client import ai_client
@@ -137,8 +138,6 @@ class AIAlertConsumer:
         try:
             if self.feature_name == "weapon":
                 self._load_persisted_weapon_threshold()
-            elif self.feature_name == "wanted":
-                self._apply_persisted_wanted_threshold()
             asyncio.run(self._consume_forever())
         except Exception:
             logger.exception(
@@ -172,24 +171,6 @@ class AIAlertConsumer:
     def _load_persisted_threshold(self) -> None:
         self._load_persisted_weapon_threshold()
 
-    def _apply_persisted_wanted_threshold(self) -> None:
-        """Re-applique le seuil wanted persiste par le backend si disponible."""
-        db = SessionLocal()
-        try:
-            threshold = db.scalar(
-                select(AIAlertThreshold).where(AIAlertThreshold.alert_type == "wanted")
-            )
-            if threshold is not None:
-                try:
-                    ai_client.update_wanted_threshold({"threshold": threshold.confidence})
-                except Exception as exc:
-                    logger.warning("Seuil wanted non reapplique au service AI: %s", exc)
-        except Exception:
-            db.rollback()
-            logger.warning("Seuil wanted persiste indisponible")
-        finally:
-            db.close()
-
     async def _consume_forever(self) -> None:
         while not self._stop_event.is_set():
             sources = await asyncio.to_thread(self._load_sources)
@@ -201,6 +182,9 @@ class AIAlertConsumer:
                 # Le registre AI est en memoire: on republie apres chaque
                 # reconnexion pour recuperer un redemarrage du service AI.
                 synced = await asyncio.to_thread(self._sync_sources, sources, True)
+                if synced:
+                    # Meme raison pour le seuil: l'AI ne le garde qu'en memoire.
+                    synced = await asyncio.to_thread(self._sync_threshold)
                 if not synced:
                     await self._wait(settings.ai_reconnect_delay_seconds)
                     continue
@@ -240,6 +224,12 @@ class AIAlertConsumer:
 
     def _sync_sources(self, sources: dict[str, str], force: bool = False) -> bool:
         return self.source_sync.sync(self.feature_name, sources, force=force)
+
+    def _sync_threshold(self) -> bool:
+        """Restaure dans l'AI le seuil persiste de cette feature uniquement."""
+        if self.feature_name not in THRESHOLDS:
+            return True
+        return sync_thresholds([self.feature_name])
 
     async def _consume_stream(self) -> None:
         async with websockets.connect(
