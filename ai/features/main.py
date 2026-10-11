@@ -59,16 +59,18 @@ TLS, or restore the API-key dependency, before real use.
 """
 import io
 from contextlib import AsyncExitStack, asynccontextmanager
+from typing import Any
 
 import cv2
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from .common import cameras as registry
 from .common import route_walk
 from .common.video_source import read_frame, video_meta as _video_meta
-from .config import CONFIG
+from .config import CONFIG, ConfigError, apply_changes, describe, reload_from_file
 from . import paths
 from .calibration import api as calibration
 from .cameras import api as cameras
@@ -140,14 +142,62 @@ def index():
 def get_config():
     """The effective tunables, and where the service keeps its data.
 
-    Read-only: config.json is edited on disk and read once at startup. The one
-    value changeable while running is the wanted-list threshold, via
-    PUT /wanted/threshold -- everything else takes a restart, deliberately, so
-    that what a running service is doing always matches what the file says."""
+    `config` is what is running now. `apply_modes` says, per key, how a change
+    takes effect: "live" (next detection cycle), "next_start" (used when
+    person_tracking next bootstraps) or "restart". `startup_config` is what the
+    file said at boot, so a live change is visible as a difference, and
+    `pending_restart` lists restart-mode values already written to config.json
+    that are not running yet. Change values with PATCH /config."""
     return {"config": CONFIG,
+            **describe(),
             "config_file": str(paths.CONFIG_FILE),
             "data_dir": str(paths.DATA),
             "models_dir": str(paths.MODELS)}
+
+
+class ConfigPatch(BaseModel):
+    changes: dict[str, dict[str, Any]]
+    persist: bool = False
+
+
+def _config_422(exc: ConfigError):
+    raise HTTPException(422, {"message": "config not changed", "errors": exc.errors})
+
+
+@app.patch("/config", tags=["meta"])
+def patch_config(req: ConfigPatch):
+    """Change tunables while the service runs -- no restart, cameras stay registered.
+
+    Body: {"changes": {"weapon": {"conf": 0.4}, "wanted": {"threshold": 0.55}},
+           "persist": false}
+
+    All-or-nothing: if any value is invalid the response is 422 listing every
+    problem and nothing changes. "live" keys apply on the next detection cycle
+    (within that feature's update_interval); "next_start" keys are stored and
+    used when person_tracking next bootstraps. "restart" keys (weights, detector
+    backend, face pack, det_size) are refused unless persist=true, which writes
+    them to config.json for the next start.
+
+    Without persist the change lasts until the process restarts and config.json
+    remains the durable default. With persist=true the changed values are also
+    merged into config.json (atomic replace)."""
+    try:
+        return apply_changes(req.changes, persist=req.persist)
+    except ConfigError as exc:
+        _config_422(exc)
+
+
+@app.post("/config/reload", tags=["meta"])
+def reload_config():
+    """Re-read config.json and apply whatever differs from what is running
+    (live keys now, restart keys reported under pending_restart). For editing
+    the file by hand and applying it without a restart. All-or-nothing."""
+    try:
+        return reload_from_file()
+    except ConfigError as exc:
+        _config_422(exc)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(422, {"message": "config.json unreadable", "errors": [str(exc)]})
 
 
 @app.get("/frame", tags=["meta"])

@@ -13,9 +13,8 @@ network.
 
 **Configuration is a file, not environment variables.** The service reads none. Tunables
 (detector backend/confidence, image sizes, poll intervals, the wanted-list threshold) live in
-`ai/features/config.json` and are read once at startup — see `GET /config`. File locations are fixed
-inside the package and are not configurable at all. The only value changeable at runtime is
-`PUT /wanted/threshold`.
+`ai/features/config.json` and are read at startup (and on `POST /config/reload`) — see `GET /config`. File locations are fixed
+inside the package and are not configurable at all. Most can be changed while it runs with `PATCH /config`.
 
 **Everything the service writes** — zones, calibration, gates, both face galleries, employee
 workstations — goes to `ai/features/data/`, a fixed path relative to the package. It does **not** follow
@@ -81,7 +80,18 @@ fresh install starts empty.
  "data_dir":    "…/ai/features/data",
  "models_dir":  "…/ai/features/models"}
 ```
-**Notes:** Read-only — the effective settings, and where the service keeps its data and weights. `config.json` is edited on disk and read once at startup, so this is also how you confirm a running service is actually using the config you think it is. `detector.backend` picks the runtime for the shared person detector (`auto` chooses CUDA/OpenVINO/ncnn/CPU by what's present — all backends produce identical boxes, this is a hardware-utilisation choice, not an accuracy tradeoff). The only value changeable without a restart is the wanted threshold (`PUT /wanted/threshold`).
+**Notes:** The effective settings (`config`), how each key can be changed (`apply_modes`: `live` = next detection cycle, `next_start` = used when `/people` next bootstraps, `restart` = needs a restart), what the file said at boot (`startup_config`, so a live change shows as a difference), and restart-mode values already written to `config.json` but not running yet (`pending_restart`). Change values with `PATCH /config`. `detector.backend` picks the runtime for the shared person detector (`auto` chooses CUDA/OpenVINO/ncnn/CPU by what's present — all backends produce identical boxes, this is a hardware-utilisation choice, not an accuracy tradeoff).
+
+### PATCH /config
+**Type:** REST
+**Payload:** `{"changes": {"weapon": {"conf": 0.4}, "wanted": {"threshold": 0.55}}, "persist": false}`
+**Returns:** `{"applied": {"weapon": {"conf": {"value": 0.4, "mode": "live"}}}, "pending_restart": {}, "previous": {"weapon": {"conf": 0.25}}, "persisted": false}`
+**Notes:** Changes tunables while the service runs: no restart, cameras stay registered, live keys apply within that feature's `update_interval`. All-or-nothing: any invalid value returns `422` `{"detail": {"message": "config not changed", "errors": [...]}}` listing every problem, and nothing changes. Unknown sections/keys, wrong types, out-of-range values (`conf` in (0,1], `imgsz` a multiple of 32, `wanted.threshold` at or above its floor, …) are all `422`. `restart`-mode keys (`*.weights`, `detector.backend`, `face.pack`, `emotion.det_size`, `wanted.det_size`) are refused unless `persist` is `true`; they are then written to `config.json` and returned under `pending_restart`. Without `persist` a change lasts until the process restarts. With `persist: true` the changed values are also merged into `config.json` (atomic replace). `PUT /wanted/threshold` still works and shares state with this endpoint.
+
+### POST /config/reload
+**Type:** REST · **Payload:** none
+**Returns:** same shape as `PATCH /config`.
+**Notes:** Re-reads `config.json` and applies whatever differs from what is running: live keys now, restart keys reported under `pending_restart`. For editing the file by hand and applying it without a restart. All-or-nothing: a bad value anywhere in the file returns `422` and applies nothing.
 
 ---
 

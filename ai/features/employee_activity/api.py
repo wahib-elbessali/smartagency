@@ -62,8 +62,7 @@ from ..zoning.api import get_zone_count, zone_names
 from . import tracker
 
 _CFG = CONFIG["employee_activity"]
-POLL_INTERVAL = _CFG["poll_interval"]
-ABSENCE_SECONDS = _CFG["absence_seconds"]
+# poll_interval and absence_seconds are read from _CFG at use time (PATCH /config changes them live)
 
 _lock = threading.Lock()
 _workstations = {}   # {name: zone_name}, persisted
@@ -164,11 +163,11 @@ async def _background_loop():
                 if name not in _workstations:
                     continue   # deleted while this cycle was running
                 state = _states.setdefault(name, tracker.new_state())
-                _, changed = tracker.update(state, zone_state["count"], ABSENCE_SECONDS)
+                _, changed = tracker.update(state, zone_state["count"], _CFG["absence_seconds"])
                 payload = _public_state(name)
             if changed:
                 await _broadcast({"type": "update", **payload})
-        await asyncio.sleep(POLL_INTERVAL)
+        await asyncio.sleep(_CFG["poll_interval"])
 
 
 @asynccontextmanager

@@ -33,16 +33,16 @@ from fastapi import APIRouter, HTTPException, WebSocket
 from pydantic import BaseModel
 
 from ..common.live_alert_service import LiveAlertService
-from ..config import CONFIG
+from ..config import CONFIG, on_change
 from .engine import detect_weapons
 
-_CFG = CONFIG["weapon"]
-CONF, IMGSZ, UPDATE_INTERVAL = _CFG["conf"], _CFG["imgsz"], _CFG["update_interval"]
+_CFG = CONFIG["weapon"]   # read at call time: PATCH /config changes it live
 
 service = LiveAlertService(feature_key='weapon', 
-    detect_fn=lambda frame: detect_weapons(frame, conf=CONF, imgsz=IMGSZ),
-    update_interval=UPDATE_INTERVAL,
+    detect_fn=lambda frame: detect_weapons(frame, conf=_CFG["conf"], imgsz=_CFG["imgsz"]),
+    update_interval=_CFG["update_interval"],
 )
+on_change("weapon", "update_interval", lambda v: setattr(service, "update_interval", v))
 
 router = APIRouter(prefix="/weapon", tags=["weapon detection"])
 

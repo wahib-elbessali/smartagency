@@ -9,11 +9,13 @@ environment variables are deliberately not one of them:
    deployment and not notice.
 2. **config.json** -- values you set once for a site: detector confidence,
    image size, poll interval, the wanted-list threshold. Edited on disk,
-   read once at startup, visible at GET /config.
-3. **An API call** -- values that need changing while it runs, e.g.
-   PUT /wanted/threshold, which takes effect on the next detection cycle.
-   These are process-lifetime only; config.json remains the durable default,
-   so a restart returns to it.
+   read at startup (or on POST /config/reload), visible at GET /config.
+3. **An API call** -- values that need changing while it runs: PATCH /config
+   (any tunable marked "live" below) and the older PUT /wanted/threshold. A
+   live change takes effect on the next detection cycle, with no restart and
+   no re-registration of cameras. By default it lasts for the process
+   lifetime and config.json remains the durable default; PATCH /config with
+   persist=true also writes config.json, and POST /config/reload re-reads it.
 
 config.json may be partial or absent -- anything missing falls back to DEFAULTS
 below, so a fresh copy of this package runs with no configuration at all.
@@ -145,3 +147,236 @@ def load():
 
 
 CONFIG = load()
+
+
+# --------------------------------------------------------------------------
+# Changing config while the service runs
+# --------------------------------------------------------------------------
+#
+# Every key has one of three APPLY modes, because "can it change live" is a
+# property of how the engine uses the value, not a preference:
+#
+#   live        read fresh every detection cycle (or pushed into the running
+#               service by a listener) -- takes effect within update_interval.
+#   next_start  consumed once when person_tracking next bootstraps the site
+#               (camera set changed, or the service restarted) -- stored now,
+#               used then.
+#   restart     baked in when a model or engine is built: weights, the
+#               detector runtime, the face pack, and det_size (the shared
+#               InsightFace engine is prepared once at a fixed size, so
+#               changing it live would silently do nothing). Accepted only
+#               with persist=true, written to config.json, and reported as
+#               pending until the service restarts.
+
+import os
+import threading
+
+LIVE, NEXT_START, RESTART = "live", "next_start", "restart"
+
+APPLY = {
+    "detector": {"backend": RESTART},
+    "zoning": {"weights": RESTART, "imgsz": LIVE, "conf": LIVE, "update_interval": LIVE},
+    "weapon": {"conf": LIVE, "imgsz": LIVE, "update_interval": LIVE},
+    "fire": {"conf": LIVE, "imgsz": LIVE, "update_interval": LIVE},
+    "emotion": {"det_size": RESTART, "update_interval": LIVE},
+    "face": {"pack": RESTART},
+    "wanted": {"threshold": LIVE, "min_face_px": LIVE, "det_size": RESTART,
+               "update_interval": LIVE, "confirm_cycles": LIVE, "hold_cycles": LIVE},
+    "employee_activity": {"poll_interval": LIVE, "absence_seconds": LIVE},
+    "person_tracking": {
+        "weights": RESTART, "conf": LIVE, "update_interval": LIVE,
+        **{k: NEXT_START for k in ("gate_pw", "revive_pw", "dup_guard_pw", "max_lost_s",
+                                   "stale_gate_s", "room_trim_pct", "cam_support_min",
+                                   "peak_min", "foot_sigma_pw", "diffusion_revive")},
+    },
+}
+
+# (min, max, inclusive_min, multiple_of) -- anything not listed only gets the
+# type check. Bounds are sanity rails against a typo (conf 25 instead of 0.25),
+# not tuning advice.
+_CONF = (0.0, 1.0, False, None)
+_IMGSZ = (32, 4096, True, 32)
+_INTERVAL = (0.05, 3600.0, True, None)
+RULES = {
+    ("zoning", "conf"): _CONF, ("weapon", "conf"): _CONF, ("fire", "conf"): _CONF,
+    ("person_tracking", "conf"): _CONF,
+    ("zoning", "imgsz"): _IMGSZ, ("weapon", "imgsz"): _IMGSZ, ("fire", "imgsz"): _IMGSZ,
+    ("zoning", "update_interval"): _INTERVAL, ("weapon", "update_interval"): _INTERVAL,
+    ("fire", "update_interval"): _INTERVAL, ("emotion", "update_interval"): _INTERVAL,
+    ("wanted", "update_interval"): _INTERVAL, ("person_tracking", "update_interval"): _INTERVAL,
+    ("employee_activity", "poll_interval"): _INTERVAL,
+    ("employee_activity", "absence_seconds"): (1.0, 86400.0 * 7, True, None),
+    ("wanted", "min_face_px"): (16, 1000, True, None),
+    ("wanted", "confirm_cycles"): (1, 100, True, None),
+    ("wanted", "hold_cycles"): (0, 1000, True, None),
+    ("person_tracking", "cam_support_min"): (1, 64, True, None),
+}
+
+_lock = threading.RLock()
+_listeners = {}        # (feature, key) -> [callback(value)]
+_validators = {}       # (feature, key) -> [fn(value) -> error message | None]
+_startup = {f: dict(v) for f, v in CONFIG.items()}   # what the file/defaults said at boot
+_pending_restart = {}  # {feature: {key: value}} written to disk, not yet running
+
+
+class ConfigError(ValueError):
+    """Every problem with a requested change, so one call reports them all."""
+
+    def __init__(self, errors):
+        super().__init__("; ".join(errors))
+        self.errors = errors
+
+
+def on_change(feature, key, callback):
+    """Run callback(new_value) whenever a live key changes -- how a value that
+    was copied into a running object (an update interval, the wanted-list
+    threshold) follows config. Reads of CONFIG[feature][key] need no listener."""
+    _listeners.setdefault((feature, key), []).append(callback)
+
+
+def add_validator(feature, key, fn):
+    """fn(value) -> an error string, or None if fine. For rules that belong to
+    one feature (wanted's accusation-rate floor), not to this module."""
+    _validators.setdefault((feature, key), []).append(fn)
+
+
+def _check_type(feature, key, value):
+    default = DEFAULTS[feature][key]
+    if value is None:
+        return None if default is None else f"{feature}.{key} cannot be null"
+    if default is None:
+        return None   # nullable weights path: restart-only anyway
+    if isinstance(value, bool) != isinstance(default, bool):
+        return f"{feature}.{key} should be {type(default).__name__}, got {value!r}"
+    if isinstance(default, bool):
+        return None
+    if isinstance(default, float) and isinstance(value, (int, float)):
+        return None
+    if not isinstance(value, type(default)):
+        return f"{feature}.{key} should be {type(default).__name__}, got {value!r}"
+    return None
+
+
+def _check_value(feature, key, value):
+    error = _check_type(feature, key, value)
+    if error:
+        return error
+    rule = RULES.get((feature, key))
+    if rule is not None:
+        lo, hi, inclusive, multiple = rule
+        if value < lo or (value == lo and not inclusive) or value > hi:
+            bracket = "[" if inclusive else "("
+            return f"{feature}.{key} must be in {bracket}{lo}, {hi}], got {value!r}"
+        if multiple and value % multiple:
+            return f"{feature}.{key} must be a multiple of {multiple}, got {value!r}"
+    for fn in _validators.get((feature, key), []):
+        message = fn(value)
+        if message:
+            return message
+    return None
+
+
+def _write_file(changes):
+    """Merge `changes` into config.json and replace it atomically, so a crash
+    mid-write cannot leave a half-file that stops the next start."""
+    raw = {}
+    if CONFIG_FILE.exists():
+        raw = json.load(open(CONFIG_FILE, encoding="utf-8"))
+    for feature, values in changes.items():
+        raw.setdefault(feature, {}).update(values)
+    tmp = CONFIG_FILE.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(raw, fh, indent=2)
+        fh.write("\n")
+    os.replace(tmp, CONFIG_FILE)
+
+
+def apply_changes(changes, persist=False, restart_keys_pending=False):
+    """Validate every requested change, then apply them all or none.
+
+    changes: {"weapon": {"conf": 0.4}, ...}. Returns {"applied", "pending_restart",
+    "previous", "persisted"}: applied = live/next_start keys now in effect;
+    pending_restart = restart keys written to config.json but not yet running.
+    Raises ConfigError listing every problem. A restart-mode key without
+    persist=true is an error (it would change nothing), unless
+    restart_keys_pending (reload from file, where the file already holds it)."""
+    if not isinstance(changes, dict) or not changes:
+        raise ConfigError(['body must be {"<feature>": {"<key>": value}} with at least one change'])
+    errors, live, pending = [], {}, {}
+    for feature, values in changes.items():
+        if feature not in DEFAULTS:
+            errors.append(f"unknown section {feature!r} -- valid sections: {sorted(DEFAULTS)}")
+            continue
+        if not isinstance(values, dict) or not values:
+            errors.append(f"{feature} must be an object of key: value")
+            continue
+        for key, value in values.items():
+            if key not in DEFAULTS[feature]:
+                errors.append(f"unknown key {feature}.{key!r} -- valid keys: {sorted(DEFAULTS[feature])}")
+                continue
+            error = _check_value(feature, key, value)
+            if error:
+                errors.append(error)
+                continue
+            if APPLY[feature][key] == RESTART:
+                if not (persist or restart_keys_pending):
+                    errors.append(f"{feature}.{key} only changes on restart; send persist=true to "
+                                  f"write it to config.json for the next start")
+                    continue
+                pending.setdefault(feature, {})[key] = value
+            else:
+                live.setdefault(feature, {})[key] = value
+    if errors:
+        raise ConfigError(errors)
+
+    with _lock:
+        if persist:
+            _write_file({f: {**live.get(f, {}), **pending.get(f, {})}
+                         for f in set(live) | set(pending)})
+        previous, applied, listener_errors = {}, {}, []
+        for feature, values in live.items():
+            for key, value in values.items():
+                previous.setdefault(feature, {})[key] = CONFIG[feature][key]
+                CONFIG[feature][key] = value
+                applied.setdefault(feature, {})[key] = {"value": value, "mode": APPLY[feature][key]}
+                for callback in _listeners.get((feature, key), []):
+                    try:
+                        callback(value)
+                    except Exception as exc:   # a listener must never undo a valid change
+                        listener_errors.append(f"{feature}.{key}: {exc}")
+        for feature, values in pending.items():
+            _pending_restart.setdefault(feature, {}).update(values)
+    result = {"applied": applied, "pending_restart": pending, "previous": previous,
+              "persisted": bool(persist)}
+    if listener_errors:
+        result["warnings"] = listener_errors
+    return result
+
+
+def reload_from_file():
+    """Re-read config.json and apply whatever differs from what is running.
+    Live keys take effect now; restart keys are reported as pending. Atomic: a
+    bad value anywhere in the file applies nothing."""
+    empty = {"applied": {}, "pending_restart": {}, "previous": {}, "persisted": False}
+    if not CONFIG_FILE.exists():
+        return empty
+    raw = json.load(open(CONFIG_FILE, encoding="utf-8"))
+    diff = {}
+    for feature, values in raw.items():
+        if feature not in DEFAULTS or not isinstance(values, dict):
+            continue
+        for key, value in values.items():
+            if key in DEFAULTS[feature] and value != CONFIG[feature][key]:
+                diff.setdefault(feature, {})[key] = value
+    if not diff:
+        return empty
+    return apply_changes(diff, persist=False, restart_keys_pending=True)
+
+
+def describe():
+    """What GET /config returns beyond the values themselves."""
+    return {
+        "apply_modes": APPLY,
+        "startup_config": _startup,
+        "pending_restart": {f: dict(v) for f, v in _pending_restart.items()},
+    }

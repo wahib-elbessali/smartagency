@@ -44,17 +44,16 @@ from pydantic import BaseModel
 
 from ..common.live_alert_service import LiveAlertService
 from ..face_recognition.engine import enroll, get_engine, load_gallery, save_gallery
-from ..config import CONFIG
+from ..config import CONFIG, add_validator, on_change
 from ..paths import WANTED_GALLERY
 from .engine import THRESHOLD_FLOOR, detect_wanted_with_snapshot
 
 _CFG = CONFIG["wanted"]
 GALLERY_PATH = WANTED_GALLERY
-DET_SIZE = _CFG["det_size"]
-UPDATE_INTERVAL = _CFG["update_interval"]
+DET_SIZE = _CFG["det_size"]   # restart-only: the shared face engine is prepared once at this size
 # Defaults chosen for this feature specifically -- see features/common/live_alert_service.py's
 # _apply_hysteresis. A late all-clear is harmless; a flapping accusation is not.
-CONFIRM_CYCLES = _CFG["confirm_cycles"]
+CONFIRM_CYCLES = _CFG["confirm_cycles"]   # startup values; PATCH /config updates the service itself
 HOLD_CYCLES = _CFG["hold_cycles"]
 
 # Operator-supplied names end up in a URL path (DELETE /watchlist/{name}), so a
@@ -108,8 +107,31 @@ def _detect(frame):
                                        min_face_px=min_face_px)
 
 
-service = LiveAlertService(feature_key='wanted', detect_fn=_detect, update_interval=UPDATE_INTERVAL,
+service = LiveAlertService(feature_key='wanted', detect_fn=_detect, update_interval=_CFG["update_interval"],
                            confirm_cycles=CONFIRM_CYCLES, hold_cycles=HOLD_CYCLES)
+
+
+def _set_wanted(key):
+    def apply(value):
+        with _state_lock:
+            _config[key] = value
+    return apply
+
+
+def _threshold_error(value):
+    # Same floor PUT /wanted/threshold enforces: at or below the access-control
+    # validated 0.248 this feature accuses people routinely (see engine.py).
+    if not (THRESHOLD_FLOOR <= value <= 1.0):
+        return f"wanted.threshold must be in [{THRESHOLD_FLOOR}, 1.0] -- below that, open-set matching false-alarms constantly"
+
+
+# PATCH /config reaches the same state PUT /wanted/threshold does.
+add_validator("wanted", "threshold", _threshold_error)
+on_change("wanted", "threshold", lambda v: _set_wanted("threshold")(float(v)))
+on_change("wanted", "min_face_px", lambda v: _set_wanted("min_face_px")(int(v)))
+on_change("wanted", "update_interval", lambda v: setattr(service, "update_interval", v))
+on_change("wanted", "confirm_cycles", lambda v: setattr(service, "confirm_cycles", v))
+on_change("wanted", "hold_cycles", lambda v: setattr(service, "hold_cycles", v))
 
 router = APIRouter(prefix="/wanted", tags=["wanted detection"])
 
@@ -188,7 +210,7 @@ def get_threshold():
         embeddings = sum(len(e) for e in _watchlist.values())
     return {**cfg, "startup_default": _startup_config, "floor": THRESHOLD_FLOOR,
             "watchlist_size": n, "embeddings_total": embeddings,
-            "applies_within_seconds": UPDATE_INTERVAL}
+            "applies_within_seconds": _CFG["update_interval"]}
 
 
 @router.put("/threshold")
@@ -221,8 +243,11 @@ def put_threshold(req: ThresholdRequest):
         if req.min_face_px is not None:
             _config["min_face_px"] = int(req.min_face_px)
         cfg = dict(_config)
+    # Keep GET /config truthful about what is running.
+    CONFIG["wanted"]["threshold"] = cfg["threshold"]
+    CONFIG["wanted"]["min_face_px"] = cfg["min_face_px"]
     return {**cfg, "previous": previous, "warnings": warnings,
-            "applies_within_seconds": UPDATE_INTERVAL}
+            "applies_within_seconds": _CFG["update_interval"]}
 
 
 class SourcesRequest(BaseModel):
