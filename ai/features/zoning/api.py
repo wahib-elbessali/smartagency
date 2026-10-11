@@ -98,8 +98,7 @@ from .zones import (
 )
 
 _CFG = CONFIG["zoning"]
-IMGSZ, CONF = _CFG["imgsz"], _CFG["conf"]
-UPDATE_INTERVAL = _CFG["update_interval"]
+# imgsz, conf and update_interval are read from _CFG at use time (PATCH /config changes them live)
 
 # The person detector -- shared with features/person_tracking, which uses the
 # SAME fine-tuned checkpoint (see common/person_detector.py: loading it twice
@@ -145,7 +144,7 @@ def _run_pixel_cycle(zones_snapshot):
         return {}
 
     model = get_model(WEIGHTS)
-    results = model.predict(list(imgs.values()), imgsz=IMGSZ, conf=CONF, classes=[0], verbose=False)
+    results = model.predict(list(imgs.values()), imgsz=_CFG["imgsz"], conf=_CFG["conf"], classes=[0], verbose=False)
     raw_boxes_by_cam = {}
     for cam, r in zip(imgs, results):
         b = r.boxes
@@ -238,7 +237,7 @@ async def _background_loop():
                         await _broadcast_update(name, new_state, old_count)
             except Exception as e:
                 print(f"[zoning.api] background detection cycle failed: {e}")
-        await asyncio.sleep(UPDATE_INTERVAL)
+        await asyncio.sleep(_CFG["update_interval"])
 
 
 @asynccontextmanager

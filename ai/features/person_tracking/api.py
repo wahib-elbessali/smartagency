@@ -84,7 +84,7 @@ from ..paths import CALIBRATION, GATES
 from .engine import Tracker, bootstrap_site, build_tracker_params, detect_imgsz, load_gates
 
 _CFG = CONFIG["person_tracking"]
-WEIGHTS, CONF, UPDATE_INTERVAL = _CFG["weights"], _CFG["conf"], _CFG["update_interval"]
+WEIGHTS = _CFG["weights"]   # restart-only; conf and update_interval are read live from _CFG
 
 # Cameras come from the site table (common/cameras.py), not a private dict:
 # one description per camera, and it survives a restart. Before this, six
@@ -153,7 +153,7 @@ def _run_tracking_cycle(sources_snapshot, cams):
     if live_cams:
         model = get_model(WEIGHTS)
         imgsz = detect_imgsz(_scene["img_dims"])
-        results = model([frames[c] for c in live_cams], imgsz=imgsz, conf=CONF, verbose=False)
+        results = model([frames[c] for c in live_cams], imgsz=imgsz, conf=_CFG["conf"], verbose=False)
         for c, r in zip(live_cams, results):
             b = r.boxes
             boxes[c] = (b.xyxy.cpu().numpy() if b is not None and len(b) else np.zeros((0, 4)))
@@ -225,7 +225,7 @@ async def _background_loop():
                 await _broadcast({"type": "tracks", "tracks": tracks, "boxes": px})
             except Exception as e:
                 print(f"[person_tracking.api] tracking cycle failed: {e}")
-        await asyncio.sleep(UPDATE_INTERVAL)
+        await asyncio.sleep(_CFG["update_interval"])
 
 
 @asynccontextmanager

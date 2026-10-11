@@ -13,9 +13,8 @@ service must sit behind an authenticating reverse proxy with TLS; it is not safe
 
 **Configuration is a file, not environment variables.** The service reads none. Tunables
 (detector confidence, image sizes, poll intervals, the wanted-list threshold) live in
-`features/config.json` and are read once at startup — see `GET /config`. File locations are fixed
-inside the package and are not configurable at all. The only value changeable at runtime is
-`PUT /wanted/threshold`.
+`features/config.json` and are read at startup (and on `POST /config/reload`) — see `GET /config`. File locations are fixed
+inside the package and are not configurable at all. Most can be changed while it runs with `PATCH /config`.
 
 **Everything the service writes** — zones, calibration, both face galleries, employee-activity
 workstations — goes to `features/data/`, a fixed path relative to the package. It does **not**
@@ -77,7 +76,62 @@ A fresh install starts empty.
  "data_dir":    "…/features/data",
  "models_dir":  "…/features/models"}
 ```
-**Notes:** Read-only — the effective settings, and where the service keeps its data and weights. `config.json` is edited on disk and read once at startup, so this is also how you confirm a running service is actually using the config you think it is. The only value changeable without a restart is the wanted threshold (`PUT /wanted/threshold`).
+**Notes:** The effective settings (`config`), how each key can be changed (`apply_modes`: `live` = next detection cycle, `next_start` = used when `/people` next bootstraps, `restart` = needs a restart), what the file said at boot (`startup_config`, so a live change shows as a difference), and restart-mode values already written to `config.json` but not running yet (`pending_restart`). Change values with `PATCH /config`.
+
+### PATCH /config
+**Type:** REST
+**Payload:** `{"changes": {"weapon": {"conf": 0.4}, "wanted": {"threshold": 0.55}}, "persist": false}`
+**Returns:** `{"applied": {"weapon": {"conf": {"value": 0.4, "mode": "live"}}}, "pending_restart": {}, "previous": {"weapon": {"conf": 0.25}}, "persisted": false}`
+**Notes:** Changes tunables while the service runs: no restart, cameras stay registered, live keys apply within that feature's `update_interval`. All-or-nothing: any invalid value returns `422` `{"detail": {"message": "config not changed", "errors": [...]}}` listing every problem, and nothing changes. Unknown sections/keys, wrong types, out-of-range values (`conf` in (0,1], `imgsz` a multiple of 32, `wanted.threshold` at or above its floor, …) are all `422`. `restart`-mode keys (`*.weights`, `detector.backend`, `face.pack`, `emotion.det_size`, `wanted.det_size`) are refused unless `persist` is `true`; they are then written to `config.json` and returned under `pending_restart`. Without `persist` a change lasts until the process restarts. With `persist: true` the changed values are also merged into `config.json` (atomic replace). `PUT /wanted/threshold` still works and shares state with this endpoint.
+
+### POST /config/reload
+**Type:** REST · **Payload:** none
+**Returns:** same shape as `PATCH /config`.
+**Notes:** Re-reads `config.json` and applies whatever differs from what is running: live keys now, restart keys reported under `pending_restart`. For editing the file by hand and applying it without a restart. All-or-nothing: a bad value anywhere in the file returns `422` and applies nothing.
+
+**Which keys change how** (`apply_modes` in `GET /config` is the authoritative, machine-readable version of this table):
+
+| Mode | Keys | Takes effect |
+|---|---|---|
+| `live` | `weapon.{conf,imgsz,update_interval}`, `fire.{conf,imgsz,update_interval}`, `zoning.{conf,imgsz,update_interval}`, `emotion.update_interval`, `wanted.{threshold,min_face_px,update_interval,confirm_cycles,hold_cycles}`, `employee_activity.{poll_interval,absence_seconds}`, `person_tracking.{conf,update_interval}` | next detection cycle, within that feature's `update_interval` |
+| `next_start` | `person_tracking.{gate_pw,revive_pw,dup_guard_pw,max_lost_s,stale_gate_s,room_trim_pct,cam_support_min,peak_min,foot_sigma_pw,diffusion_revive}` | stored immediately, used the next time `/people` bootstraps (camera set changes, or the service restarts) |
+| `restart` | `*.weights`, `detector.backend`, `face.pack`, `emotion.det_size`, `wanted.det_size` | only after a restart. `det_size` is restart-only because the face engine shared by `/face`, `/wanted` and `/emotion` is prepared once at a fixed size; changing it while running would silently do nothing |
+
+**Validation.** A key's type must match its default (`bool` is not accepted for a number, `null` only where the default is `null`). Ranges: `conf` in (0, 1]; `imgsz` in [32, 4096] and a multiple of 32; every interval in [0.05, 3600] seconds; `wanted.threshold` in [floor, 1.0], the same floor `PUT /wanted/threshold` enforces; `wanted.min_face_px` in [16, 1000]; `wanted.confirm_cycles` in [1, 100]; `wanted.hold_cycles` in [0, 1000]. Unknown sections and keys are errors that list the valid names.
+
+**Persistence.** Without `persist`, a change lives in the running process only and `config.json` stays the durable default. With `persist: true` the values are merged into `config.json` first (temp file, then atomic replace) and then applied; if the write fails nothing is applied. A `restart`-mode key is written to the file, listed under `pending_restart` in the response and in `GET /config`, and the running value stays unchanged until the next start.
+
+**Example: tighten weapon detection and slow its polling, live.**
+```
+PATCH /config
+{"changes": {"weapon": {"conf": 0.4, "update_interval": 3.0}}}
+→ 200
+{"applied": {"weapon": {"conf": {"value": 0.4, "mode": "live"},
+                        "update_interval": {"value": 3.0, "mode": "live"}}},
+ "pending_restart": {},
+ "previous": {"weapon": {"conf": 0.25, "update_interval": 2.0}},
+ "persisted": false}
+```
+
+**Example: a restart-only key.**
+```
+PATCH /config   {"changes": {"face": {"pack": "buffalo_l"}}}
+→ 422  {"detail": {"message": "config not changed",
+        "errors": ["face.pack only changes on restart; send persist=true to write it to config.json for the next start"]}}
+
+PATCH /config   {"changes": {"face": {"pack": "buffalo_l"}}, "persist": true}
+→ 200  {"applied": {}, "pending_restart": {"face": {"pack": "buffalo_l"}}, "previous": {}, "persisted": true}
+```
+(Changing `face.pack` also requires re-enrolling every face; galleries from different packs do not match reliably.)
+
+**Example: one invalid value rejects the whole request.**
+```
+PATCH /config   {"changes": {"weapon": {"conf": 0.4}, "fire": {"imgsz": 7}}}
+→ 422  {"detail": {"message": "config not changed", "errors": ["fire.imgsz must be in [32, 4096], got 7"]}}
+```
+`weapon.conf` is unchanged.
+
+**Relation to `PUT /wanted/threshold`.** Both change the same running state; `GET /config` and `GET /wanted/threshold` agree after either one. `PUT /wanted/threshold` is kept as-is for existing callers.
 
 ---
 

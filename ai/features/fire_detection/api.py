@@ -23,16 +23,16 @@ from fastapi import APIRouter, HTTPException, WebSocket
 from pydantic import BaseModel
 
 from ..common.live_alert_service import LiveAlertService
-from ..config import CONFIG
+from ..config import CONFIG, on_change
 from .engine import detect_fire
 
-_CFG = CONFIG["fire"]
-CONF, IMGSZ, UPDATE_INTERVAL = _CFG["conf"], _CFG["imgsz"], _CFG["update_interval"]
+_CFG = CONFIG["fire"]   # read at call time: PATCH /config changes it live
 
 service = LiveAlertService(feature_key='fire', 
-    detect_fn=lambda frame: detect_fire(frame, conf=CONF, imgsz=IMGSZ),
-    update_interval=UPDATE_INTERVAL,
+    detect_fn=lambda frame: detect_fire(frame, conf=_CFG["conf"], imgsz=_CFG["imgsz"]),
+    update_interval=_CFG["update_interval"],
 )
+on_change("fire", "update_interval", lambda v: setattr(service, "update_interval", v))
 
 router = APIRouter(prefix="/fire", tags=["fire detection"])
 

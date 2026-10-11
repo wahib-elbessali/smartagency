@@ -47,16 +47,17 @@ from fastapi import APIRouter, HTTPException, WebSocket
 from pydantic import BaseModel
 
 from ..common.live_alert_service import LiveAlertService
-from ..config import CONFIG
+from ..config import CONFIG, on_change
 from .engine import detect_emotions
 
 _CFG = CONFIG["emotion"]
-DET_SIZE, UPDATE_INTERVAL = _CFG["det_size"], _CFG["update_interval"]
+DET_SIZE = _CFG["det_size"]   # restart-only: the shared face engine is prepared once at this size
 
 service = LiveAlertService(feature_key='emotion', 
     detect_fn=lambda frame: detect_emotions(frame, det_size=(DET_SIZE, DET_SIZE)),
-    update_interval=UPDATE_INTERVAL,
+    update_interval=_CFG["update_interval"],
 )
+on_change("emotion", "update_interval", lambda v: setattr(service, "update_interval", v))
 
 router = APIRouter(prefix="/emotion", tags=["emotion detection"])
 
