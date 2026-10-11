@@ -395,6 +395,16 @@ class AIClient:
     def update_wanted_threshold(self, payload: Mapping[str, Any]) -> Any:
         return self.put("/wanted/threshold", payload=dict(payload))
 
+    def get_weapon_threshold(self) -> Any:
+        return self.get("/weapon/threshold")
+
+    def update_weapon_threshold(self, confidence: float) -> Any:
+        """Push the backend business threshold to the weapon detector.
+
+        The backend calls it ``confidence``; the AI names it ``conf``.
+        """
+        return self.put("/weapon/threshold", payload={"conf": float(confidence)})
+
     def websocket_url(self, path: str) -> str:
         """Build the AI WebSocket URL from the configured HTTP base URL."""
         if self.base_url.startswith("https://"):

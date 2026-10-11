@@ -1754,9 +1754,20 @@ evidence for human review and never triggers an automatic action.
 ```
 
 **Success status:** `200 OK`
+**Error status:** `503` when the AI service is unreachable, `502` when it
+answers with an error or an invalid response, or does not support
+`PUT /weapon/threshold` yet (older AI), and the AI's `422` when it rejects the
+value. On any error nothing is saved.
 **Notes:** The value is global and must be strictly greater than `0` and less
-than or equal to `1`. It is persisted in PostgreSQL and applied immediately
-by the backend consumer. It is separate from the AI model's own `conf` value.
+than or equal to `1`. It is the single weapon threshold: the backend first
+pushes it to the AI detector (`PUT /weapon/threshold` with `{"conf": …}`), and
+only once the AI has confirmed it does it persist the value in PostgreSQL and
+apply it to the backend consumer. PostgreSQL is the source of truth: the AI
+keeps the value in memory only, and the backend consumer re-applies the stored
+value every time it (re)connects to the AI, before consuming the weapon stream.
+An AI that does not support `PUT /weapon/threshold` yet does not stop the
+stream: the consumer keeps filtering with the stored value and re-applies it
+at the reconnection that follows the AI update.
 
 The backend consumes `WS /weapon/alerts/stream`, registers all configured
 camera names and stream URLs with the AI service, filters detections below this

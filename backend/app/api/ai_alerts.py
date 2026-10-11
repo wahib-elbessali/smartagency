@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 
 from app.ai_alerts.classifier import (
     DEFAULT_WEAPON_THRESHOLD,
+    WEAPON_THRESHOLD_SYNC_LOCK,
+    appliquer_seuil_arme_ai,
     definir_seuil_confiance_arme,
 )
 from app.core.security import get_current_user, require_roles
@@ -57,9 +59,22 @@ def update_weapon_threshold(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AIWeaponThresholdResponse:
-    threshold = get_or_create_weapon_threshold(db)
-    threshold.confidence = payload.confidence
-    db.commit()
-    db.refresh(threshold)
-    definir_seuil_confiance_arme(threshold.confidence)
+    with WEAPON_THRESHOLD_SYNC_LOCK:
+        # The AI detector must accept the value first, as for PUT
+        # /wanted/threshold: if it is unavailable or rejects it, the
+        # AIClientError is turned into 503/502/4xx by the global handler and
+        # nothing is written -- not even the default row get_or_create would
+        # commit -- and the in-memory filter does not change.
+        applied = appliquer_seuil_arme_ai(payload.confidence)
+        threshold = db.scalar(
+            select(AIAlertThreshold).where(AIAlertThreshold.alert_type == "weapon")
+        )
+        if threshold is None:
+            threshold = AIAlertThreshold(alert_type="weapon", confidence=applied)
+            db.add(threshold)
+        else:
+            threshold.confidence = applied
+        db.commit()
+        db.refresh(threshold)
+        definir_seuil_confiance_arme(threshold.confidence)
     return AIWeaponThresholdResponse(confidence=threshold.confidence)

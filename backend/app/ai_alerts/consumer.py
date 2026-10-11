@@ -23,12 +23,15 @@ from sqlalchemy import select
 
 from app.ai_alerts.classifier import (
     DEFAULT_WEAPON_THRESHOLD,
+    WEAPON_THRESHOLD_SYNC_LOCK,
+    AIWeaponThresholdUnsupported,
+    appliquer_seuil_arme_ai,
     definir_seuil_confiance_arme,
     filtrer_detections_armes,
 )
 from app.core.config import settings
 from app.database.connection import SessionLocal
-from app.integrations.ai_client import ai_client
+from app.integrations.ai_client import AIClientError, ai_client
 from app.models.entities import (
     AIAlertThreshold,
     Alert,
@@ -167,6 +170,55 @@ class AIAlertConsumer:
         finally:
             db.close()
 
+    def _sync_weapon_threshold(self) -> bool:
+        """Reapplique au service AI le seuil des armes stocke en base.
+
+        Appele a chaque (re)connexion: PostgreSQL est la source de verite, la
+        copie du service AI est en memoire et repart de config.json apres un
+        redemarrage.
+
+        Un service AI plus ancien, sans /weapon/threshold, ne bloque pas le
+        flux: le filtre backend reste applique comme avant, et la
+        synchronisation sera retentee a la reconnexion qui suit sa mise a jour
+        (un redemarrage du service AI ferme toujours le WebSocket).
+        """
+        db = SessionLocal()
+        try:
+            with WEAPON_THRESHOLD_SYNC_LOCK:
+                threshold = db.scalar(
+                    select(AIAlertThreshold).where(
+                        AIAlertThreshold.alert_type == "weapon"
+                    )
+                )
+                confidence = (
+                    threshold.confidence
+                    if threshold is not None
+                    else DEFAULT_WEAPON_THRESHOLD
+                )
+                try:
+                    applied = appliquer_seuil_arme_ai(confidence)
+                except AIWeaponThresholdUnsupported:
+                    definir_seuil_confiance_arme(confidence)
+                    logger.warning(
+                        "Le service AI ne prend pas en charge /weapon/threshold: "
+                        "flux des armes consomme avec le seul filtre backend %.2f",
+                        confidence,
+                    )
+                    return True
+                definir_seuil_confiance_arme(applied)
+        except AIClientError as exc:
+            logger.warning("Seuil des armes non synchronise avec AI: %s", exc.detail)
+            return False
+        except Exception:
+            db.rollback()
+            logger.exception("Erreur inattendue de synchronisation du seuil des armes")
+            return False
+        finally:
+            db.close()
+
+        logger.info("Seuil des armes synchronise avec le service AI: %.2f", applied)
+        return True
+
     # Nom conserve pour les integrations internes qui utilisaient encore le
     # consommateur weapon avant sa generalisation.
     def _load_persisted_threshold(self) -> None:
@@ -204,6 +256,16 @@ class AIAlertConsumer:
                 if not synced:
                     await self._wait(settings.ai_reconnect_delay_seconds)
                     continue
+                # Meme raison pour le seuil des armes: un service AI redemarre
+                # repart de config.json. On ne consomme pas le flux tant que le
+                # seuil persiste n'a pas ete reapplique.
+                if self.feature_name == "weapon":
+                    threshold_synced = await asyncio.to_thread(
+                        self._sync_weapon_threshold
+                    )
+                    if not threshold_synced:
+                        await self._wait(settings.ai_reconnect_delay_seconds)
+                        continue
                 await self._consume_stream()
             except Exception as exc:
                 logger.warning(
