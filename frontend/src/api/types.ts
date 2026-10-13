@@ -1220,8 +1220,9 @@ export interface WantedDeleted {
  * `threshold` is a cosine similarity in [floor, 1], NOT a probability: the
  * score a face must reach against a watchlist photo to raise an alert.
  * Changes apply on the AI service's next detection cycle
- * (`applies_within_seconds`), and the AI service does not keep them across a
- * restart - `startup_default` is what it falls back to.
+ * (`applies_within_seconds`). The backend stores `threshold` and re-applies
+ * it when the AI service restarts (contracts/api.md, since #127);
+ * `min_face_px` is not stored and falls back to `startup_default`.
  */
 export interface WantedThreshold {
   threshold: number

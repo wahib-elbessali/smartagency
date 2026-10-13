@@ -44,8 +44,10 @@ import { Screen } from './Screen'
  * the number it is, the same way the Alerts screen renders a hit as
  * "similarity 0.61". Lowering it below the service's measured default is
  * allowed and comes back with a warning about false accusations, which is
- * shown. A change applies on the next detection cycle, not instantly, and
- * the AI service forgets it on restart - both said on screen.
+ * shown. A change applies on the next detection cycle, not instantly - said
+ * on screen. Since #127 the backend stores the match threshold and puts it
+ * back when the AI service restarts; the smallest face size it does not
+ * store, so that one still falls back to its default.
  *
  * Roles: SECURITY reads the list and the threshold; changing either is
  * ADMIN and MANAGER. A MANAGER's list is their own agency's.
@@ -523,8 +525,8 @@ function ThresholdPanel({ canEdit }: { canEdit: boolean }) {
             {data.watchlist_size} {data.watchlist_size === 1 ? 'person' : 'people'},{' '}
             {data.embeddings_total} photo{data.embeddings_total === 1 ? '' : 's'} in the detector —
             more photos means more chances for any face to match wrongly. A change applies within{' '}
-            {data.applies_within_seconds} s, and the detector goes back to its defaults if it
-            restarts.
+            {data.applies_within_seconds} s. If the detector restarts, the match threshold is put
+            back; the smallest face size goes back to its default.
           </p>
         )}
       </PanelBody>
