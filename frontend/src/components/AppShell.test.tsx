@@ -106,8 +106,9 @@ describe('AppShell navigation', () => {
 
   /* The alert streams refuse anyone outside ADMIN, MANAGER and SECURITY
      (contracts/api.md §13), so the link would lead only to a refusal. Two
-     links lead there now - the sidebar entry and the top bar's alerts bell -
-     and a technician must get neither. */
+     links lead there - the top bar's alerts bell on a desktop, and the nav
+     entry that only the phone menu shows (CSS hides it on a desktop, which
+     jsdom does not apply) - and a technician must get neither. */
   it('offers alerts to security and not to a technician', () => {
     renderShell('SECURITY')
     const sidebar = screen.getByRole('navigation', { name: 'Main' })
