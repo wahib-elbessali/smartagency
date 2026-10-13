@@ -350,6 +350,22 @@ function AddForm({
 }
 
 /**
+ * The gateway answers 503 when it cannot reach the AI service and 502 when
+ * the AI service fails (contracts/api.md §12), and stores nothing in either
+ * case - so the message says the values did not change. A 422 keeps the
+ * generic wording; the floor is already checked before sending.
+ */
+function describeThresholdSaveError(error: ApiError): string {
+  if (error.kind === 'http' && error.status === 503) {
+    return 'The AI service could not be reached, so nothing was changed. Try again once it is back.'
+  }
+  if (error.kind === 'http' && error.status === 502) {
+    return 'The AI service failed to apply it, so nothing was changed.'
+  }
+  return describeApiError(error)
+}
+
+/**
  * The match threshold and minimum face size. Same "draft is null until
  * typed" pattern as the weapon threshold on the Cameras screen, so Save has
  * nothing to do until something changed.
@@ -487,7 +503,7 @@ function ThresholdPanel({ canEdit }: { canEdit: boolean }) {
             {save.error != null && (
               <p role="alert" className="text-warn text-sm">
                 {save.error instanceof ApiError
-                  ? describeApiError(save.error)
+                  ? describeThresholdSaveError(save.error)
                   : 'Could not save the threshold.'}
               </p>
             )}

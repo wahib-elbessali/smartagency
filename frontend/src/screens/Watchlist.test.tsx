@@ -139,4 +139,23 @@ describe('Watchlist', () => {
     expect(screen.getByText('Between 0.25 and 1.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
+
+  /* The gateway stores nothing when the AI service is down (§12), so the
+     message must say the value did not change. */
+  it('says nothing changed when the AI service is down', async () => {
+    wantedStore.setAiServiceReachable(false)
+    const user = userEvent.setup()
+    renderAs('MANAGER')
+    const field = await screen.findByLabelText(/match threshold/i)
+    await waitFor(() => expect(field).toHaveValue(0.5), WAIT)
+
+    await user.clear(field)
+    await user.type(field, '0.6')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText(/AI service could not be reached/i, {}, WAIT)).toHaveTextContent(
+      /nothing was changed/i,
+    )
+    expect(wantedStore.getThreshold().threshold).toBe(0.5)
+  })
 })

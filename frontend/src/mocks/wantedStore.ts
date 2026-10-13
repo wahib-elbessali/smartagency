@@ -16,6 +16,7 @@ import { AGENCY_ID } from './fixtures/people'
  *   409  a name already on the list (the AI gallery is one for the site)
  *   404  removing a name the caller's agency does not own
  *   422  a threshold outside [0.25, 1] or a face size outside [16, 1000]
+ *   503  the AI service is down - the threshold stays as it was
  *
  * The seeded person is the one the scripted wanted stream flags
  * (aiStreams.ts), so the Alerts screen and this list describe the same site.
@@ -137,6 +138,7 @@ export function setThreshold(body: WantedThresholdUpdate): WantedThreshold {
   if (body.min_face_px != null && (body.min_face_px < 16 || body.min_face_px > 1000)) {
     throw new ApiError('http', 'min_face_px must be in [16, 1000]', 422)
   }
+  if (!aiReachable) throw new ApiError('http', 'Service AI injoignable', 503)
   const previous = { ...config }
   config = {
     threshold: body.threshold ?? config.threshold,
@@ -150,4 +152,12 @@ export function resetWantedStore(): void {
   people = null
   config = { ...STARTUP }
   counter = 0
+  aiReachable = true
+}
+
+let aiReachable = true
+
+/** Tests only - stand in for an AI service that is down. */
+export function setAiServiceReachable(reachable: boolean): void {
+  aiReachable = reachable
 }
