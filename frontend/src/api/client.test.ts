@@ -45,6 +45,25 @@ describe('fetchJson against a real backend', () => {
     tokenStore.clearSession()
   })
 
+  /* A photo upload is multipart. JSON-encoding a FormData sends "{}", and a
+     hand-set Content-Type loses the boundary, so neither may happen. */
+  it('sends a FormData body untouched, with no Content-Type of its own', async () => {
+    const { client } = await loadClient()
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response('{}', { status: 201, headers: { 'Content-Type': 'application/json' } }),
+      )
+    const form = new FormData()
+    form.append('name', 'X')
+
+    await client.fetchJson({ key: 'k', path: '/api/ai/watchlist', method: 'POST' }, { body: form })
+
+    const init = fetchSpy.mock.calls[0][1]
+    expect(init?.body).toBe(form)
+    expect((init?.headers as Record<string, string>)['Content-Type']).toBeUndefined()
+  })
+
   /* Failing before the request goes out means the screen says "you are signed
      out" instead of having to interpret a bare 401. */
   it('fails with 401 rather than sending an unauthenticated request', async () => {

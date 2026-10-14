@@ -21,6 +21,7 @@ const Cameras = lazy(() => import('@/screens/Cameras'))
 const Zones = lazy(() => import('@/screens/Zones'))
 const Staffing = lazy(() => import('@/screens/Staffing'))
 const Calibration = lazy(() => import('@/screens/Calibration'))
+const Watchlist = lazy(() => import('@/screens/Watchlist'))
 const CameraView = lazy(() => import('@/screens/CameraView'))
 const ManualControls = lazy(() => import('@/screens/ManualControls'))
 const Employees = lazy(() => import('@/screens/Employees'))
@@ -87,6 +88,7 @@ export function App() {
           <Route path="zones" element={<Zones />} />
           <Route path="staffing" element={<Staffing />} />
           <Route path="calibration" element={<Calibration />} />
+          <Route path="watchlist" element={<Watchlist />} />
           <Route path="cameras/:id" element={<CameraView />} />
           <Route path="controls" element={<ManualControls />} />
           <Route path="settings" element={<Settings />} />
