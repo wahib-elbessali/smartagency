@@ -322,6 +322,27 @@ function confidenceError(raw: string): string | undefined {
  * until then, and Save has nothing to do. That is what makes "did I change
  * anything?" answerable without comparing two numbers by eye.
  */
+/**
+ * The backend hands the value to the AI service before storing it, and keeps
+ * the old one if that fails (contracts/api.md §13). So these three statuses
+ * are about the AI service, not this request - and in each the threshold
+ * did not change, which is the part a guard needs to know.
+ */
+function describeThresholdSaveError(error: ApiError): string {
+  if (error.kind === 'http') {
+    if (error.status === 503) {
+      return 'The AI service could not be reached, so the threshold was not changed. Try again once it is back.'
+    }
+    if (error.status === 502) {
+      return 'The AI service failed to apply it, so the threshold was not changed.'
+    }
+    if (error.status === 422) {
+      return 'This value was refused, so the threshold was not changed.'
+    }
+  }
+  return describeApiError(error)
+}
+
 function WeaponThresholdPanel() {
   const queryClient = useQueryClient()
   const threshold = useQuery({
@@ -404,7 +425,7 @@ function WeaponThresholdPanel() {
             {save.error !== null && (
               <p role="alert" className="text-warn w-full text-sm">
                 {save.error instanceof ApiError
-                  ? describeApiError(save.error)
+                  ? describeThresholdSaveError(save.error)
                   : 'Could not save the threshold.'}
               </p>
             )}

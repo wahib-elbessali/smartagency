@@ -32,6 +32,7 @@ export const CAMERA_ID_STORE = 'c1000000-0000-4000-8000-000000000003'
 let cameras: Camera[] | null = null
 let nextId = 6000
 let threshold: WeaponThreshold | null = null
+let aiReachable = true
 
 function seed(): Camera[] {
   if (cameras === null) {
@@ -164,6 +165,9 @@ export function setWeaponThreshold(body: WeaponThreshold): WeaponThreshold {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 1) {
     throw new ApiError('http', 'confidence doit etre > 0 et <= 1', 422)
   }
+  /* contracts/api.md §13: the value goes to the AI service first, and the
+     stored one stays as it was if that fails. */
+  if (!aiReachable) throw new ApiError('http', 'Service AI injoignable', 503)
   threshold = { confidence: value }
   return { ...threshold }
 }
@@ -173,4 +177,10 @@ export function resetCameraStore(): void {
   cameras = null
   nextId = 6000
   threshold = null
+  aiReachable = true
+}
+
+/** Tests only - stand in for an AI service that is down. */
+export function setAiServiceReachable(reachable: boolean): void {
+  aiReachable = reachable
 }

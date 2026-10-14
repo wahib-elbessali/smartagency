@@ -13,6 +13,7 @@ import {
   getWeaponThreshold,
   listCameras,
   resetCameraStore,
+  setAiServiceReachable,
 } from '@/mocks/cameraStore'
 import { AGENCY_ID } from '@/mocks/fixtures/people'
 import '@/mocks'
@@ -224,6 +225,26 @@ describe('Cameras', () => {
       await user.clear(input)
       await user.type(input, '1.5')
       expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled()
+      expect(getWeaponThreshold().confidence).toBe(0.6)
+    })
+
+    /* The backend applies the value to the AI service before storing it, so
+       a 503 means the AI service is down and nothing was saved. */
+    it('says the threshold did not change when the AI service is down', async () => {
+      setAiServiceReachable(false)
+      const user = userEvent.setup()
+      renderAs('ADMIN')
+
+      const input = await screen.findByLabelText(/minimum confidence/i, {}, WAIT)
+      await waitFor(() => expect(input).toHaveValue(0.6), WAIT)
+
+      await user.clear(input)
+      await user.type(input, '0.8')
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+      expect(
+        await screen.findByText(/AI service could not be reached/i, {}, WAIT),
+      ).toHaveTextContent(/not changed/i)
       expect(getWeaponThreshold().confidence).toBe(0.6)
     })
   })
