@@ -46,6 +46,10 @@ const UTILITY: readonly PaletteEntry[] = [
   },
 ]
 
+/** The screen the top bar's bell opens - and so the one screen the desktop
+ *  sidebar leaves out. */
+const ALERTS_PATH = '/alerts'
+
 /** Shown on the search button, so the shortcut is learnable from the rail. */
 const SHORTCUT =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
@@ -238,7 +242,11 @@ export function AppShell() {
               <SectionHeading title={title} />
               <ul className="flex flex-col gap-0.5 px-3 md:px-2">
                 {screens.map(({ to, label, icon }) => (
-                  <li key={to}>
+                  /* Alerts has one door on a desktop: the bell in the top bar,
+                     which also carries the open count. A sidebar entry beside
+                     it was a second link to the same screen. A phone has no
+                     top bar, so the phone menu keeps the entry. */
+                  <li key={to} className={to === ALERTS_PATH ? 'md:hidden' : undefined}>
                     <RailLink to={to} label={label} icon={icon} onNavigate={closeMenu} />
                   </li>
                 ))}
@@ -318,7 +326,7 @@ export function AppShell() {
               </kbd>
             </button>
 
-            {canReach(user?.role, '/alerts') && <AlertsBell />}
+            {canReach(user?.role, ALERTS_PATH) && <AlertsBell />}
 
             <span className="bg-line mx-1 h-5 w-px" aria-hidden />
 

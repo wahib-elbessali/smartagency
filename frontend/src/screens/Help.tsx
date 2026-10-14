@@ -49,6 +49,10 @@ export default function Help() {
           <PanelBody>
             <ul className="text-ink-2 flex list-disc flex-col gap-2 pl-4 text-[0.8125rem]">
               <li>Hover the sidebar, or tab into it, to see the screen names.</li>
+              <li>
+                Alerts open from the bell at the top right, which also shows how many are still
+                open.
+              </li>
               <li>Press Ctrl+K (⌘K on a Mac) anywhere to jump to a screen by typing its name.</li>
               <li>The button at the bottom keeps it expanded; Settings has the same switch.</li>
               <li>Your role decides which screens appear. Missing one? Ask an administrator.</li>
