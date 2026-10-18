@@ -71,6 +71,8 @@ const ROUTE_ROLES: Record<string, readonly Role[]> = {
      job, give that dialog its own route rather than widen this entry. */
   '/presence': ['ADMIN', 'MANAGER'],
   '/employees': ['ADMIN', 'MANAGER'],
+  /* ENROLL_ROLES and FACE_READ_ROLES in backend/app/api/face_recognition.py. */
+  '/faces': ['ADMIN', 'MANAGER'],
   '/agencies': ['ADMIN', 'MANAGER'],
   '/services': ['ADMIN', 'MANAGER'],
   '/devices': ['ADMIN', 'MANAGER', 'TECHNICIAN'],

@@ -5,6 +5,7 @@ import {
   Camera,
   Cpu,
   Fan,
+  Fingerprint,
   Grid3x3,
   IdCard,
   KeyRound,
@@ -54,6 +55,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     icon: IdCard,
     group: 'organisation',
     description: 'Staff records and attendance history.',
+  },
+  {
+    to: '/faces',
+    label: 'Face enrollment',
+    icon: Fingerprint,
+    group: 'organisation',
+    description: 'Whose face the detector knows, per employee.',
   },
   {
     to: '/agencies',
